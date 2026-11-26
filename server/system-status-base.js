@@ -5,6 +5,10 @@ export const hour = 60 * minute;
 export const day = 24 * hour;
 
 const trackedTables = [
+  "account_network_badges",
+  "bm_audit_log",
+  "board_agent_rounds",
+  "network_task_allocations",
   "board_manager_action_results",
   "board_manager_jobs",
   "board_manager_leases",

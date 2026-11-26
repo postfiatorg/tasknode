@@ -19,7 +19,7 @@ const authDescriptions = {
   none: "Public route; no caller identity.",
   optional: "Session is used when present, but anonymous access is allowed.",
   session: "Valid Task Node browser session required.",
-  bearer: "Valid terminal bearer session required.",
+  bearer: "Valid route-specific bearer credential required.",
   oauth_state: "Single-use, provider-bound OAuth state required.",
   webhook_secret: "Configured webhook secret required.",
   admin_bearer: "Configured administrative bearer token required.",

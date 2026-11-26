@@ -1,3 +1,8 @@
+import { handlePromptRoute } from "./prompt-routes.js";
+import { handleReinstatementRoute } from "./reinstatement-routes.js";
+import { handleValidatorBundleRoute } from "./validator-bundles.js";
+import { handleValidatorResearchRoute } from "./validator-research-routes.js";
+import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
 import { randomUUID } from "node:crypto";
 import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
@@ -185,9 +190,13 @@ async function routeApi(req, url, res) {
   // Index viewer is called cross-origin by static research sites, so it runs
   // ahead of the same-origin mutation guard and enforces its own narrow
   // origin allowlist. It never trusts cookies for authorization.
+  if (await handleValidatorBundleRoute({ json, req, res, session, url })) return true;
   if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await enforceRoutePolicy(req, url, res, session)) return true;
+  if (await handleReinstatementRoute({ json, readJson, req, res, session, url })) return true;
+  if (await handleValidatorConnectRoute({ json, readJson, req, res, session, url })) return true;
+  if (await handleValidatorResearchRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/app-state") {
     json(res, 200, await getState());
@@ -444,6 +453,7 @@ async function routeApi(req, url, res) {
 
   if (await handleIChingRoute({ json, readJson, req, res, session, url })) return true;
 
+  if (await handlePromptRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleCollaborationRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleAccountRoute({
@@ -901,6 +911,13 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // Public, stable URL for the privacy policy; the policy itself renders in Help.
+  if ((url.pathname === "/privacy" || url.pathname === "/privacy/") && (req.method === "GET" || req.method === "HEAD")) {
+    res.writeHead(302, { location: "/#help/privacy", "cache-control": "no-store" });
+    res.end();
+    return;
+  }
+
   if (url.pathname === "/runtime-config.js") {
     runtimeConfigScript(res);
     return;
@@ -928,6 +945,8 @@ const server = createServer((req, res) => {
     })
     .catch((error) => sendRequestFailure(req, res, url, error));
 });
+
+(await import("./l1/gateway.js")).registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson });
 
 const processRole = tasknodeProcessRole();
 if (shouldStartBackgroundWorkers(processRole) || !shouldStartHttpServer(processRole)) {

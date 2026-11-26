@@ -1,6 +1,7 @@
-import React from "react";
-import { BookOpen, Brain, CandlestickChart, CreditCard, Database, Drama, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Shield, Sparkles, Trophy } from "lucide-react";
+import React, { lazy } from "react";
+import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
+import { HoodIcon } from "./HoodIcon.jsx";
 import { appExtensionRegistry } from "../extensions/index.js";
 import { plainTextFromBlocks } from "../features/chat/chat-markdown";
 import { isSignedInSession } from "../session";
@@ -23,6 +24,7 @@ export const CHAT_PERSONA_ICONS = Object.freeze({
   "trading-coach": CandlestickChart,
   jobs: Lightbulb,
   kravis: Landmark,
+  basedgpt: HoodIcon,
   brainstorming: Brain,
   motivation: Trophy,
   "five-mirrors": Drama,
@@ -33,14 +35,15 @@ export const CHAT_PERSONA_ICONS = Object.freeze({
 });
 export const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
+export const AGENT_CONNECT_GUIDE_URL = "https://postfiat.org/agents/";
 export const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
 export const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
 export const HIVE_CHAT_TITLE = "Hive Chat";
 export const CHAT_STARTER_PROMPTS = [
-  "Help me build my context document",
-  "Give me my first task",
-  "How do I earn PFT?",
-  "What should I do first?",
+  { icon: FileText, text: "Help me build my context document" },
+  { icon: ListTodo, text: "Give me my first task" },
+  { icon: Coins, text: "How do I earn PFT?" },
+  { icon: Compass, text: "What should I do first?" },
 ];
 export const SIGNED_OUT_HELP_HISTORY_LIMIT = 10;
 export const SIGNED_OUT_HELP_HISTORY_CHARS = 4000;
@@ -191,10 +194,22 @@ export const SETTINGS_PAGES = [
   { key: "security", label: "Security", icon: Shield },
   { key: "data", label: "Data controls", icon: Database },
   { key: "billing", label: "Billing", icon: CreditCard },
+  { key: "validator", label: "Validator", icon: Server },
+  { key: "api-keys", label: "API keys", icon: FileText },
 ];
 
+// #settings or #settings/<page> opens Settings, so server pages and docs can
+// deep-link to e.g. Security → Connected accounts.
+export function settingsPageFromLocation() {
+  if (typeof window === "undefined") return "";
+  const match = window.location.hash.replace(/^#\/?/, "").match(/^settings(?:\/([a-z-]+))?$/i);
+  if (!match) return "";
+  const page = String(match[1] || "general").toLowerCase();
+  return SETTINGS_PAGES.some((item) => item.key === page) ? page : "general";
+}
+
 export const APP_VIEWS = new Set([
-  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help",
+  "chat", "tasks", "wallet", "l1-wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
   ...appExtensionRegistry.inventory().map(({ id }) => id),
 ]);
 export const MORE_EXTENSION_VIEWS = new Set(
@@ -312,15 +327,28 @@ export function memberProfileAccountIdFromLocation(hashValue = null) {
   }
 }
 
-export function writeViewLocation(nextView, { replace = false } = {}) {
+// subPath: a route inside the view ("RKLB/summary"); "" opens the view's home. Omitted, a view with
+// deep links (docs, help, finance-hub) keeps the page already in the address bar.
+export function writeViewLocation(nextView, { replace = false, subPath } = {}) {
   if (typeof window === "undefined") return;
   const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
   const url = new URL(window.location.href);
   if (normalizedView === "chat") {
     url.hash = "";
+  } else if (typeof subPath === "string") {
+    url.hash = subPath ? `${normalizedView}/${subPath}` : normalizedView;
+  } else if (normalizedView === "l1-wallet" && window.location.hash.replace(/^#\/?/, "").startsWith("l1-wallet/")) {
+    url.hash = window.location.hash;
+  } else if (normalizedView === "finance-hub") {
+    const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+    url.hash = hashPath.toLowerCase().startsWith("finance-hub/") ? hashPath : normalizedView;
   } else if (normalizedView === "docs" || normalizedView === "help") {
     const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
-    url.hash = hashPath.toLowerCase().startsWith(`${normalizedView}/`) ? hashPath : normalizedView;
+    const lowerPath = hashPath.toLowerCase();
+    if (lowerPath.startsWith(`${normalizedView}/`)) url.hash = hashPath;
+    // Old #docs/<wiki-slug> Help links keep their page instead of falling back to the Help home.
+    else if (normalizedView === "help" && lowerPath.startsWith("docs/")) url.hash = `help/${hashPath.slice(5)}`;
+    else url.hash = normalizedView;
   } else {
     url.hash = normalizedView;
   }
@@ -369,3 +397,6 @@ export function initialSidebarOpen() {
 export function StatusBanner({ children, tone = "default" }) {
   return <div className={`status-banner ${tone}`}>{children}</div>;
 }
+
+export const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
+export const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));

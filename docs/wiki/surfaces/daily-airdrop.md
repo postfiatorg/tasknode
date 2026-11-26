@@ -10,7 +10,7 @@ The private profile top section reads the latest completed run through `GET /api
 
 Profile copy distinguishes scored from paid state. When an issuance is not `submitted`, the headline says the airdrop was scored but not paid yet and shows the current payout status such as `Retry pending`, `Preparing payout`, or `Needs reconciliation`. The reward chart only counts submitted airdrops as earned PFT.
 
-The panel shows two labelled numbers. `Work quality (day) / 100` uses the latest run's `retention_value_score` (API `retentionValueScore`), the model's assessment of recent rewarded work; it does not divide the payout by the daily maximum and the tooltip says it is independent of the PFT payout. `Alignment (7d) / 100` is `alignment_score_7d × 100`, the same deterministic 7-day airdrop share the directory ranks by and public profiles show, so the profile and directory no longer show different numbers under one name. An unavailable score is shown as `— / 100`; a real zero is shown as `0 / 100`. Existing completed runs immediately use their stored model score, without rescoring or changing payments.
+The panel shows two labelled numbers. `Work quality (day) / 100` uses the latest run's `retention_value_score` (API `retentionValueScore`), the model's assessment of recent rewarded work; it does not divide the payout by the daily maximum and the tooltip says it is independent of the PFT payout. `Alignment (30d) / 100` is the average `retention_value_score` over eligible production runs in the trailing 30 days, the same number the directory ranks by and public profiles show. An unavailable score is shown as `— / 100`; a real zero is shown as `0 / 100`. Existing completed runs immediately use their stored model score, without rescoring or changing payments.
 The feedback headings are `What contributed`, `Reward details`, and `Next step`. Existing stored explanations remain visible; the feedback review applies on subsequent scoring runs.
 
 
@@ -126,8 +126,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: Vercel `zai/glm-5.3` with Ambient backup by default;
-- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
+- model: Vercel `deepseek/deepseek-v4.1-flash-1017`;
+- provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -168,7 +168,7 @@ flag so operators can audit when any configured cap clamped the model.
 
 ### Legacy Alignment Field
 
-The retained `alignment_score_7d` field is deterministic and is not an LLM output. It is displayed as `Alignment (7d)` on the profile panel, public profiles, and the directory, always labelled with its window.
+The retained `alignment_score_7d` field is deterministic and is not an LLM output. It is stored for the scoring packet and audit trail only. The profile, public profiles and the directory show `Alignment (30d)` instead, because this payout share is bounded by a 10,000 PFT/day cap the scoring model rarely approaches.
 
 ```text
 alignment_score_7d =
@@ -266,7 +266,7 @@ Each tick:
 3. checks today plus the previous `TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS` UTC days, defaulting to two catch-up days;
 4. retries `failed_before_submit` issuance rows up to `TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS`;
 5. selects accounts with positive rewarded task work, no same-day in-flight/submitted/cancelled issuance stop row, and no same-day running or completed production scoring row;
-6. runs the Vercel GLM 5.3 (with Ambient backup) daily airdrop scorer in production mode to create a completed account/day scoring row;
+6. runs the Vercel DeepSeek V4.1 Flash daily airdrop scorer in production mode to create a completed account/day scoring row;
 7. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
 8. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` The audit packet includes `runDatesChecked`, recovered stale rows, and unresolved debt counts. Zero-payout ticks are recorded at most once per UTC day unless there is debt, a failed account, or a submitted payout.
 

@@ -1,41 +1,57 @@
+// GLM 5.3 deprecated as the default (founder 2026-11-09): DeepSeek V4.1 Flash, pinned to the
+// 1017 edition on Vercel AI Gateway, now serves instant, reasoning, structured and research.
+// Instant and Thinking differ by reasoning effort, not model. Old GLM ids resolve here via aliases.
+// Help, memory, narration, Hive immediate replies, profile snapshots and connection ranking were
+// left on DeepSeek V4 Flash 0731 by that change. They now run V4.1 Flash; old V4 Flash ids resolve here.
+const DEEPSEEK_V41_FLASH = "deepseek/deepseek-v4.1-flash-1017";
+
 export const INFERENCE_MODELS = Object.freeze({
-  instantText: "zai/glm-5.3-flash",
-  fastText: "deepseek/deepseek-v4-flash-0731",
-  reasoningText: "zai/glm-5.3",
-  structured: "zai/glm-5.3",
-  research: "zai/glm-5.3",
+  instantText: DEEPSEEK_V41_FLASH,
+  fastText: DEEPSEEK_V41_FLASH,
+  reasoningText: DEEPSEEK_V41_FLASH,
+  structured: DEEPSEEK_V41_FLASH,
+  research: DEEPSEEK_V41_FLASH,
   vision: "moonshotai/kimi-k2.7-code",
 });
 
 const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
-  ["moonshotai/kimi-k3", { ambient: "", image: true }],
+  ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
-  [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
-  [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
-  [INFERENCE_MODELS.fastText, { ambient: "z-ai/glm-5.2", image: false }],
+  ["google/gemini-4-hydrogen", { ambient: "", image: true }],
+  [DEEPSEEK_V41_FLASH, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.vision, { ambient: "google/gemma-4-26b-a4b-it", image: true }],
 ]);
 const aliases = new Map([
   ["z-ai/glm-5.2", INFERENCE_MODELS.reasoningText],
   ["zai/glm-5.2", INFERENCE_MODELS.reasoningText],
   ["glm-5.2", INFERENCE_MODELS.reasoningText],
+  ["zai/glm-5.3", INFERENCE_MODELS.reasoningText],
   ["z-ai/glm-5.3", INFERENCE_MODELS.reasoningText],
   ["glm-5.3", INFERENCE_MODELS.reasoningText],
+  ["zai/glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["z-ai/glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["glm-5.3-flash", INFERENCE_MODELS.instantText],
+  ["deepseek/deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
+  ["deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
+  ["deepseek/deepseek-v4-flash-0731", INFERENCE_MODELS.fastText],
+  ["deepseek-v4-flash-0731", INFERENCE_MODELS.fastText],
   ["deepseek/deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["deepseek-v4-flash", INFERENCE_MODELS.fastText],
+  ["moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"],
+  ["kimi-k3", "moonshotai/kimi-k3.1-pro"],
   ["chat-latest", INFERENCE_MODELS.structured],
 ]);
+// [primary override, legacy alias, default]. The legacy AMBIENT_MODEL_* aliases
+// are no longer read now that Ambient is deprecated.
 const capabilities = Object.freeze({
   instant_text: ["INFERENCE_MODEL_INSTANT", "", INFERENCE_MODELS.instantText],
-  fast_text: ["INFERENCE_MODEL_FAST_TEXT", "AMBIENT_MODEL_FAST_TEXT", INFERENCE_MODELS.fastText],
-  reasoning_text: ["INFERENCE_MODEL_REASONING", "AMBIENT_MODEL_REASONING", INFERENCE_MODELS.reasoningText],
-  strict_json: ["INFERENCE_MODEL_STRUCTURED", "AMBIENT_MODEL_STRUCTURED", INFERENCE_MODELS.structured],
-  research_text: ["INFERENCE_MODEL_RESEARCH", "AMBIENT_MODEL_RESEARCH", INFERENCE_MODELS.research],
-  vision_text: ["INFERENCE_MODEL_VISION", "AMBIENT_MODEL_VISION", INFERENCE_MODELS.vision],
-  verification_vision: ["INFERENCE_MODEL_VISION", "AMBIENT_MODEL_VISION", INFERENCE_MODELS.vision],
+  fast_text: ["INFERENCE_MODEL_FAST_TEXT", "", INFERENCE_MODELS.fastText],
+  reasoning_text: ["INFERENCE_MODEL_REASONING", "", INFERENCE_MODELS.reasoningText],
+  strict_json: ["INFERENCE_MODEL_STRUCTURED", "", INFERENCE_MODELS.structured],
+  research_text: ["INFERENCE_MODEL_RESEARCH", "", INFERENCE_MODELS.research],
+  vision_text: ["INFERENCE_MODEL_VISION", "", INFERENCE_MODELS.vision],
+  verification_vision: ["INFERENCE_MODEL_VISION", "", INFERENCE_MODELS.vision],
 });
 
 export function inferenceError(code, { status = 502, provider = "", cause } = {}) {
@@ -52,12 +68,32 @@ export function cleanConfig(value = "") {
 
 const modelCredentialNames = new Map([
   ["openai/gpt-6-astra", "VERCEL_ASTRA_API_KEY"],
-  ["moonshotai/kimi-k3", "VERCEL_KIMI_API_KEY"],
+  ["moonshotai/kimi-k3.1-pro", "VERCEL_KIMI_API_KEY"],
 ]);
+
+// Route selection runs before model normalization, so a retired id must find
+// its dedicated credential here too. Otherwise an environment holding only the
+// dedicated key loses the Vercel route entirely for the legacy id.
+function credentialNameForModel(model = "") {
+  const direct = modelCredentialNames.get(model);
+  if (direct) return direct;
+  const resolved = aliases.get(cleanConfig(model));
+  return resolved ? modelCredentialNames.get(resolved) || "" : "";
+}
+
+// Name of the environment variable that supplies the Vercel credential for a
+// model. Credit checks group by this name so no key material leaves the process.
+export function vercelCredentialName(env = process.env, model = "") {
+  const name = credentialNameForModel(model);
+  if (name && cleanConfig(env[name])) return name;
+  if (cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY)) return "VERCEL_AI_GATEWAY_API_KEY";
+  if (cleanConfig(env.AI_GATEWAY_API_KEY)) return "AI_GATEWAY_API_KEY";
+  return "";
+}
 
 export function providerApiKey(provider, env = process.env, model = "") {
   if (provider === "vercel") {
-    const name = modelCredentialNames.get(model);
+    const name = credentialNameForModel(model);
     return (name ? cleanConfig(env[name]) : "") || cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY) || cleanConfig(env.AI_GATEWAY_API_KEY);
   }
   if (provider === "ambient") return cleanConfig(env.AMBIENT_API_KEY);
@@ -79,13 +115,20 @@ export function inferenceProviderConfigured(provider, env = process.env, model =
   return Boolean(providerApiKey(provider, env, model));
 }
 
+// Ambient is deprecated (2026-10-27): every request goes to Vercel AI Gateway.
+// The Ambient route stays in code only behind an explicit opt-in so it can be
+// re-enabled in an emergency; nothing falls back to it by default.
+export function ambientBackupEnabled(env = process.env) {
+  return env.INFERENCE_AMBIENT_BACKUP_ENABLED === "true";
+}
+
 export function inferenceConfigured(env = process.env) {
   return inferenceProviderConfigured("vercel", env) ||
-    (env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" && inferenceProviderConfigured("ambient", env));
+    (ambientBackupEnabled(env) && inferenceProviderConfigured("ambient", env));
 }
 
 export function inferenceRoutes(env = process.env, model = "") {
-  return ["vercel", ...(env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])]
+  return ["vercel", ...(ambientBackupEnabled(env) ? ["ambient"] : [])]
     .filter((provider) => inferenceProviderConfigured(provider, env, model));
 }
 
@@ -121,7 +164,7 @@ export function modelForProvider(model, provider, env = process.env, capability 
   if (provider !== "ambient") throw inferenceError("inference_provider_unsupported", { status: 400 });
   if (!models.get(canonical).ambient || capability === "selected_model") throw inferenceError("inference_private_model_fallback_forbidden", { status: 400 });
   // Ambient catalogue verified 2026-09-05: text GLM 5.2; vision Gemma 4.
-  // Record actual provider/model on every completion; primary remains GLM 5.3.
+  // Record actual provider/model on every completion; primary is DeepSeek V4.1 Flash.
   const needsVision = hasImages || capability === "vision_text" || capability === "verification_vision";
   const overrideName = needsVision ? "AMBIENT_BACKUP_MODEL_VISION" : capability === "instant_text" ? "AMBIENT_BACKUP_MODEL_INSTANT"
     : models.get(canonical).image ? "AMBIENT_BACKUP_MODEL_VISION"

@@ -470,15 +470,28 @@ export async function pinIpfsFile({
     throw error;
   }
 
-  const firstParty = await pinFirstPartyIpfsFile({
-    buffer,
-    expectedCid: cid,
-    mimeType,
-    safeName,
-    keyvalues,
-    env,
-    fetchImpl,
-  });
+  // Pinata already holds the bytes and the replication job below re-pins the CID
+  // to the first-party cluster, so a cluster outage must not discard the file.
+  let firstParty;
+  try {
+    firstParty = await pinFirstPartyIpfsFile({
+      buffer,
+      expectedCid: cid,
+      mimeType,
+      safeName,
+      keyvalues,
+      env,
+      fetchImpl,
+    });
+  } catch (error) {
+    firstParty = {
+      ok: false,
+      deferred: true,
+      reason: safeText(error?.message, 160) || "first_party_ipfs_failed",
+      status: Number(error?.status || 0) || null,
+    };
+    console.warn("first_party_ipfs_pin_deferred", { cid, reason: firstParty.reason, status: firstParty.status });
+  }
 
   return {
     ok: true,

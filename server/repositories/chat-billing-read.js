@@ -265,8 +265,10 @@ export async function usageLedger({ accountId, conversationId, limit = 50 } = {}
   }
   const where = normalizedAccountId ? "WHERE account_id = $1" : "WHERE conversation_id = $1";
   const selector = normalizedAccountId || normalizedConversationId;
+  // taskgen_inference rows are zero-amount operator attribution of task
+  // generation spend (paid by Task Node), not charges; the user ledger omits them.
   const rows = await query(
-    `SELECT * FROM billing_ledger_entries ${where}
+    `SELECT * FROM billing_ledger_entries ${where} AND kind <> 'taskgen_inference'
       ORDER BY created_at DESC, id DESC LIMIT $2`,
     [selector, normalizedLimit]
   );

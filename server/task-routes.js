@@ -1,3 +1,4 @@
+import { contributorAction, fail, personalStatus } from "./reinstatement.js";
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
 import { invalidateCachedAppState } from "./app-state.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
@@ -91,6 +92,26 @@ async function recordTaskRouteEvent({
   }).catch(() => {});
 }
 
+async function handleReinstatementTask({ json, res, payload, session, submission }) {
+  const taskId = payload.taskId || payload.task_id || "";
+  if (!taskId.startsWith("task_reinstate_")) return false;
+  if (!session?.accountId) fail(401, "Sign in first");
+  const entry = await personalStatus(session.accountId);
+  if (entry?.task_id !== taskId) fail(404, "Task not found");
+  if (payload.phase === "prepare") {
+    json(res, 200, { ok: true, taskId, phase: "prepare", reinstatementRevision: entry.revision, signingRequired: false });
+    return true;
+  }
+  if (payload.phase !== "submit") fail(400, "Use the submit phase for reinstatement");
+  let action = submission ? "submit" : normalizeTaskAction(payload.taskAction || payload.task_action);
+  if (["cancel", "refuse"].includes(action)) action = "pause";
+  if (!submission && action === "submit") fail(400, "Use the task submission endpoint");
+  await contributorAction({ owner: session.accountId, id: entry.id, action,
+    revision: payload.reinstatementRevision, evidence: payload.summary });
+  json(res, 200, { ok: true, taskId, phase: "submit" });
+  return true;
+}
+
 export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (url.pathname === "/api/tasks") {
     const linkedWallet = await getLinkedWallet({ accountId: session?.accountId || "" });
@@ -102,10 +123,9 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
         syncKind: "task_list_refresh",
       });
     }
-    json(res, 200, await listTaskState({
-      accountId: session?.accountId || "",
-      walletAddress,
-    }));
+    const state = await listTaskState({ accountId: session?.accountId || "", walletAddress });
+    const reinstatement = session?.accountId ? await personalStatus(session.accountId) : null;
+    json(res, 200, { ...state, reinstatement });
     return true;
   }
 
@@ -193,6 +213,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
 
   if (url.pathname === "/api/tasks/action") {
     const payload = req.method === "POST" ? await readJson(req, 1_200_000) : {};
+    if (await handleReinstatementTask({ json, res, payload, session, submission: false})) return true;
     const result = await taskLifecycleAction(payload, req.method, session);
     const phase = safeText(payload?.phase || result?.body?.phase || "", 80);
     const action = normalizeTaskAction(payload?.taskAction || payload?.task_action);
@@ -220,6 +241,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
 
   if (url.pathname === "/api/tasks/submission") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
+    if (await handleReinstatementTask({ json, res, payload, session, submission: true})) return true;
     const result = await taskSubmissionAction(payload, req.method, session);
     const phase = safeText(payload?.phase || result?.body?.phase || "", 80);
     const submitted = phase === "submit" || payload?.signedTxBlob || payload?.signed_tx_blob;

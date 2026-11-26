@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { requestJson } from "../../api";
 import "./wallet.css";
-import { EthereumTopUpModal, topUpDataSignature, useEthereumTopUpSync } from "../billing/ethereum-top-up";
+import { topUpDataSignature, useEthereumTopUpSync } from "../billing/ethereum-top-up";
 import { WalletSeedBackupModal } from "./WalletSeedBackupModal";
 import { WalletUnlockModal } from "./WalletUnlockModal";
 import { WalletAddressCopy } from "./WalletAddressCopy";
@@ -42,6 +42,9 @@ import {
 } from "./WalletComponents";
 export { numberedRecoveryWords, verifyBackupWord } from "./WalletComponents";
 
+const EthereumTopUpModal = lazy(() =>
+  import("../billing/ethereum-top-up-modal").then((module) => ({ default: module.EthereumTopUpModal })),
+);
 const WALLET_TX_REFRESH_MS = 3000;
 const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
 const ETH_TOP_UP_SYNC_INITIAL_DELAY_MS = 1200;
@@ -339,8 +342,8 @@ export function WalletView({
     setSendOpen(true);
   }
 
-  async function refreshTopUpDeposits() {
-    await syncTopUpDeposits({ silent: false });
+  async function refreshTopUpDeposits({ silent = false } = {}) {
+    await syncTopUpDeposits({ silent });
   }
 
   async function claimInitiationGrant({ localVaultConfirmed = vaultUnlocked, openResultModal = false } = {}) {
@@ -922,11 +925,13 @@ export function WalletView({
         />
       )}
       {topUpOpen && (
-        <EthereumTopUpModal
-          onClose={() => setTopUpOpen(false)}
-          onRefresh={refreshTopUpDeposits}
-          state={topUpState}
-        />
+        <Suspense fallback={null}>
+          <EthereumTopUpModal
+            onClose={() => setTopUpOpen(false)}
+            onRefresh={refreshTopUpDeposits}
+            state={topUpState}
+          />
+        </Suspense>
       )}
       {sendOpen && (
         <WalletSendModal

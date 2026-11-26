@@ -7,6 +7,33 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  { id: "reinstatement_status", path: "/api/me/reinstatement", methods: ["GET"], auth: "session" },
+  { id: "reinstatement_operator_queue", path: "/api/operator/blacklist", methods: ["GET"], auth: "session" },
+  { id: "reinstatement_override", prefix: "/api/operator/blacklist/", methods: ["POST"], auth: "session", rateLimit: { limit: 50, windowMs: tenMinutes }, body: bodyPolicy(12000, { allowUnknown: false, properties: { reason: { type: "string", maxLength: 2000 } } }) },
+  ...[
+    ["key", ["GET","POST"], requestBodies.promptKeyBody],
+    ["history", ["GET","POST"], requestBodies.promptEventBody],
+    ["devices", ["GET","POST"], requestBodies.promptDeviceBody],
+    ["devices/approve", ["POST"], requestBodies.promptDeviceApprovalBody],
+    ["devices/revoke", ["POST"], requestBodies.promptDeviceRevokeBody],
+    ["documents", ["GET","POST"], requestBodies.promptDocumentBody],
+    ["device-key", ["GET"]], ["config", ["GET"]],
+  ].map(([endpoint,methods,body]) => ({ id: `prompt_${endpoint.replaceAll("/","_")}`, path: `/api/docs/prompts/${endpoint}`, methods, auth: "handler", rateLimit: {limit:600,windowMs:tenMinutes,extra:"pathname"}, ...(body ? {body} : {}) })),
+  { id: "validator_connect_start", path: "/api/validators/connect", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "validator_connect_status", path: "/api/validators/connect/status", methods: ["GET"], auth: "session", rateLimit: { limit: 400, windowMs: tenMinutes } },
+  { id: "validator_connect_challenge", path: "/api/validators/connect/challenge", methods: ["POST"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(1024, { allowUnknown: false, required: ["token"], properties: { token: { type: "string", minLength: 68, maxLength: 68 } } }) },
+  { id: "validator_connect_complete", path: "/api/validators/connect/complete", methods: ["POST"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(16384, { allowUnknown: false, required: ["token", "signature"], requiredAny: [["master_public_key", "ml_dsa_public_key"]], properties: { token: { type: "string", minLength: 68, maxLength: 68 }, master_public_key: { type: "string", minLength: 40, maxLength: 60 }, signing_public_key: { type: "string", minLength: 40, maxLength: 60 }, manifest: { type: "string", minLength: 1, maxLength: 2048 }, signature: { type: "string", minLength: 128, maxLength: 6618 }, network: { type: "string", enum: ["l1-devnet"] }, validator_id: { type: "string", minLength: 1, maxLength: 128 }, ml_dsa_public_key: { type: "string", minLength: 3904, maxLength: 3904 } } }) },
+  { id: "validator_status", path: "/api/validators", methods: ["GET"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes } },
+  { id: "validator_challenge", path: "/api/validators/challenge", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "validator_bind", path: "/api/validators/bind", methods: ["POST"], auth: "session", rateLimit: { limit: 20, windowMs: tenMinutes }, body: bodyPolicy(8192, { allowUnknown: false, required: ["master_public_key", "signature", "challenge"], properties: { master_public_key: { type: "string", minLength: 40, maxLength: 60 }, signature: { type: "string", minLength: 128, maxLength: 144 }, challenge: { type: "string", minLength: 30, maxLength: 500 } } }) },
+  { id: "validator_revoke", prefix: "/api/validators/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
+  { id: "research_keys", path: "/api/research/keys", methods: ["GET", "POST"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(4096, { allowUnknown: false, properties: { name: { type: "string", maxLength: 80 } } }) },
+  { id: "research_key_revoke", prefix: "/api/research/keys/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
+  ...["v1", "ui"].flatMap((surface) => [
+    { id: `research_${surface}_create`, path: `/api/research/${surface}/jobs`, methods: ["POST"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: bodyPolicy(24000, { allowUnknown: false, required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 16000 }, max_cost_usd: { type: "number", minimum: 0.01, maximum: 5 }, request_id: { type: "string", minLength: 1, maxLength: 180 } } }) },
+    { id: `research_${surface}_read`, prefix: `/api/research/${surface}/jobs/`, methods: ["GET"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 600, windowMs: tenMinutes } },
+  ]),
+
   { id: "board_agent_command", path: "/api/agent/board/command", methods: ["POST"], auth: "bearer", unauthenticatedError: "board_agent_credential_required", rateLimit: { limit: 120, windowMs: 60_000 }, body: bodyPolicy(128 * 1024, { allowUnknown: false, required: ["requestKey", "argv"], properties: { requestKey: { type: "string", minLength: 1, maxLength: 180 }, argv: { type: "array", maxItems: 80, items: { type: "string", maxLength: 32_000 } } } }) },
   { id: "app_state", path: "/api/app-state", methods: ["GET"], auth: "optional" },
   { id: "session", path: "/api/session", methods: ["GET"], auth: "optional" },
@@ -300,6 +327,13 @@ export const apiRoutePolicies = [
   { id: "agent_connect", path: "/connect", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "agent_connect_signout", path: "/connect/signout", methods: ["POST"], auth: "handler", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "agent_connect_login", path: "/connect/login", methods: ["GET"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes } },
+  { id: "agent_connect_revoke", path: "/connect/revoke", methods: ["POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_markdown", path: "/connect.md", methods: ["GET"], auth: "none" },
+  // /oauth/device_authorization parses its form or JSON body and rate limits in its handler, like /oauth/token.
+  { id: "agent_activate", path: "/activate", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 60, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_installer", path: "/install", methods: ["GET"], auth: "none" },
+  { id: "agent_installer_cli", path: "/install/tasknode.mjs", methods: ["GET"], auth: "none" },
+  { id: "agent_whoami", path: "/api/agent/whoami", methods: ["GET"], auth: "handler", rateLimit: { limit: 120, windowMs: 60_000 } },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "health", path: "/api/health", methods: ["GET"], auth: "none" },
   { id: "system_status", path: "/api/system/status", methods: ["GET"], auth: "none" },

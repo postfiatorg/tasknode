@@ -312,6 +312,7 @@ function DeepResearchArtifactCard({ deepResearch = null }) {
     : [];
   const usage = deepResearch.usage && typeof deepResearch.usage === "object" ? deepResearch.usage : {};
   const cost = Number(usage.total_cost_usd);
+  const billed = Number(usage.billed_cost_usd);
   const hasArtifact = status === "completed" && Boolean(markdown);
   const lineCount = markdown ? markdown.split("\n").length : 0;
   const subtitle = hasArtifact
@@ -345,7 +346,9 @@ function DeepResearchArtifactCard({ deepResearch = null }) {
       )}
       <div className="deep-research-privacy">
         {String(deepResearch.privacy || "Provider-backed web research")}
+        {deepResearch.provider === "goodalexander" && Number.isFinite(cost) && <span> · Provider ${cost}{Number.isFinite(billed) ? ` · Billed $${billed.toFixed(6)}` : ""}</span>}
       </div>
+      {deepResearch.provider === "goodalexander" && deepResearch.improvementRound && <div className="deep-research-privacy">Improvement round: {deepResearch.improvementRound}{deepResearch.improvementReason && <span> · {deepResearch.improvementReason}</span>}</div>}
       {hasArtifact && (
         <div className="deep-research-card-actions">
           <button onClick={() => copyText(markdown)} type="button">

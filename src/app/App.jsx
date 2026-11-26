@@ -1,5 +1,6 @@
+import { ValidatorAvatar, ValidatorMenuLink } from "../features/research/ValidatorStatus.jsx";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BookOpen, Check, ChevronRight, CreditCard, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
+import { Activity, BookOpen, Bot, ChartLine, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { createChatDeletionState } from "../features/chat/chat-deletion-state.js";
@@ -18,7 +19,7 @@ import { TasksView } from "../features/tasks/TasksView.jsx";
 import { appendTaskActionReceipt, loadTaskActionReceipts, saveTaskActionReceipts } from "../features/tasks/task-action-receipts.js";
 import { findTaskById, mergeTaskStateWithActionReceipts, reconcileTaskVisibleState } from "../features/tasks/task-visible-state.js";
 import { mergeAppStateWithMonotonicTasks } from "../features/tasks/task-app-state-refresh.js";
-import { LoginDialog, SettingsModal, TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/AppDialogs.jsx";
+import { TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/account-link-rows.jsx";
 import { useAppearance } from "../theme/use-appearance.js";
 import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
 import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
@@ -29,23 +30,26 @@ import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
-import { APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
-
+import { pendingAgentLinkFromLocation, usePendingAgentLink } from "./pending-agent-link.js";
+import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, BlacklistView, DirectoryView, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
+const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
+const SettingsModal = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.SettingsModal })));
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
+const L1WalletView = lazy(() => import("../features/wallet/l1/L1WalletView.jsx"));
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const DocsLibraryView = lazy(() => import("../features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
 const HiveView = lazy(() => import("../features/hive/HiveView").then((module) => ({ default: module.HiveView })));
+const FinanceHubView = lazy(() => import("../features/research/FinanceHubView.jsx").then((module) => ({ default: module.FinanceHubView })));
 const TASKS_VIEW_FRESH_STATE_MS = 2000;
 const ProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 const MemberProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
-const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
-const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));
-
+import { ReinstatementCard } from "../features/tasks/ReinstatementCard.jsx";
 export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [pendingAgentLink] = useState(() => pendingAgentLinkFromLocation());
   const [addingAccount, setAddingAccount] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [retainedAccounts, setRetainedAccounts] = useState([]);
@@ -54,7 +58,9 @@ export function App() {
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [logoutConfirming, setLogoutConfirming] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState(() => settingsPageFromLocation() || "general");
+  const [settingsOpen, setSettingsOpen] = useState(() => Boolean(settingsPageFromLocation()));
+  useEffect(() => { if (!settingsOpen) setSettingsPage("general"); }, [settingsOpen]);
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [profilePendingProvider, setProfilePendingProvider] = useState("");
@@ -179,6 +185,7 @@ export function App() {
     setChatActionMenu, setChatDeleteTarget, setChatResetKey,
   });
   const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
+  const hasFinanceHub = signedIn && session?.validator?.bindings?.length > 0; // validator-only, as the bundle route enforces
   const [hiveGroupStatus, setHiveGroupStatus] = useHiveGroupStatus({ accountId: session?.accountId, signedIn, activeChatKind: activeChat?.kind, activeChatId, view });
   const hiveUnreadCount = hiveGroupStatus?.accountId === appState?.session?.accountId ? Number(hiveGroupStatus?.unreadCount || 0) : 0;
   const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
@@ -457,7 +464,7 @@ export function App() {
     if (isMobileViewport()) {
       setSidebarOpen(false);
     }
-    writeViewLocation(normalizedView, { replace: options.replace === true });
+    writeViewLocation(normalizedView, { replace: options.replace === true, subPath: options.subPath });
     if (typeof window !== "undefined") setLocationHash(window.location.hash);
   }, []);
   const openTaskDetail = useCallback((task) => {
@@ -556,7 +563,9 @@ export function App() {
       setView(viewFromLocation());
       setMoreMenuOpen(false);
       setProfileMenuOpen(false);
-      setSettingsOpen(false);
+      const linkedSettingsPage = settingsPageFromLocation();
+      if (linkedSettingsPage) setSettingsPage(linkedSettingsPage);
+      setSettingsOpen(Boolean(linkedSettingsPage));
       setSelectedTask(null);
       setLoginOpen(false);
       setWalletUnlockOpen(false);
@@ -766,6 +775,8 @@ export function App() {
     prepareTransition: () => { setSettingsOpen(false); setSelectedTask(null); setChatActionMenu(null); },
     selectedAccountId: session?.accountId || "",
   });
+  const openPendingLogin = useCallback(() => setLoginOpen(true), []);
+  usePendingAgentLink({ initialLink: pendingAgentLink, loading: appStateLoading, signedIn, onLogin: openPendingLogin, onSwitchAccount: addAccount });
   async function startTelegramLinkFromProfileMenu() {
     if (!signedIn) {
       setLoginOpen(true);
@@ -844,6 +855,7 @@ export function App() {
     onLoginRequired: () => setLoginOpen(true),
     onHiveUnreadChange: (unreadCount) => setHiveGroupStatus(current => ({ ...current, accountId: walletAccountId, unreadCount })),
   };
+  const primaryInsightExtensions = appExtensionRegistry.menu("primary", "insight", extensionContext);
   const collaborationExtensions = appExtensionRegistry.menu("more", "collaboration", extensionContext);
   const insightExtensions = appExtensionRegistry.menu("more", "insight", extensionContext);
   const activeExtension = appExtensionRegistry.forView(view);
@@ -931,6 +943,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
             />
           )}
+          {runtimeConfig?.l1Wallet?.enabled === true && <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet (experimental)" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />}
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
@@ -952,6 +965,12 @@ export function App() {
             onClick={() => navigateToView("context")}
             sidebarOpen={sidebarOpen}
           />
+          {hasFinanceHub && <SidebarButton active={view === "finance-hub"} icon={ChartLine} label="Finance Hub" onClick={() => navigateToView("finance-hub", { subPath: "" })} sidebarOpen={sidebarOpen} />}
+          {primaryInsightExtensions.map((extension) => <SidebarButton
+            key={extension.id} active={view === extension.id} icon={extension.icon} label={extension.label}
+            onClick={() => { navigateToView(extension.id); if (extension.requiresAuth && !signedIn) setLoginOpen(true); }}
+            sidebarOpen={sidebarOpen}
+          />)}
           <div className="sidebar-menu-anchor" ref={moreRef}>
             <SidebarButton
               active={moreMenuOpen || MORE_EXTENSION_VIEWS.has(view)}
@@ -982,6 +1001,7 @@ export function App() {
                 {collaborationExtensions.length > 0 && <div className="menu-divider" />}
                 <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
                 <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
+                <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => { navigateToView("help"); setMoreMenuOpen(false); }} />
                 <div className="menu-divider" />
                 {insightExtensions.map((extension) => (
                   <ToolMenuRow
@@ -1092,22 +1112,19 @@ export function App() {
                 disabled={appStateLoading}
                 onClick={() => {
                   if (appStateLoading) return;
+                  if (!signedIn) return setLoginOpen(true);
                   setProfileMenuOpen((open) => !open);
                   if (!profileMenuOpen && signedIn) loadRetainedAccounts().catch(() => setProfileAuthMessage("Profiles could not be loaded. Check your connection and reopen this menu."));
                 }}
                 type="button"
               >
-                <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
+                <ValidatorAvatar bindings={session?.validator?.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
                 <>
                   <span className="profile-copy">
                     <strong>{profileName}</strong>
                     <small>{profileSubtext}</small>
                   </span>
-                  {signedIn ? (
-                    <Check className="profile-state-icon" size={14} strokeWidth={2} />
-                  ) : (
-                    <Store size={14} strokeWidth={1.75} />
-                  )}
+                  {!signedIn && <Store size={14} strokeWidth={1.75} />}
                 </>
               </button>
               {profileMenuOpen && (
@@ -1124,19 +1141,13 @@ export function App() {
                     }}
                     type="button"
                   >
-                    <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
+                    <ValidatorAvatar bindings={session?.validator?.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
                     <span className="profile-copy">
                       <strong>{profileName}</strong>
                       <small>{profileSubtext}</small>
                     </span>
                     <ChevronRight size={16} strokeWidth={1.75} />
                   </button>
-                  {signedIn && (
-                    <div className="profile-session-state">
-                      <Check size={13} strokeWidth={2} />
-                      <span>Signed in</span>
-                    </div>
-                  )}
                   {signedIn && (
                     <ProfileAccountSwitcher
                       accounts={retainedAccounts}
@@ -1152,14 +1163,17 @@ export function App() {
                   {signedIn && linkedWalletAddress && (
                     <ToolMenuRow
                       icon={vaultDisplay.tone === "unlocked" ? Unlock : Lock}
-                      label={`Wallet ${vaultDisplay.label}`}
+                      label="Wallet"
                       onClick={openWalletVaultControl}
-                      trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                      trailing={<small className={vaultDisplay.tone === "unlocked" ? "menu-row-state is-ok" : "menu-row-state"}>{vaultDisplay.label}</small>}
                     />
                   )}
                   <div className="menu-divider" />
                   {signedIn ? (
                     <>
+                      <ValidatorMenuLink bindings={session?.validator?.bindings} onClick={() => setProfileMenuOpen(false)} />
+                      <ToolMenuRow icon={ChartLine} label="Finance Hub" trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                        onClick={() => { if (hasFinanceHub) navigateToView("finance-hub", { subPath: "" }); else { setSettingsPage("validator"); setSettingsOpen(true); } setProfileMenuOpen(false); }} />
                       <ToolMenuRow
                         icon={Network}
                         label="Directory"
@@ -1187,13 +1201,9 @@ export function App() {
                           setProfileMenuOpen(false);
                         }}
                       />
-                      <ToolMenuRow
-                        icon={UserIcon}
-                        label="Profile"
-                        onClick={() => {
-                          navigateToView("profile");
-                        }}
-                      />
+                      <ToolMenuRow icon={UserIcon} label="Profile" onClick={() => navigateToView("profile")} />
+                      <ToolMenuRow icon={Bot} label="Connect an agent" trailing={<ExternalLink size={13} strokeWidth={1.75} />}
+                        onClick={() => { window.open(AGENT_CONNECT_GUIDE_URL, "_blank", "noopener,noreferrer"); setProfileMenuOpen(false); }} />
                       <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
                       <div className="menu-divider" />
                       {logoutConfirming ? (
@@ -1213,20 +1223,7 @@ export function App() {
                       )}
                       <ToolMenuRow icon={LogOut} label="Log out all accounts" onClick={logOutAllAccounts} />
                     </>
-                  ) : (
-                    <>
-                      <ToolMenuRow
-                        icon={Store}
-                        label="Log in or sign up"
-                        onClick={() => {
-                          setLoginOpen(true);
-                          setProfileMenuOpen(false);
-                        }}
-                        trailing={<ChevronRight size={14} />}
-                      />
-                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
-                    </>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1253,6 +1250,9 @@ export function App() {
               <span>Task Node</span>
             </button>
           </div>
+          {signedIn && session?.validator?.bindings?.length > 0 && <a className="validator-header-avatar" href="#settings/validator" aria-label="Your validator rewards">
+            <ValidatorAvatar bindings={session.validator.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
+          </a>}
           {view === "chat" && activeChat && (
             <div className="thread-actions">
               <button aria-label="Share chat" onClick={() => setChatShareRequestKey((key) => key + 1)} title="Share" type="button">
@@ -1268,6 +1268,7 @@ export function App() {
           )}
         </header>
         {chatDeleteBanner}
+        {signedIn && !accountTransitioning && <ReinstatementCard key={session.accountId} view={view} navigate={navigateToView} onResolved={refreshAppState} />}
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
         {signedIn && hiveGroupStatus?.accountId === session?.accountId && hiveGroupStatus?.messaging && !hiveGroupStatus.messaging.binding && messagesPromptDismissed !== session.accountId && !["messages", "hive-chat"].includes(view) && (
@@ -1322,7 +1323,8 @@ export function App() {
               <DirectoryView />
             </Suspense>
           )}
-          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
+          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView key={session?.accountId} accountId={session?.accountId} /></Suspense>}
+          {view === "l1-wallet" && (runtimeConfig?.l1Wallet?.enabled === true ? <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense> : <StatusBanner>The L1 wallet is unavailable.</StatusBanner>)}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView
@@ -1393,6 +1395,7 @@ export function App() {
             </Suspense>
           )}
           {activeExtension && <ExtensionSurface context={extensionContext} extension={activeExtension} />}
+          {view === "finance-hub" && <Suspense fallback={<StatusBanner>Loading Finance Hub</StatusBanner>}><FinanceHubView hasAccess={hasFinanceHub} locationHash={locationHash} onLocationChange={setLocationHash} /></Suspense>}
           {view === "help" && (
             <Suspense fallback={<StatusBanner>Loading help</StatusBanner>}>
               <HelpView />
@@ -1402,25 +1405,23 @@ export function App() {
         )}
       </section>
       {accountTransitioning && <div className="account-transition-overlay" role="status">Switching accounts securely…</div>}
-      {loginOpen && (
-        <LoginDialog
-          authLoading={appStateLoading}
-          onSessionChange={refreshAppState}
-          session={session}
-          reloadOnSuccess
-          onClose={closeAccountLogin}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsModal
-          chat={appState?.chat} linkedWallet={linkedWallet}
-          onAppStateChange={refreshAppState}
-          onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
-          session={session}
-          setTheme={setTheme}
-          theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
-        />
-      )}
+      <RouteErrorBoundary resetKey={`${loginOpen}-${settingsOpen}`}>
+      <Suspense fallback={null}>
+        {loginOpen && (
+          <LoginDialog authLoading={appStateLoading} onClose={closeAccountLogin} onSessionChange={refreshAppState} reloadOnSuccess session={session} />
+        )}
+        {settingsOpen && (
+          <SettingsModal
+            chat={appState?.chat} initialPage={settingsPage} linkedWallet={linkedWallet}
+            onAppStateChange={refreshAppState}
+            onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
+            session={session}
+            setTheme={setTheme}
+            theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
+          />
+        )}
+      </Suspense>
+      </RouteErrorBoundary>
       {identityHandleRequired && !identityPromptDismissed && !loginOpen && (
         <IdentityHandleDialog
           onClose={() => setIdentityPromptDismissed(true)}

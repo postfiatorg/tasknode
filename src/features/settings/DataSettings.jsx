@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { requestJson } from "../../api";
 import { isSignedInSession } from "../../session";
-import { SettingsLine, SmallPill, ToggleSwitch } from "./SettingsControls.jsx";
+import { SettingsLine, SmallPill } from "./SettingsControls.jsx";
 
 export function DataSettings({ onAccountDeleted, onAppStateChange, onOpenHiveChat, session }) {
   const [exportPending, setExportPending] = useState(false);
@@ -68,16 +68,14 @@ export function DataSettings({ onAccountDeleted, onAppStateChange, onOpenHiveCha
 
   return (
     <>
-      <SettingsLine desc="Allow your content to be used to improve Task Node." label="Improve the model for everyone" right={<ToggleSwitch initial />} />
       <SettingsLine
         desc="Public group chat over Nostr, using your Messages identity. Previous private Hive conversations remain in your archive."
         label="Hive Chat"
         right={<SmallPill onClick={onOpenHiveChat}>Open</SmallPill>}
       />
-      <SettingsLine desc="Manage links you've shared from chats." label="Shared links" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Download your account, conversations, attachments, context, memory, activity, and billing history." label="Export data" right={<SmallPill disabled={exportPending} onClick={exportAccountData}>{exportPending ? "Preparing" : "Export"}</SmallPill>} />
       {exportMessage && <div className="inline-message">{exportMessage}</div>}
-      <SettingsLine desc="How Task Node handles your data." label="Privacy Policy" right={<SmallPill>View <ExternalLink size={11} /></SmallPill>} />
+      <SettingsLine desc="Task Node is operated by Chatterwise Limited (BVI). How your data is handled." label="Privacy Policy" right={<SmallPill href="/privacy">View <ExternalLink size={11} /></SmallPill>} />
       <SettingsLine danger desc="Permanently remove your account content. Narrow fraud and financial records are retained in pseudonymous form." label="Delete account" right={<SmallPill danger disabled={deletePending} onClick={deleteAccount}>{deletePending ? "Deleting" : "Delete"}</SmallPill>} />
       {deleteMessage && <div className="inline-message">{deleteMessage}</div>}
     </>

@@ -1,9 +1,10 @@
 import { databaseEnabled, query } from "../db/pool.js";
+import { publicValidatorBindingsByAccount } from "./validator-bindings.js";
 import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
+import { ALIGNMENT_WINDOW_DAYS, alignmentByAccountSql, alignmentScore0To100 } from "./alignment-score.js";
 import {
   canonicalRewardedTaskProjectionSql,
-  nonFixtureAirdropRunSql,
   nonFixtureProfileNftSql,
   nonFixtureRecommendedProfileSql,
 } from "./task-projection-integrity.js";
@@ -209,17 +210,7 @@ export async function queryDirectoryLeaderboardRows({
           AND ${canonicalRewardedTaskProjectionSql("p")}
         GROUP BY p.account_id
       ),
-      latest_alignment AS (
-        SELECT DISTINCT ON (account_id)
-               account_id,
-               alignment_score_7d::text AS alignment_score_7d,
-               completed_at AS alignment_completed_at,
-               run_date AS alignment_run_date
-        FROM profile_daily_airdrop_runs run
-        WHERE run.account_id = ANY($1::text[])
-          AND run.status = 'completed'
-          AND ${nonFixtureAirdropRunSql("run")}
-        ORDER BY run.account_id, run.completed_at DESC NULLS LAST, run.updated_at DESC, run.created_at DESC
+      latest_alignment AS (${alignmentByAccountSql("$1")}
       )
       SELECT candidates.account_id,
              COALESCE(task_stats.network_tasks, 0)::integer AS network_tasks,
@@ -227,9 +218,10 @@ export async function queryDirectoryLeaderboardRows({
              COALESCE(task_stats.tasks_rewarded, 0)::integer AS tasks_rewarded,
              COALESCE(task_stats.reward_pft, '0') AS reward_pft,
              COALESCE(task_stats.latest_wallet, '') AS latest_wallet,
-             latest_alignment.alignment_score_7d,
+             latest_alignment.alignment_score,
+             latest_alignment.alignment_scored_days,
              latest_alignment.alignment_completed_at,
-             latest_alignment.alignment_run_date,
+             latest_alignment.alignment_last_run_date AS alignment_run_date,
              ''::text AS identity_display_name,
              '[]'::jsonb AS wallets_json,
              COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
@@ -278,9 +270,7 @@ async function buildBaseDocument() {
     .map((row) => {
       const accountId = safeText(row.account_id, 180);
       const identity = identityByAccount.get(accountId) || {};
-      const alignment = row.alignment_score_7d === null || row.alignment_score_7d === undefined
-        ? null
-        : Math.max(0, Math.min(100, Math.round(numeric(row.alignment_score_7d) * 100)));
+      const alignment = alignmentScore0To100(row.alignment_score);
       const networkTasks = intValue(row.network_tasks);
       const personalTasks = intValue(row.personal_tasks);
       const rewards = numeric(row.reward_pft);
@@ -295,6 +285,8 @@ async function buildBaseDocument() {
         personalTasks,
         rewards,
         alignment,
+        alignmentScoredDays: intValue(row.alignment_scored_days),
+        alignmentWindowDays: ALIGNMENT_WINDOW_DAYS,
         alignmentCompletedAt: toIso(row.alignment_completed_at),
         alignmentRunDate: dateLabel(row.alignment_run_date),
         heroNft: heroNftFromRow(row),
@@ -333,6 +325,7 @@ async function buildBaseDocument() {
     rankFormula: {
       ...DIRECTORY_LEADERBOARD_RANK_FORMULA,
       label: "3x network tasks + personal tasks + rewards/25000 + alignment",
+      alignmentWindowDays: ALIGNMENT_WINDOW_DAYS,
     },
     policy: {
       visibility: "public_discoverable_only",
@@ -352,13 +345,18 @@ async function baseDocument() {
   return cachedBaseDocument;
 }
 
-export async function getDirectoryLeaderboardDocument({ viewerAccountId = "" } = {}) {
-  const document = await baseDocument();
+export async function getDirectoryLeaderboardDocument({ viewerAccountId = "" } = {}, {
+  loadBase = baseDocument, loadValidators = publicValidatorBindingsByAccount,
+} = {}) {
+  const document = await loadBase();
   const accountId = safeText(viewerAccountId, 180);
+  // Read membership after the ranking cache so unbinding removes the mark immediately.
+  const validators = await loadValidators(document.operators.map(operator => operator.accountId));
   return {
     ...document,
     operators: document.operators.map((operator) => ({
       ...operator,
+      validator: validators.has(operator.accountId) ? { bindings: validators.get(operator.accountId) } : null,
       isYou: Boolean(accountId && operator.accountId === accountId),
     })),
   };

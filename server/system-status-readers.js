@@ -11,6 +11,7 @@ export const BOARD_MANAGER_MODEL_PRICING = Object.freeze({
   "z-ai/glm-5.2": { inputUsdPerMillion: 1.2, outputUsdPerMillion: 4.1 },
   "zai/glm-5.3": { inputUsdPerMillion: 0.7, outputUsdPerMillion: 2.2 },
   "zai/glm-5.3-flash": { inputUsdPerMillion: 0.15, outputUsdPerMillion: 0.5 },
+  "deepseek/deepseek-v4.1-flash-1017": { inputUsdPerMillion: 0.3, outputUsdPerMillion: 1.2 },
   "qwen/qwen3.7-max": { inputUsdPerMillion: 2.5, outputUsdPerMillion: 7.5 },
   "deepseek-v4-pro": { inputUsdPerMillion: 0.435, outputUsdPerMillion: 0.87 },
   "deepseek/deepseek-v4-pro": { inputUsdPerMillion: 0.435, outputUsdPerMillion: 0.87 },

@@ -15,7 +15,7 @@ resource membership, or other context beyond a generic identity class.
 | `none` | Public route; no caller identity. |
 | `optional` | Session is used when present, but anonymous access is allowed. |
 | `session` | Valid Task Node browser session required. |
-| `bearer` | Valid terminal bearer session required. |
+| `bearer` | Valid route-specific bearer credential required. |
 | `oauth_state` | Single-use, provider-bound OAuth state required. |
 | `webhook_secret` | Configured webhook secret required. |
 | `admin_bearer` | Configured administrative bearer token required. |
@@ -25,6 +25,31 @@ resource membership, or other context beyond a generic identity class.
 
 | Policy | Path matcher | Methods | Authentication | Mutation body | Shared limit |
 | --- | --- | --- | --- | --- | --- |
+| `reinstatement_status` | `/api/me/reinstatement` | `GET` | `session` | — | — |
+| `reinstatement_operator_queue` | `/api/operator/blacklist` | `GET` | `session` | — | — |
+| `reinstatement_override` | `/api/operator/blacklist//…` | `POST` | `session` | strict JSON ≤ 12000 bytes | 50 / 600s |
+| `prompt_key` | `/api/docs/prompts/key` | `GET` `POST` | `handler` | strict JSON ≤ 16384 bytes | 600 / 600s |
+| `prompt_history` | `/api/docs/prompts/history` | `GET` `POST` | `handler` | strict JSON ≤ 2100000 bytes | 600 / 600s |
+| `prompt_devices` | `/api/docs/prompts/devices` | `GET` `POST` | `handler` | strict JSON ≤ 10000 bytes | 600 / 600s |
+| `prompt_devices_approve` | `/api/docs/prompts/devices/approve` | `POST` | `handler` | strict JSON ≤ 10000 bytes | 600 / 600s |
+| `prompt_devices_revoke` | `/api/docs/prompts/devices/revoke` | `POST` | `handler` | strict JSON ≤ 1000 bytes | 600 / 600s |
+| `prompt_documents` | `/api/docs/prompts/documents` | `GET` `POST` | `handler` | strict JSON ≤ 2100000 bytes | 600 / 600s |
+| `prompt_device-key` | `/api/docs/prompts/device-key` | `GET` | `handler` | — | 600 / 600s |
+| `prompt_config` | `/api/docs/prompts/config` | `GET` | `handler` | — | 600 / 600s |
+| `validator_connect_start` | `/api/validators/connect` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `validator_connect_status` | `/api/validators/connect/status` | `GET` | `session` | — | 400 / 600s |
+| `validator_connect_challenge` | `/api/validators/connect/challenge` | `POST` | `none` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `validator_connect_complete` | `/api/validators/connect/complete` | `POST` | `none` | strict JSON ≤ 16384 bytes | 30 / 600s |
+| `validator_status` | `/api/validators` | `GET` | `session` | — | 30 / 600s |
+| `validator_challenge` | `/api/validators/challenge` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `validator_bind` | `/api/validators/bind` | `POST` | `session` | strict JSON ≤ 8192 bytes | 20 / 600s |
+| `validator_revoke` | `/api/validators//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
+| `research_keys` | `/api/research/keys` | `GET` `POST` | `session` | strict JSON ≤ 4096 bytes | 30 / 600s |
+| `research_key_revoke` | `/api/research/keys//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
+| `research_v1_create` | `/api/research/v1/jobs` | `POST` | `bearer` | strict JSON ≤ 24000 bytes | 10 / 600s |
+| `research_v1_read` | `/api/research/v1/jobs//…` | `GET` | `bearer` | — | 600 / 600s |
+| `research_ui_create` | `/api/research/ui/jobs` | `POST` | `session` | strict JSON ≤ 24000 bytes | 10 / 600s |
+| `research_ui_read` | `/api/research/ui/jobs//…` | `GET` | `session` | — | 600 / 600s |
 | `board_agent_command` | `/api/agent/board/command` | `POST` | `bearer` | strict JSON ≤ 131072 bytes | 120 / 60s |
 | `app_state` | `/api/app-state` | `GET` | `optional` | — | — |
 | `session` | `/api/session` | `GET` | `optional` | — | — |
@@ -90,6 +115,12 @@ resource membership, or other context beyond a generic identity class.
 | `agent_connect` | `/connect` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
 | `agent_connect_signout` | `/connect/signout` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 10 / 600s |
 | `agent_connect_login` | `/connect/login` | `GET` | `none` | — | 20 / 600s |
+| `agent_connect_revoke` | `/connect/revoke` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `agent_connect_markdown` | `/connect.md` | `GET` | `none` | — | — |
+| `agent_activate` | `/activate` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 60 / 600s |
+| `agent_installer` | `/install` | `GET` | `none` | — | — |
+| `agent_installer_cli` | `/install/tasknode.mjs` | `GET` | `none` | — | — |
+| `agent_whoami` | `/api/agent/whoami` | `GET` | `handler` | — | 120 / 60s |
 | `readiness` | `/api/readiness` | `GET` | `none` | — | — |
 | `health` | `/api/health` | `GET` | `none` | — | — |
 | `system_status` | `/api/system/status` | `GET` | `none` | — | — |
@@ -211,4 +242,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **185 route policies** and **8 authentication modes**.
+Total: **216 route policies** and **8 authentication modes**.

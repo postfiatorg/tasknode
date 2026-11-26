@@ -5,7 +5,7 @@ import react from "eslint-plugin-react";
 import globals from "globals";
 
 const appFiles = ["src/**/*.{js,jsx}", "shared/**/*.js"];
-const nodeFiles = ["server/**/*.js", "scripts/**/*.mjs"];
+const nodeFiles = ["server/**/*.js", "scripts/**/*.mjs", "packages/**/*.mjs"];
 
 const baseRules = {
   ...js.configs.recommended.rules,
@@ -25,6 +25,8 @@ export default [
       "work_in_progress/**",
       "tasknodeofficial_wip/**",
       "coverage/**",
+      // wasm-bindgen output: checked by wallet artifact/signature tests.
+      "src/features/wallet/l1/wasm/postfiat_wallet_wasm.js",
     ],
   },
   {

@@ -90,4 +90,32 @@ assert.equal(pinned.firstParty.ok, true);
 assert.equal(pinned.firstParty.clusterReplication.ok, true);
 assert.equal(pinCalls.length, 3);
 
+// A first-party cluster outage defers to the replication queue instead of
+// failing a file Pinata already pinned.
+const deferred = await pinIpfsFile({
+  bytes: Buffer.from("profile-nft-image"),
+  name: "profile-nft.png",
+  mimeType: "image/png",
+  keyvalues: { type: "profile_nft_image", profileNftId: "nft_smoke_outage" },
+  env: {
+    PINATA_API_KEY: "pinata-key",
+    PINATA_API_SECRET: "pinata-secret",
+    IPFS_API_URL: "https://down.example",
+    IPFS_API_USERNAME: "clean-user",
+    IPFS_API_PASSWORD: "clean-pass",
+  },
+  fetchImpl: async (url) => {
+    if (String(url) === "https://api.pinata.cloud/pinning/pinFileToIPFS") {
+      return new Response(JSON.stringify({ IpfsHash: pinnedCid }), { status: 200 });
+    }
+    if (String(url).startsWith("https://down.example/api/v0/add")) return new Response("bad gateway", { status: 502 });
+    throw new Error(`unexpected pin URL ${url}`);
+  },
+});
+assert.equal(deferred.ok, true);
+assert.equal(deferred.cid, pinnedCid);
+assert.equal(deferred.firstParty.ok, false);
+assert.equal(deferred.firstParty.deferred, true);
+assert.equal(deferred.firstParty.status, 502);
+
 console.log("context-ipfs-gateway-smoke ok");

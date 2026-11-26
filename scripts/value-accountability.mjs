@@ -5,7 +5,7 @@
 //   node scripts/value-accountability.mjs enforce [--execute]
 //   node scripts/value-accountability.mjs status [--json]
 //   node scripts/value-accountability.mjs blacklist <accountId> --reason "..." [--execute]
-//   node scripts/value-accountability.mjs lift <accountId> --reason "..." [--execute]
+//   Manual reinstatement is available in Directory → Blacklist.
 //
 // Writes are dry runs unless --execute is passed.
 
@@ -22,7 +22,6 @@ import {
   blacklistAccount,
   computeValueAccountabilityCohort,
   enforceExpiredCases,
-  liftBlacklist,
   linkIssuedCaseTasks,
   markCaseIssued,
   upsertCase,
@@ -142,14 +141,12 @@ async function status() {
   console.log(JSON.stringify(counts));
 }
 
-async function manual(kind) {
+async function manualBlacklist() {
   const accountId = positional[0];
   const reason = flag("--reason");
-  if (!accountId || !reason) throw new Error(`Usage: ${kind} <accountId> --reason "..." [--execute]`);
-  if (!execute) return console.log(`DRY ${kind} ${accountId}: ${reason}`);
-  const result = kind === "lift"
-    ? await liftBlacklist({ accountId, reason, liftedBy: "operator_cli" })
-    : await blacklistAccount({ accountId, reasonCode: "operator_blacklist", reason, source: "operator", createdBy: "operator_cli" });
+  if (!accountId || !reason) throw new Error(`Usage: blacklist <accountId> --reason "..." [--execute]`);
+  if (!execute) return console.log(`DRY blacklist ${accountId}: ${reason}`);
+  const result = await blacklistAccount({ accountId, reasonCode: "operator_blacklist", reason, source: "operator", createdBy: "operator_cli" });
   console.log(JSON.stringify(result));
 }
 
@@ -158,8 +155,8 @@ try {
   else if (command === "issue") await issue();
   else if (command === "enforce") await enforce();
   else if (command === "status") await status();
-  else if (command === "blacklist") await manual("blacklist");
-  else if (command === "lift") await manual("lift");
+  else if (command === "blacklist") await manualBlacklist();
+  else if (command === "lift") throw new Error("Open a reinstatement request in Directory → Blacklist. Three distinct operators must approve.");
   else {
     console.error("Usage: value-accountability.mjs cohort|issue|enforce|status|blacklist|lift (see file header)");
     process.exitCode = 1;

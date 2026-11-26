@@ -1,0 +1,426 @@
+/* Top-up modal. Loaded with the lazy modal chunk, so it stays out of the main
+   stylesheet. Shared modal chrome (.wallet-link-modal, buttons) lives in
+   styles-dialogs-wallet.css. */
+.eth-topup-modal {
+  width: min(540px, 100%);
+}
+
+/* Single shrinkable column so the long address and the amount input never
+   widen the dialog on small screens. */
+.eth-topup-modal,
+.eth-topup-pay-form,
+.eth-topup-field,
+.eth-topup-manual-body,
+.eth-topup-address {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.eth-topup-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: var(--tn-dark-secondary, #5f5f5a);
+  font-size: 13px;
+}
+
+.eth-topup-loading svg {
+  animation: spin 900ms linear infinite;
+}
+
+.eth-topup-address {
+  display: grid;
+  gap: 8px;
+}
+
+.eth-topup-address > span {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.eth-topup-address button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--tn-dark-control-border, #e2dfd5);
+  border-radius: 12px;
+  background: var(--tn-dark-bg, #fbfaf7);
+  color: var(--tn-dark-text, #0d0d0d);
+  text-align: left;
+}
+
+.eth-topup-address strong {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eth-topup-address svg {
+  flex: 0 0 auto;
+}
+
+.eth-topup-pay-form {
+  display: grid;
+  gap: 14px;
+}
+
+.eth-topup-segment {
+  display: flex;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--tn-dark-border, #e8e6df);
+  border-radius: 10px;
+  background: var(--tn-dark-overlay, #f4f3ee);
+}
+
+.eth-topup-segment button {
+  min-width: 64px;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tn-dark-secondary, #5f5f5a);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eth-topup-segment button:hover:not(:disabled) {
+  color: var(--tn-dark-text, #0d0d0d);
+}
+
+.eth-topup-segment button[aria-pressed="true"] {
+  background: var(--tn-dark-hover, #ffffff);
+  color: var(--tn-dark-text, #0d0d0d);
+  box-shadow: 0 1px 2px var(--tn-dark-shadow, rgba(0, 0, 0, 0.1));
+}
+
+.eth-topup-field {
+  display: grid;
+  gap: 8px;
+}
+
+.eth-topup-field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.eth-topup-field-head label {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.eth-topup-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.eth-topup-quick button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.eth-topup-quick button:hover:not(:disabled) {
+  background: var(--tn-dark-hover, #f4f3ee);
+  color: var(--tn-dark-text, #0d0d0d);
+}
+
+.eth-topup-quick button[aria-pressed="true"] {
+  color: var(--tn-dark-text, #0d0d0d);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+}
+
+.eth-topup-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 14px;
+  border: 1px solid var(--tn-dark-control-border, #e2dfd5);
+  border-radius: 12px;
+  background: var(--tn-dark-bg, #fbfaf7);
+}
+
+.eth-topup-amount:focus-within {
+  border-color: var(--tn-dark-focus, #456a33);
+  box-shadow: 0 0 0 1px var(--tn-dark-focus, #456a33);
+}
+
+.eth-topup-amount.invalid,
+.eth-topup-amount.invalid:focus-within {
+  border-color: var(--tn-dark-danger, #a8322d);
+  box-shadow: none;
+}
+
+.eth-topup-amount span {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.eth-topup-amount input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tn-dark-text, #0d0d0d);
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.eth-topup-amount input:focus-visible,
+:root[data-theme="dark"] .eth-topup-amount input:focus-visible {
+  outline: none;
+}
+
+.eth-topup-hint,
+.eth-topup-install small {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.eth-topup-hint.error {
+  color: var(--tn-dark-danger, #a8322d);
+}
+
+.solid-button.eth-topup-pay {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: var(--tn-primary-bg, #111111);
+  color: var(--tn-primary-text, #ffffff);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.solid-button.eth-topup-pay:disabled {
+  background: var(--tn-disabled-bg, #e5e5e0);
+  color: var(--tn-disabled-text, #73756a);
+  opacity: 1;
+}
+
+.eth-topup-install {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.eth-topup-pay-status {
+  display: grid;
+  gap: 4px;
+}
+
+.eth-topup-pay-status:empty {
+  display: none;
+}
+
+.eth-topup-modal .eth-topup-pay-status p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--tn-dark-secondary, #45463e);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.eth-topup-modal .eth-topup-pay-status p.error {
+  color: var(--tn-dark-danger, #a8322d);
+}
+
+.eth-topup-modal .eth-topup-pay-status p.success {
+  color: var(--tn-dark-success, #35632c);
+  font-weight: 600;
+}
+
+.eth-topup-modal .eth-topup-pay-status p.muted {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12.5px;
+}
+
+.eth-topup-pay-status a {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tn-dark-link, #315bb5);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.eth-topup-pay-status a:hover {
+  text-decoration: underline;
+}
+
+.eth-topup-text-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tn-dark-link, #315bb5);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.eth-topup-text-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.eth-topup-text-button:disabled {
+  color: var(--tn-dark-muted, #6b6b66);
+  cursor: default;
+}
+
+.eth-topup-manual {
+  border-top: 1px solid var(--tn-dark-border, #ece9df);
+}
+
+.eth-topup-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tn-dark-secondary, #45463e);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eth-topup-disclosure svg {
+  color: var(--tn-dark-muted, #6b6b66);
+  transition: transform 160ms ease;
+}
+
+.eth-topup-disclosure[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.eth-topup-manual-body {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 2px;
+}
+
+.eth-topup-asset-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--tn-dark-border, #ece9df);
+  border-radius: 12px;
+  list-style: none;
+}
+
+.eth-topup-asset-list li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.eth-topup-asset-list li + li {
+  border-top: 1px solid var(--tn-dark-border, #ece9df);
+}
+
+.eth-topup-asset-list strong {
+  color: var(--tn-dark-text, #0d0d0d);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eth-topup-asset-list span,
+.eth-topup-asset-list em {
+  overflow: hidden;
+  color: var(--tn-dark-muted, #6b6b66);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eth-topup-asset-list em {
+  justify-self: end;
+}
+
+.eth-topup-asset-list em.pending {
+  color: var(--tn-dark-warning, #8a5b0a);
+}
+
+.eth-topup-modal .eth-topup-fineprint {
+  margin: 0;
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.eth-topup-manual-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.eth-topup-manual-foot span {
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .eth-topup-address strong {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .eth-topup-asset-list li {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 2px 10px;
+  }
+
+  .eth-topup-asset-list em {
+    grid-column: 2 / 3;
+    justify-self: start;
+  }
+}
+
+/* Dark inputs sit on the modal surface instead of a near-black well. */
+:root[data-theme="dark"] .eth-topup-modal .eth-topup-amount,
+:root[data-theme="dark"] .eth-topup-modal .eth-topup-address button {
+  background: transparent;
+}

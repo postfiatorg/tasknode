@@ -9,8 +9,8 @@ advance tasks, or change Board Manager scheduler state.
 
 The top of the live status page also renders Chat Model Pricing. That section is
 not a worker health row. It is an audit snapshot of the current chat-mode
-provider contracts from `server/chat-router.js`, plus cached live Ambient
-model metadata from `https://api.ambient.xyz/v1/models`.
+provider contracts from `server/chat-router.js`, plus cached live model
+metadata from the Vercel AI Gateway `/models` catalog.
 
 The page also includes a collapsed Network Task spend audit toggle. It reads
 `networkTaskSpendByDay` from `/api/system/status` and shows total PFT spent on
@@ -59,12 +59,17 @@ the same names.
 
 ### Hive And Board Agents
 
-Board Manager decisions, secretary packets, Hive Secretary reports, and active
-project planning.
+The active board manager is the operator-host Kimi runtime. Legacy scheduler
+runs and cost rows do not measure its liveness.
 
-- `board_manager`: leased Board Manager scheduler for `global_hive`.
-- `board_manager_secretary_packets`: DeepSeek compression packet used before the
-  Board Manager decision.
+- `network_allocation_health`: routing and review demand from current agent rounds,
+  allocations and audit actions. Missing tables or a failed read return unknown.
+- `hive_board_secretary`: scans recorded in the secretary lease, including scans
+  that skip unchanged boards. It uses the same hourly default as the worker.
+  Memo generation time is shown separately: unchanged memos may remain current
+  indefinitely. An older worker without scan telemetry returns unknown until an
+  upgraded worker completes a scan. Failed scans remain visible.
+- `board_manager_secretary_packets`: archived compression packets.
 - `hive_secretary`: Hive Secretary report worker.
 - `hive_active_projects`: active project registry helper.
 
@@ -118,7 +123,7 @@ The status page pricing block separates two values that are easy to confuse:
 
 - Configured user tariff: the per-million-token tariff in `chatModePrices`. This
   is authoritative for preflight estimates, confirmation thresholds, and ledger debits.
-- Live Ambient model metadata: the current catalog record for the model pinned
+- Live model metadata: the current Vercel catalog record for the model pinned
   to Instant, Thinking, or Help.
 
 Ambient token and cache counts determine the billable quantities, but its

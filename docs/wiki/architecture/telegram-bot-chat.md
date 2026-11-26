@@ -28,7 +28,7 @@ The bot sends an inline keyboard with these modes. Selecting a mode stores a per
 The bot calls the same `chatSend` path as the web UI. That means model execution is billed against the Task Node account balance, and low-balance requests are rejected before provider execution. `/balance` or the Balance button returns current credit, spend, and available credit.
 
 Telegram marks bot-originated chat requests as `source=telegram_bot` before they
-enter the shared Ambient chat route. Thinking receives the shared 120-second
+enter the shared chat route. Thinking receives the shared 120-second
 reasoning timeout. If it fails before producing a response, the bot may retry
 once through another enabled canonical mode; `TELEGRAM_BOT_FALLBACK_CHAT_MODE`
 can select that mode.

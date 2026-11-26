@@ -6,7 +6,7 @@ import { normalizeInferenceRequest } from "../server/inference-protocol.js";
 const graph = inferenceCallGraph(["server/inference.js", "server/hive-group-provider.js", "server/hive-group-worker.js"]);
 assert.deepEqual(graph.violations, [], "Hive inference and its reachable helpers must remain free of regular expressions");
 
-const env = { VERCEL_AI_GATEWAY_API_KEY: "vercel-fixture", AMBIENT_API_KEY: "ambient-fixture",
+const env = { VERCEL_AI_GATEWAY_API_KEY: "vercel-fixture", AMBIENT_API_KEY: "ambient-fixture", INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
   VERCEL_AI_GATEWAY_BASE_URL: "https://vercel.invalid/v1", AMBIENT_BASE_URL: "https://ambient.invalid/v1" };
 const body = { model: INFERENCE_MODELS.structured, messages: [{ role: "user", content: "Return a JSON object with ok true." }], response_format: { type: "json_object" } };
 const answer = (model = body.model, text = '{"ok":true}') => new Response(JSON.stringify({ id: "response_1", model,
@@ -24,20 +24,21 @@ const finish = { choices: [{ delta: {}, finish_reason: "stop" }] };
 const codeIs = (code) => (error) => error.code === code;
 let assertions = 0;
 
-assert.equal(resolveInferenceModel({ model: "z-ai/glm-5.2", env: {} }), "zai/glm-5.3");
-assert.equal(resolveInferenceModel({ capability: "instant_text", env: {} }), "zai/glm-5.3-flash");
+assert.equal(resolveInferenceModel({ model: "z-ai/glm-5.2", env: {} }), "deepseek/deepseek-v4.1-flash-1017");
+assert.equal(resolveInferenceModel({ capability: "instant_text", env: {} }), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(resolveInferenceModel({ capability: "fast_text", env: {} }), INFERENCE_MODELS.fastText);
-assert.equal(resolveInferenceModel({ model: body.model, hasImages: true, env: {} }), INFERENCE_MODELS.vision);
+// DeepSeek V4.1 Flash reads images itself, so Help and memory keep it for image input too.
+assert.equal(resolveInferenceModel({ model: INFERENCE_MODELS.fastText, hasImages: true, env: {} }), INFERENCE_MODELS.fastText);
+assert.equal(resolveInferenceModel({ model: "deepseek/deepseek-v4-flash-0731", env: {} }), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(resolveInferenceModel({ model: INFERENCE_MODELS.instantText, hasImages: true, env: {} }), INFERENCE_MODELS.instantText);
 assert.throws(() => resolveInferenceModel({ model: "invented/model", env: {} }), codeIs("inference_model_unsupported"));
-assert.throws(() => resolveInferenceModel({ capability: "vision_text", env: { INFERENCE_MODEL_VISION: body.model } }), codeIs("inference_image_model_required"));
 assertions += 7;
 
 let calls = [];
 const primary = await inferenceChatCompletion({ env, body, fetchImpl: async (url, init) => {
   calls.push(url);
   assert.equal(init.headers.authorization, "Bearer vercel-fixture");
-  assert.equal(JSON.parse(init.body).model, "zai/glm-5.3");
+  assert.equal(JSON.parse(init.body).model, "deepseek/deepseek-v4.1-flash-1017");
   return answer();
 } });
 assert.equal(primary.provider, "vercel");
@@ -79,8 +80,10 @@ calls = [];
 await assert.rejects(inferenceChatCompletion({ env, body, fetchImpl: async (url) => { calls.push(url); return failure(400); } }), codeIs("inference_http_400"));
 assert.equal(calls.length, 1);
 await assert.rejects(inferenceChatCompletion({ env: {}, body }), codeIs("inference_not_configured"));
-await assert.rejects(inferenceChatCompletion({ env: { ...env, INFERENCE_AMBIENT_BACKUP_ENABLED: "false" }, body, fetchImpl: async () => failure(503) }), codeIs("inference_http_503"));
-const backupOnly = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body, fetchImpl: async () => answer("z-ai/glm-5.2") });
+// Ambient is deprecated: without the explicit opt-in nothing falls back to it.
+await assert.rejects(inferenceChatCompletion({ env: { ...env, INFERENCE_AMBIENT_BACKUP_ENABLED: "" }, body, fetchImpl: async () => failure(503) }), codeIs("inference_http_503"));
+await assert.rejects(inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body }), codeIs("inference_not_configured"));
+const backupOnly = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL, INFERENCE_AMBIENT_BACKUP_ENABLED: "true" }, body, fetchImpl: async () => answer("z-ai/glm-5.2") });
 assert.equal(backupOnly.provider, "ambient");
 assert.equal(backupOnly.fallbackReason, "primary_not_configured");
 const cancelled = new AbortController();
@@ -140,13 +143,13 @@ const backupSearch = normalizeInferenceRequest(searchBody, { provider: "ambient"
 assert.deepEqual(backupSearch.enabled_tools, ["websearch"]);
 assert.equal(Object.hasOwn(backupSearch, "providerOptions"), false);
 assert.equal(Object.hasOwn(backupSearch, "tools"), false);
-const imageRequest = normalizeInferenceRequest({ ...body, messages: [{ role: "user", content: [{ type: "input_image", url: "https://images.invalid/example.png" }] }] }, { env });
-assert.equal(imageRequest.model, INFERENCE_MODELS.vision);
+const imageRequest = normalizeInferenceRequest({ ...body, model: INFERENCE_MODELS.fastText, messages: [{ role: "user", content: [{ type: "input_image", url: "https://images.invalid/example.png" }] }] }, { env });
+assert.equal(imageRequest.model, INFERENCE_MODELS.fastText);
 assert.equal(imageRequest.messages[0].content[0].type, "image_url");
 assertions += 7;
 
 let round = 0;
-const toolsResult = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body: searchBody,
+const toolsResult = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL, INFERENCE_AMBIENT_BACKUP_ENABLED: "true" }, body: searchBody,
   capability: "research_text", fetchImpl: async (url) => {
     if (url.endsWith("/tools")) return new Response(JSON.stringify({ tool_calls: [{ id: "search_1", content: { success: true, results: [] } }] }));
     round += 1;

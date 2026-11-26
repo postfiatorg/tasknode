@@ -1,5 +1,7 @@
 import { ArrowRight, Check, ChevronDown, ChevronUp, Copy, ExternalLink } from "lucide-react";
 import { transactionExplorerHref } from "../../pftl-explorer.js";
+import { TaskDescription, TaskParagraphs, TaskStepText } from "./TaskRichText.jsx";
+import { taskRepoFromTexts, verificationTitleLabel } from "./task-description-format.js";
 import {
   normalizeTaskStatus,
   statusSlug,
@@ -376,6 +378,7 @@ export function TaskCurrentVerificationPanel({ request }) {
 }
 
 export function TaskOriginalContext({ displayTask, expanded, onToggle, steps, verification }) {
+  const taskRepo = taskRepoFromTexts(displayTask?.description, verification?.body, ...(steps || []));
   return (
     <section className="task-original-context">
       <SectionLabel
@@ -389,7 +392,7 @@ export function TaskOriginalContext({ displayTask, expanded, onToggle, steps, ve
       {expanded && (
         <div className="task-original-context-body">
         <TaskSection title="Description">
-          <p>{displayTask.description}</p>
+          <TaskDescription repo={taskRepo} text={displayTask.description} />
         </TaskSection>
         {steps.length > 0 && (
           <TaskSection title="Steps">
@@ -397,15 +400,15 @@ export function TaskOriginalContext({ displayTask, expanded, onToggle, steps, ve
               {steps.map((step, index) => (
                 <li key={`${index}-${step}`}>
                   <span>{index + 1}</span>
-                  <p>{step}</p>
+                  <p><TaskStepText repo={taskRepo} text={step} /></p>
                 </li>
               ))}
             </ol>
           </TaskSection>
         )}
         <TaskSection last title="Initial evidence requirement">
-          <strong>{verification.title || "Submit evidence"}</strong>
-          <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
+          <strong>{verificationTitleLabel(verification.title) || "Submit evidence"}</strong>
+          <TaskParagraphs repo={taskRepo} text={verification.body || "Submit evidence that satisfies the task requirement."} />
         </TaskSection>
       </div>
       )}

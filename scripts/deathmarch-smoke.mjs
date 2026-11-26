@@ -306,6 +306,7 @@ const providerUnavailableFallback = await callDeepSeekSummary({
     env: {
       AMBIENT_API_KEY: "test",
       AMBIENT_BASE_URL: "https://ambient.invalid",
+      INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
     },
     fetchImpl: async () => ({
       ok: false,
@@ -325,6 +326,7 @@ await assert.rejects(
     env: {
       AMBIENT_API_KEY: "test",
       AMBIENT_BASE_URL: "https://ambient.invalid",
+      INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
       DEATHMARCH_DETERMINISTIC_FALLBACK: "false",
     },
     fetchImpl: async () => ({
@@ -344,6 +346,7 @@ const deterministicFallback = await callDeepSeekSummary({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
   },
   fetchImpl: async (url, options) => {
     deepseekRequestBody = JSON.parse(options.body);
@@ -374,6 +377,7 @@ const result = await processDeathmarchEvents({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
@@ -441,6 +445,7 @@ const publicResult = await processDeathmarchEvents({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
@@ -471,6 +476,7 @@ const failedClassifierResult = await processDeathmarchEvents({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
@@ -500,6 +506,7 @@ const classifiedDirect = await classifyEventAnonymity({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
   },
   fetchImpl: async () => deepseekClassifierResponse({ level: 3, category: "public protocol work" }),
 });
@@ -515,6 +522,7 @@ const classifiedNamedEntities = await classifyEventAnonymity({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
   },
   fetchImpl: async () => deepseekClassifierResponse({
     level: 2,
@@ -544,6 +552,7 @@ const continuedAfterEventFailure = await processDeathmarchEvents({
   env: {
     AMBIENT_API_KEY: "test",
     AMBIENT_BASE_URL: "https://ambient.invalid",
+    INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {

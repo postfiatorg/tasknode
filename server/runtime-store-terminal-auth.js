@@ -70,7 +70,7 @@ export function createRuntimeTerminalAuthStore({
     return changed;
   }
 
-  function createTerminalAuthRequest({ provider = "github", origin = "", userAgent = "", ip = "", pollToken = "", oauth = null } = {}) {
+  function createTerminalAuthRequest({ provider = "github", origin = "", userAgent = "", ip = "", pollToken = "", oauth = null, device = null, userCode: presetUserCode = "" } = {}) {
     pruneExpiredTerminalAuthRequests({ save: false });
     const normalizedProvider = String(provider || "").trim().toLowerCase() || "github";
     const now = new Date();
@@ -81,12 +81,13 @@ export function createRuntimeTerminalAuthStore({
       id: requestId,
       provider: normalizedProvider,
       status: "pending",
-      userCode: userCode(),
+      userCode: presetUserCode || userCode(),
       origin: String(origin || "").slice(0, 500),
       userAgent: String(userAgent || "").slice(0, 500),
       ip: String(ip || "").slice(0, 120),
       pollTokenHash: tokenHash(pollToken),
       ...(oauth ? { oauth } : {}),
+      ...(device ? { device } : {}),
       createdAt: now.toISOString(),
       expiresAt,
     };
@@ -141,7 +142,7 @@ export function createRuntimeTerminalAuthStore({
     };
   }
 
-  function createTerminalSession({ accountId = "", provider = "github" } = {}) {
+  function createTerminalSession({ accountId = "", provider = "github", deviceLabel = "", clientName = "", ip = "" } = {}) {
     const normalizedAccountId = String(accountId || "").trim();
     const normalizedProvider = String(provider || "").trim().toLowerCase();
     const linkedProvider = getLinkedProviderForAccount({ accountId: normalizedAccountId, provider: normalizedProvider });
@@ -159,6 +160,10 @@ export function createRuntimeTerminalAuthStore({
       scopes: ["tasknode:read", "tasknode:tasks:write", "tasknode:balance:read"],
       createdAt: now.toISOString(),
       expiresAt: null,
+      deviceLabel,
+      clientName,
+      lastUsedAt: now.toISOString(),
+      lastIp: ip,
     };
     saveState();
     return { ok: true, token, session: terminalSessionPayload(state.terminalSessions[sessionId]) };
@@ -191,21 +196,86 @@ export function createRuntimeTerminalAuthStore({
       saveState();
       return { ok: false, status: 409, error: "terminal_auth_invalid_state" };
     }
-    const issued = createTerminalSession({ accountId: request.accountId, provider: request.provider });
+    const issued = createTerminalSession({
+      accountId: request.accountId,
+      provider: request.provider,
+      deviceLabel: deviceLabelFor(request.device, request),
+      clientName: String(request.device?.clientName || (request.oauth ? "oauth" : "")),
+      ip: String(request.device?.ip || request.ip || ""),
+    });
     delete state.terminalAuthRequests[normalizedRequestId];
     saveState();
     if (!issued.ok) return { ok: false, status: 409, error: issued.error };
     return { ok: true, status: 200, terminalToken: issued.token, session: issued.session };
   }
 
-  function getTerminalSessionByToken(token = "") {
+  function getTerminalSessionByToken(token = "", { ip = "" } = {}) {
     const hash = tokenHash(token);
     if (!hash) return null;
     pruneExpiredTerminalSessions();
     const session = Object.values(state.terminalSessions || {})
       .find((item) => item?.tokenHash && timingSafeEqual(Buffer.from(item.tokenHash), Buffer.from(hash)));
     if (!session || !accountHasLinkedProvider({ accountId: session.accountId, provider: session.provider })) return null;
+    session.lastUsedAt = new Date().toISOString();
+    if (ip) session.lastIp = String(ip).slice(0, 120);
     return terminalSessionPayload(session);
+  }
+
+  function deviceLabelFor(device = null, request = {}) {
+    const clients = Array.isArray(device?.agents) && device.agents.length ? device.agents.join(", ") : String(device?.clientName || "");
+    const host = String(device?.deviceName || "").trim();
+    if (clients && host) return `${clients} on ${host}`.slice(0, 160);
+    if (clients || host) return (clients || host).slice(0, 160);
+    return request?.oauth ? "Browser sign-in" : "Agent token";
+  }
+
+  function pendingDeviceRequest(userCode = "") {
+    pruneExpiredTerminalAuthRequests({ save: false });
+    return Object.values(state.terminalAuthRequests || {})
+      .find((request) => request?.device && request.userCode === String(userCode || "").trim().toUpperCase()) || null;
+  }
+
+  function getRuntimeDeviceAuthRequest({ userCode = "" } = {}) {
+    const request = pendingDeviceRequest(userCode);
+    if (!request) return null;
+    return {
+      userCode: request.userCode, status: request.status, error: request.error || "", accountId: request.accountId || "",
+      device: request.device, ip: request.ip || "", expiresAt: request.expiresAt,
+    };
+  }
+
+  function decideRuntimeDeviceAuthRequest({ userCode = "", accountId = "", approve = false } = {}) {
+    const request = pendingDeviceRequest(userCode);
+    if (!request) return { ok: false, error: "device_code_not_found" };
+    if (request.status !== "pending") return { ok: false, error: "device_code_already_used" };
+    if (!approve) {
+      Object.assign(request, { status: "failed", error: "access_denied", completedAt: new Date().toISOString() });
+      saveState();
+      return { ok: true, approved: false };
+    }
+    if (!accountId || !accountHasLinkedProvider({ accountId, provider: "github" })) return { ok: false, error: "github_not_linked" };
+    Object.assign(request, { status: "linked", accountId, provider: "github", completedAt: new Date().toISOString() });
+    saveState();
+    return { ok: true, approved: true };
+  }
+
+  function listRuntimeAgentDevices({ accountId = "" } = {}) {
+    pruneExpiredTerminalSessions({ save: false });
+    return Object.values(state.terminalSessions || {})
+      .filter((session) => session?.accountId === accountId && !session.revokedAt)
+      .sort((left, right) => String(right.lastUsedAt || right.createdAt).localeCompare(String(left.lastUsedAt || left.createdAt)))
+      .map((session) => ({
+        sessionId: session.id, label: session.deviceLabel || "Earlier agent token", clientName: session.clientName || "",
+        github: session.providerUsername || "", createdAt: session.createdAt, lastUsedAt: session.lastUsedAt || null, lastIp: session.lastIp || "",
+      }));
+  }
+
+  function revokeRuntimeAgentDevice({ accountId = "", sessionId = "" } = {}) {
+    const session = state.terminalSessions?.[sessionId];
+    if (!session || session.accountId !== accountId) return 0;
+    delete state.terminalSessions[sessionId];
+    saveState();
+    return 1;
   }
 
   // Revokes one token, or every token of an account ("sign out all agents").
@@ -226,6 +296,10 @@ export function createRuntimeTerminalAuthStore({
   }
 
   return {
+    decideRuntimeDeviceAuthRequest,
+    getRuntimeDeviceAuthRequest,
+    listRuntimeAgentDevices,
+    revokeRuntimeAgentDevice,
     completeTerminalAuthRequest,
     consumeTerminalAuthRequestSession,
     createTerminalAuthRequest,

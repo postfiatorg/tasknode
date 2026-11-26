@@ -22,10 +22,18 @@ kill_timeout = "45s"
   worker-airdrop = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
   worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
 
+  worker-validator-research = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:validator-research node server/worker-entry.js"
+
 [env]
   PORT = "8080"
   NODE_ENV = "production"
   TASKNODE_ENV = "production"
+  # Enable only after the authenticated relay and public-origin checks pass.
+  TASKNODE_L1_ENABLED = "true"
+  # Current-chain rollout: no live validator reward policy changes.
+  TASKNODE_L1_UPTIME_REWARDS_ENABLED = "false"
+  # Founder 2026-11-10: reconcile these scoring debts; do not pay them.
+  TASKNODE_DAILY_AIRDROP_HELD_RUN_IDS = "airdrop_7aa79a7c-93ed-438a-bcc3-4028d7933ba2,airdrop_26733f62-033e-4441-a8bc-3c5565e3f2c8,airdrop_787b6820-3031-47b6-aed9-b5ad2cb99466,airdrop_09f6b2a2-ce25-4d8d-82de-3ff5bf340180"
   TASKNODE_DEV_AUTH_ENABLED = "false"
   TASKNODE_DATABASE_ENABLED = "true"
   TASKNODE_MIGRATIONS = "release"
@@ -84,24 +92,25 @@ kill_timeout = "45s"
   TASKNODE_NETWORK_TASK_GENERATION_WORKER_INTERVAL_MS = "5000"
   TASKNODE_NETWORK_TASK_GENERATION_WORKER_BATCH_LIMIT = "1"
   TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "true"
-  TASKNODE_HIVE_TASK_GENERATION_MODEL = "zai/glm-5.3"
-  TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT = "xhigh"
+  TASKNODE_HIVE_TASK_GENERATION_MODEL = "moonshotai/kimi-k3.1-pro"
+  TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT = "high"
   TASKNODE_HIVE_SECRETARY_PROVIDER = "vercel"
-  TASKNODE_HIVE_SECRETARY_MODEL = "zai/glm-5.3"
+  TASKNODE_HIVE_SECRETARY_MODEL = "deepseek/deepseek-v4.1-flash-1017"
   TASKNODE_HIVE_SECRETARY_REASONING_EFFORT = "high"
   # Operator authority allowlists (Hive brain, report rerun, harvest resolver)
   # are Fly secrets. Public role lists below are reviewed in code review.
   TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "0xpostfiat,0xpostfiatchad,corbanuai,dravlic,goodalexander,iridiummaster,jimricketts,pleometric,postfiat-agent,secondfmaster"
   TASKNODE_PROJECT_LEADER_HIVE_HANDLES = "zoz,donravle,georgl0nggamma,jollydinger,nydiokar,hitori,wizbubba,diamond-hand-honcho,goodalexander"
   TASKNODE_JOBS_CORPUS_URL = "https://gist.githubusercontent.com/goodalexander/3246640dcf10db350fbae9fab8e6a473/raw/bd144a47532fbcba8dd4e8a6f81b605a034c4d16/jobs.md"
+  TASKNODE_JOBS_RETRIEVAL_EMBEDDING_PROVIDER = "gateway"
   TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true"
   TASKNODE_TASK_REVIEW_AGENT_DECISIONS = "true"
   DATABASE_STATEMENT_TIMEOUT_MS = "10000"
   TASKNODE_BM_NARRATOR_ENABLED = "true"
-  TASKNODE_BM_NARRATOR_MODEL = "deepseek/deepseek-v4-flash-0731"
+  TASKNODE_BM_NARRATOR_MODEL = "deepseek/deepseek-v4.1-flash-1017"
   TASKNODE_BM_NARRATOR_INTERVAL_MS = "180000"
   TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS = "5000"
-  TASKNODE_TASK_REVIEW_WORKER_BATCH_LIMIT = "1"
+  TASKNODE_TASK_REVIEW_WORKER_BATCH_LIMIT = "3"
   TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS = "900"
   TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true"
   TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE = "production"
@@ -118,7 +127,8 @@ kill_timeout = "45s"
   TASKNODE_PROFILE_NFT_RENDER_CONCURRENCY = "3"
   PFT_BALANCE_CACHE_TTL_MS = "15000"
   PFT_BALANCE_TIMEOUT_MS = "8000"
-  APP_STATE_CACHE_TTL_MS = "15000"
+  # 15s left almost nothing cached while app-state recomputation was slow.
+  APP_STATE_CACHE_TTL_MS = "30000"
   VITE_ANALYTICS_ENABLED = "true"
   VITE_ANALYTICS_DEBUG = "false"
   VITE_POSTHOG_HOST = "https://traffic.postfiat.org"
@@ -127,14 +137,17 @@ kill_timeout = "45s"
 
 [[restart]]
   policy = "always"
-  processes = ["app", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer"]
+  processes = ["app", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer", "worker-validator-research"]
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 1
+  # Two web machines stay up so one crash or deploy never takes Task Node down
+  # (2026-11-04 01:32 UTC outage: the only web machine aborted). Background work
+  # lives in the worker groups; web state is Postgres-authoritative.
+  min_machines_running = 2
   processes = ["app"]
 
   [http_service.http_options]

@@ -237,33 +237,102 @@
   gap: 16px;
 }
 
-.task-section li span {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
+.task-section li > span {
   flex: 0 0 auto;
-  border: 0.5px solid var(--tn-dark-border, #d8d3c3);
-  border-radius: 999px;
-  background: transparent;
+  min-width: 16px;
   color: var(--tn-dark-muted, #8e8b81);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.65;
+  text-align: right;
 }
 
-.task-section li p {
-  padding-top: 2px;
-}
-
-.task-section strong {
+.task-section > strong {
   display: block;
   color: var(--tn-dark-text, #0d0d0d);
   font-size: 14px;
   font-weight: 600;
 }
 
-.task-section strong + p {
+.task-section > strong + p,
+.task-section > strong + .task-rich-text {
   margin-top: 6px;
+}
+
+.task-rich-text p + p,
+.task-rich-text p + ul,
+.task-rich-text p + ol,
+.task-rich-text ul + p,
+.task-rich-text ol + p {
+  margin-top: 10px;
+}
+
+.task-rich-text .task-rich-lead {
+  color: var(--tn-dark-text, #0d0d0d);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.task-rich-text .task-rich-lead + p {
+  margin-top: 12px;
+}
+
+.task-rich-text a {
+  color: var(--tn-dark-link, #315bb5);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.task-rich-text code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.05));
+  font-size: 12.5px;
+}
+
+.task-rich-text ul,
+.task-rich-text ol {
+  display: block;
+  margin: 0;
+  padding-left: 20px;
+  list-style: revert;
+}
+
+.task-rich-text li {
+  display: list-item;
+  color: var(--tn-dark-secondary, #3a3936);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.task-rich-text .task-rich-heading {
+  margin: 14px 0 4px;
+  color: var(--tn-dark-text, #0d0d0d);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.task-rich-terms {
+  margin-top: 16px;
+  padding: 10px 14px 12px;
+  border-left: 2px solid var(--tn-dark-warning, #805600);
+  background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.025));
+}
+
+.task-rich-terms > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--tn-dark-muted, #6e6b62);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-rich-terms p + p {
+  margin-top: 4px;
 }
 
 .task-proof-summary {

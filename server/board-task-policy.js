@@ -1,3 +1,5 @@
+import { boardOpenForNewWork, boardWorkPolicy } from "./board-work-policy.js";
+
 const dayMs = 24 * 60 * 60 * 1000;
 
 // Existing manager policy, shared by scheduling and guarded cancellation.
@@ -33,20 +35,78 @@ export function boardRoutingCandidates(board, contributors) {
     (!handles.length || handles.includes(String(member.public_handle || "").toLowerCase())));
 }
 
-export function routingDuty(board, contributors, openCount) {
-  // Boards whose tasks are issued by an operator tool (value accountability)
-  // never receive routed work.
+// Work comes from the Wanted list (operator decision, 2026-11-25).
+//
+// Every open item on an open board is a duty: hand it to the best-fit
+// contributor with a free slot, or record why it cannot be routed. "Nothing to
+// do" is not an answer while the list has open items. The item's preferred
+// owner, when set, is offered first. An item refused twice must be rewritten
+// or dropped before it is offered again.
+// Slots an account must keep free for open items that name it as preferred
+// owner, so ordinary items cannot fill them first (2026-11-25: the founder's
+// four slots went to ordinary items and his governance items found no slot).
+export function reservedPreferredSlots(items = []) {
+  const reserved = {};
+  for (const item of items) {
+    if (item.state === "open" && item.preferredAccountId) reserved[item.preferredAccountId] = (reserved[item.preferredAccountId] || 0) + 1;
+  }
+  return reserved;
+}
+
+export async function wantedDuties(board, contributors, { queryImpl, listItems, reserved = {} } = {}) {
+  if (!board) return [];
   const constraints = board.metadata_json?.routing_constraints || board.routing_constraints || {};
-  if (constraints.routing_disabled === true) return null;
+  if (constraints.routing_disabled === true || !boardOpenForNewWork(board.id)) return [];
+  const list = listItems || (await import("./board-wanted.js")).listWantedItems;
+  const items = await list([board.id], queryImpl ? { queryImpl } : {});
   const candidates = boardRoutingCandidates(board, contributors);
-  if (!candidates.length) return null;
-  return {
-    priority: 4,
-    type: "routing_due",
-    board_id: board.id,
-    candidate_ids: candidates.map((member) => member.account_id).sort(),
-    candidates,
-    open_count: openCount,
-    detail: `${candidates.length} eligible contributor(s) have free capacity. This board has ${openCount} proposed or accepted tasks; there is no fixed three-task board ceiling. Review the listed contributors and route grounded, badge-matched work using the board sources. Check current per-account capacity, board assignment restrictions, and reward budgets before each assignment. If a contributor cannot be served, record the specific reason; do not report quiet while eligible contributors remain. Candidates: ${candidates.map((member) => `${member.account_id} @${member.public_handle || "unknown"} badges=${member.badges.join("/")} free_slots=${member.free_slots} wallet=${member.delivery_wallet}`).join("; ")}.`,
-  };
+  const scope = boardWorkPolicy(board.id)?.workTypes || [];
+  const duties = [];
+  for (const item of items) {
+    if (item.state === "rewrite") {
+      duties.push({
+        priority: 3,
+        type: "wanted_rewrite",
+        board_id: board.id,
+        wanted_id: item.id,
+        detail: `Wanted item ${item.id} "${item.title}" was refused or cancelled ${item.refusals} times. Work out why from the refusals, then rewrite it (bm wanted edit ${item.id} --title/--why/--source/--reward) or drop it (bm wanted drop ${item.id} --reason "..."). Completed when it is rewritten or dropped.`,
+      });
+      continue;
+    }
+    if (item.state !== "open") continue;
+    const preferred = item.preferredAccountId ? candidates.find((member) => member.account_id === item.preferredAccountId) : null;
+    // Anyone else is offered this item only with a slot beyond those reserved
+    // for their own preferred items.
+    const others = candidates.filter((member) => member !== preferred &&
+      Number(member.free_slots || 0) - Number(reserved[member.account_id] || 0) > 0);
+    const ordered = preferred ? [preferred, ...others] : others;
+    if (!ordered.length) continue;
+    duties.push({
+      priority: 2,
+      type: "wanted_open",
+      board_id: board.id,
+      wanted_id: item.id,
+      item_updated_at: item.updatedAt || "",
+      candidate_ids: ordered.map((member) => member.account_id),
+      candidates: ordered.map((member) => ({
+        account_id: member.account_id,
+        public_handle: member.public_handle || "",
+        badges: member.badges || [],
+        delivery_wallet: member.delivery_wallet || "",
+        rewarded_tasks: member.rewarded_tasks || 0,
+        free_slots: member.free_slots,
+      })),
+      detail: [
+        `Wanted item ${item.id}: "${item.title}". Why: ${item.why} Source: ${item.sourceUrl}.`,
+        preferred
+          ? `Preferred owner: ${preferred.public_handle || preferred.account_id} (${preferred.account_id}, wallet ${preferred.delivery_wallet}). Give it to them.`
+          : item.preferredAccountId
+            ? `Its preferred owner ${item.preferredAccountId} has no free slot this round; pick the best other fit.`
+            : `Pick the one contributor whose badges and track record fit it best.`,
+        `Create its task: bm task create ${board.id} --wanted ${item.id} --account <id> --wallet <wallet> --need "<one or two plain sentences on what to do and the exact proof>"${item.workType ? ` --work-type ${item.workType}` : scope.length ? ` --work-type <one of ${scope.join(", ")}>` : ""}${item.rewardPft ? ` --reward-max ${item.rewardPft}` : ""} --execute.`,
+        `Record completed once the task is created. If it truly cannot be routed now, record blocked with the specific reason. Deferring is not allowed.`,
+      ].join(" "),
+    });
+  }
+  return duties;
 }

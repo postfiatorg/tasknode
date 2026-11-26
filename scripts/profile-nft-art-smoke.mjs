@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createProfileNftArtSpec, renderProfileNftArtPrompt, validateProfileNftArtSpec, privateProfileNftCompletion } from "../server/profile-nft-art-spec.js";
+import { createProfileNftArtSpec, profileNftCompletionTimeoutMs, renderProfileNftArtPrompt, validateProfileNftArtSpec, privateProfileNftCompletion } from "../server/profile-nft-art-spec.js";
 import { renderProfileNftImage } from "../server/profile-nft-image-provider.js";
 import { reviewRenderedProfileNftImage } from "../server/profile-nft-image-review.js";
 import { classifyProfileNftGenerationFailure } from "../server/profile-nft-failures.js";
@@ -9,14 +9,14 @@ import { generateProfileNftTitle, validateProfileNftTitle } from "../server/prof
 
 const spec = JSON.parse(await readFile(new URL("./profile-nft-art-fixture.json", import.meta.url)));
 const sourcePacket = { tasks: [{ ref: "work_1", title: "Delivered SecretProjectZephyr9081726354", description: "Private completion evidence" }], metrics: { completed_tasks: 3 } };
-const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture-vercel", AMBIENT_API_KEY: "fixture-ambient", INFERENCE_MODEL_STRUCTURED: "zai/glm-5.3", INFERENCE_MODEL_VISION: "zai/glm-5.3-flash" };
+const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture-vercel", AMBIENT_API_KEY: "fixture-ambient", INFERENCE_MODEL_STRUCTURED: "deepseek/deepseek-v4.1-flash-1017", INFERENCE_MODEL_VISION: "deepseek/deepseek-v4.1-flash-1017" };
 let calls = 0;
 const respond = (content) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
 const fetchImpl = async (url, init) => {
   calls++;
   assert.ok(url.startsWith("https://ai-gateway.vercel.sh/"));
   const request = JSON.parse(init.body);
-  assert.equal(request.model, "moonshotai/kimi-k3");
+  assert.equal(request.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(request.max_tokens, 32768);
   assert.equal(request.providerOptions.gateway.zeroDataRetention, true);
   assert.ok(JSON.stringify(request.messages).includes(sourcePacket.tasks[0].title));
@@ -46,6 +46,11 @@ let failoverCalls = 0;
 await assert.rejects(privateProfileNftCompletion({ env, body: { messages: [{ role: "user", content: "fixture" }] }, fetchImpl: async () => { failoverCalls++; return new Response("{}", { status: 503 }); } }));
 assert.equal(failoverCalls, 1, "ZDR failures must never call Ambient");
 assert.throws(() => privateProfileNftCompletion({ env: { AMBIENT_API_KEY: "fixture" }, body: {} }), { message: "profile_nft_zdr_not_configured" });
+// K3.1 Pro spec calls run past four minutes; the deadline defaults to ten and stays bounded.
+assert.equal(profileNftCompletionTimeoutMs({}), 600_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "1000" }), 60_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "5000000" }), 900_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "nope" }), 600_000);
 let imageRequests = 0;
 await renderProfileNftImage({ prompt: prepared.prompt, size: "1024x1024", quality: "high", outputFormat: "png", env: { PROFILE_NFT_OPENAI_API_KEY: "fixture-image" }, fetchImpl: async (url, init) => {
   imageRequests++;
@@ -61,7 +66,7 @@ let namedReviewCalls = 0;
 const reviewedImage = await reviewRenderedProfileNftImage({ imageBase64: "fixture", env, fetchImpl: async (_url, init) => {
   namedReviewCalls++;
   const body = JSON.parse(init.body);
-  assert.equal(body.model, "moonshotai/kimi-k3");
+  assert.equal(body.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(body.providerOptions.gateway.zeroDataRetention, true);
   assert.ok(body.response_format.json_schema.schema.required.includes("title"));
   return respond({ approved: true, privacy_violations: [], art_direction_violations: [], title: "The Folded Circuit" });
@@ -76,7 +81,7 @@ for (const title of [undefined, "", "ab", "x".repeat(81), "Profile Pic NFT", "Ta
 }
 const legacyTitle = await generateProfileNftTitle({ artSpec: { ...prepared.artSpec, accountId: "private_account", evidence_refs: ["work_private"], private_source: "private source" }, env, fetchImpl: async (_url, init) => {
   const body = JSON.parse(init.body);
-  assert.equal(body.model, "moonshotai/kimi-k3");
+  assert.equal(body.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(body.providerOptions.gateway.zeroDataRetention, true);
   for (const privateValue of ["private_account", "work_private", "private source"]) assert.equal(init.body.includes(privateValue), false);
   return respond({ title: "Keeper of the Bent Wing" });

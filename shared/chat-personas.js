@@ -21,6 +21,11 @@ export const CHAT_PERSONAS = Object.freeze([
     name: "Kravis",
     tagline: "Downside-first private equity discipline.",
   }),
+  Object.freeze({
+    id: "basedgpt",
+    name: "BasedGPT",
+    tagline: "Blunt counsel that tells you what you need to hear.",
+  }),
 ]);
 
 export const CHAT_MODALITIES = Object.freeze([
@@ -85,6 +90,7 @@ export function normalizeChatPersona(value = "", { fallback = DEFAULT_CHAT_PERSO
   if (normalized === "coach") return "trading-coach";
   if (normalized === "steve-jobs" || normalized === "steve_jobs") return "jobs";
   if (normalized === "henry-kravis" || normalized === "henry_kravis") return "kravis";
+  if (normalized === "based-gpt" || normalized === "based_gpt") return "basedgpt";
   if (normalized === "brainstorm") return "brainstorming";
   if (normalized === "five_mirrors") return "five-mirrors";
   if (normalized === "i_ching") return "i-ching";

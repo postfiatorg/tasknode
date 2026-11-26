@@ -257,15 +257,6 @@
     grid-template-columns: 1fr;
   }
 
-  .eth-topup-asset {
-    grid-template-columns: 38px minmax(0, 1fr);
-  }
-
-  .eth-topup-asset em {
-    grid-column: 2 / 3;
-    justify-self: start;
-  }
-
   .wallet-tx-row {
     align-items: flex-start;
   }
@@ -505,11 +496,11 @@
 
   .nav-list button small {
     min-width: 20px;
-    padding: 3px 9px;
-    background: var(--tn-dark-inverse-surface, #0d0d0d);
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
+    padding: 0 2px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: right;
   }
 
   .nav-list button small.nav-live-state {
@@ -529,15 +520,14 @@
   }
 
   .nav-list button small.nav-vault-state,
-  .balance-vault-state,
-  .telegram-menu-status.linked {
+  .balance-vault-state {
     border-color: var(--tn-dark-control-border, #0e7a43);
     background: transparent;
     color: var(--tn-dark-success, #0e7a43);
   }
 
   .nav-list button small.nav-vault-state {
-    padding: 3px 9px;
+    padding: 0 2px;
     font-size: 12.5px;
   }
 
@@ -693,28 +683,6 @@
   .profile-menu-header {
     min-height: 54px;
     padding: 10px 12px;
-  }
-
-  .profile-session-state {
-    margin: 4px 14px 10px;
-    color: var(--tn-dark-success, #0e7a43);
-    font-size: 14.5px;
-    font-weight: 600;
-  }
-
-  .telegram-menu-row {
-    min-height: 52px;
-    padding: 9px 12px;
-    border-radius: 14px;
-  }
-
-  .telegram-menu-copy strong {
-    font-size: 15.5px;
-    font-weight: 600;
-  }
-
-  .telegram-menu-copy small {
-    font-size: 13px;
   }
 
   .topbar {

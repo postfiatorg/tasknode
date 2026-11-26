@@ -1,31 +1,32 @@
 # AI Providers
 
-Task Node routes model inference through **Vercel AI Gateway first**, with
-**Ambient as backup**. Thinking and existing GLM workers use GLM 5.3; Instant
-and Team Context use GLM 5.3 Flash. The model layer is shared by chat, Docs
+Task Node routes all model inference through **Vercel AI Gateway**. The default
+model is DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`): Instant runs it
+with reasoning off, Thinking with `xhigh` reasoning, and the former GLM workers use
+it for structured work and research. Task generation uses Kimi K3.1 Pro. GLM 5.3
+was deprecated as the default on 2026-11-09; its model IDs resolve to DeepSeek V4.1
+Flash. The model layer is shared by chat, Docs
 assistants, context, memory, tasks, Hive, profiles, and operator scripts.
+
+Ambient was deprecated on 2026-10-27. Nothing falls back to it; the route remains
+in code only behind `INFERENCE_AMBIENT_BACKUP_ENABLED=true` for an emergency
+re-enable, and historical completions keep their recorded `ambient` provider.
 
 ## Models
 
-| Workload | Vercel primary | Ambient backup |
-| --- | --- | --- |
-| Instant, Team Context | `zai/glm-5.3-flash` | `z-ai/glm-5.2` |
-| Thinking, structured tasks, research, GLM workers | `zai/glm-5.3` | `z-ai/glm-5.2` |
-| Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` | `z-ai/glm-5.2` |
-| Evidence images | `moonshotai/kimi-k2.7-code` | `google/gemma-4-26b-a4b-it` |
+| Workload | Model on Vercel AI Gateway |
+| --- | --- |
+| Instant (reasoning off), Team Context | `deepseek/deepseek-v4.1-flash-1017` |
+| Thinking (`xhigh`), structured work, research, former GLM workers | `deepseek/deepseek-v4.1-flash-1017` |
+| Task generation (personal and network) | `moonshotai/kimi-k3.1-pro`, `high` effort |
+| Task readiness review | `deepseek/deepseek-v4.1-flash-1017` |
+| Help, memory, short narration | `deepseek/deepseek-v4.1-flash-1017` |
+| Evidence images | `moonshotai/kimi-k2.7-code` |
 
-GLM 5.3 Flash accepts text and images and produces text. It does not generate
-images. Instant can retain Flash for image input; text-only models switch to the
-vision model when images are present. Files are extracted locally with byte,
+DeepSeek V4.1 Flash accepts text and images and produces text. It does not
+generate images. Instant and Thinking keep it for image input; text-only models
+switch to the vision model when images are present. Files are extracted locally with byte,
 page, archive-entry, and expansion limits before inference.
-
-The [Ambient catalogue](https://api.ambient.xyz/v1/models), checked September 5,
-2026, lists GLM 5.2 as ready and does not list GLM 5.3, Flash, DeepSeek, or Kimi.
-Its vision entries, including Gemma 4, are not currently marked ready. Text
-failover therefore changes the model version; vision backup availability is
-limited by Ambient capacity. Failed vision analysis remains an error and never
-becomes a zero task score. Actual provider and returned model are recorded on
-completed work so a backup answer is identifiable.
 
 ## Shared Routing
 
@@ -35,38 +36,53 @@ usage helpers beside it. Feature modules use this boundary. The legacy
 also dispatch through it. Old function names are compatibility names, not
 provider selectors.
 
-Vercel is tried first when its key is configured. An enabled, configured Ambient
-backup is tried after authentication, quota, rate-limit, model-unavailable,
-network, timeout, or upstream server failures. Each provider has a bounded
-attempt deadline covering headers and body reads. Invalid input, rejected
-schemas, truncated output, and caller cancellation do not trigger failover.
-Streaming may fail over only before the first visible text delta; it never
-replays a partially delivered answer against the backup.
+Each request has a bounded attempt deadline covering headers and body reads.
+A stream that produced no first byte is retried once. Invalid input, rejected
+schemas, truncated output, and caller cancellation are returned as errors.
+A configured key is not proof of successful authentication or available model
+capacity.
 
-With only an Ambient key, inference runs in backup-only mode. Status exposes
-primary and backup configuration separately. A configured key is not proof of
-successful authentication or available model capacity.
+## Gateway Credits And Task Generation
+
+The gateway answers `402` when the team balance or a budget is exhausted
+(2026-11-06 incident: every task request failed for ~6.5 hours). Task Node now:
+
+- reports each task-generation credential's balance from `GET /v1/credits` in
+  `/api/readiness` under `llm.gatewayCredits` (cached, bounded wait, never the
+  key itself), with `lowBalance` and a `llm.warnings` entry below
+  `TASKNODE_GATEWAY_CREDIT_LOW_BALANCE_USD` (default 25);
+- shows users "task generation is temporarily unavailable" instead of the raw
+  `inference_http_402`, which stays in `task_requests.last_error` and logs;
+- parks 402-failed task requests and network generation jobs instead of failing
+  them, stops sending task generation to the provider while the balance is $0,
+  re-checks the balance on a backoff, and releases everything parked as soon as
+  credits return. Requests that failed with a 402 within
+  `TASKNODE_TASKGEN_CREDIT_REQUEUE_LOOKBACK_HOURS` (default 72) are re-queued
+  once. Parked work fails after `TASKNODE_TASKGEN_CREDIT_WAIT_MAX_HOURS`
+  (default 48);
+- records each task-generation completion against the account it served as a
+  zero-amount `taskgen_inference` billing ledger entry carrying provider, model,
+  tokens and the gateway-reported cost. Users are not debited and the entries
+  are omitted from the user billing ledger.
+
+Fallback providers for task generation are a separate, unshipped proposal:
+[taskgen-fallback-provider.md](../../proposals/taskgen-fallback-provider.md).
 
 ## Configuration
 
-- `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures primary inference.
+- `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures inference. `VERCEL_KIMI_API_KEY` and `VERCEL_ASTRA_API_KEY` are dedicated keys for those models.
 - `VERCEL_AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
-- `AMBIENT_API_KEY` configures backup inference.
-- `AMBIENT_BASE_URL` defaults to `https://api.ambient.xyz/v1`.
-- `INFERENCE_AMBIENT_BACKUP_ENABLED=false` disables backup; it is enabled by default.
 - `INFERENCE_CHAT_ENABLED=false` disables chat inference.
 - Capability overrides: `INFERENCE_MODEL_INSTANT`, `INFERENCE_MODEL_FAST_TEXT`, `INFERENCE_MODEL_REASONING`, `INFERENCE_MODEL_STRUCTURED`, `INFERENCE_MODEL_RESEARCH`, and `INFERENCE_MODEL_VISION`.
-- Backup overrides: `AMBIENT_BACKUP_MODEL_INSTANT`, `AMBIENT_BACKUP_MODEL_FAST_TEXT`, `AMBIENT_BACKUP_MODEL_REASONING`, and `AMBIENT_BACKUP_MODEL_VISION`.
+- Task generation: `TASKNODE_TASKGEN_MODEL` and `TASKNODE_NETWORK_TASKGEN_MODEL` (default Kimi K3.1 Pro), `TASKNODE_TASKGEN_REASONING_EFFORT` and `TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT`.
+- Deprecated: `AMBIENT_API_KEY`, `AMBIENT_BASE_URL` and `AMBIENT_BACKUP_MODEL_*` take effect only with `INFERENCE_AMBIENT_BACKUP_ENABLED=true`; `AMBIENT_MODEL_*` aliases are no longer read.
 
-Existing `AMBIENT_MODEL_*` capability overrides remain lower-priority aliases.
-Known GLM 5.2 pins resolve to GLM 5.3 on the primary route. Unknown primary model
-IDs are rejected; add a reviewed registry entry before introducing a new model.
-Model configuration never selects a different provider order.
+Known GLM 5.2 and GLM 5.3 pins resolve to DeepSeek V4.1 Flash. Unknown model IDs are rejected; add a
+reviewed registry entry before introducing a new model.
 
 ## Search, Usage, And Persistence
 
-Context Rewrite uses Vercel's server-executed search tools. Ambient backup uses
-its bounded `/tools` protocol. Search counts and provider costs come from
+Context Rewrite uses Vercel's server-executed search tools. Search counts and provider costs come from
 provider metadata when reported; missing wholesale costs remain unknown.
 The [Vercel model catalogue](https://ai-gateway.vercel.sh/v1/models) supplies live
 pricing and capability information with a short cache and last-known-good data.
@@ -93,7 +109,7 @@ Retrieval retains local `deterministic-bag-of-words-v1` embeddings at 1536
 dimensions; existing vectors remain compatible. Corbanu research and the
 independent Kimi board terminal runtime retain their own service contracts.
 
-Profile NFT preparation and image review are pinned to `moonshotai/kimi-k3` on Vercel with `providerOptions.gateway.zeroDataRetention=true`, using the account's existing ZDR setup. Ambient fallback is prohibited for this pipeline, even when Vercel is unavailable. Kimi reads bounded canonical task history and produces an independently reviewed anonymous Techno Mordor art spec. Only that anonymous spec reaches the isolated `gpt-image-2.5-sunburst` OpenAI Images renderer; raw history, evidence refs and account identity do not. `PROFILE_NFT_OPENAI_API_KEY` belongs only to the renderer. The separate OpenAI account's retention controls are independent of Vercel ZDR. See [Profile](../surfaces/profile.md#techno-mordor-art-and-privacy).
+Profile NFT preparation and image review are pinned to `moonshotai/kimi-k3.1-pro` on Vercel with `providerOptions.gateway.zeroDataRetention=true`, using the account's existing ZDR setup. Ambient fallback is prohibited for this pipeline, even when Vercel is unavailable. Kimi reads bounded canonical task history and produces an independently reviewed anonymous Techno Mordor art spec. Only that anonymous spec reaches the isolated `gpt-image-2.5-sunburst` OpenAI Images renderer; raw history, evidence refs and account identity do not. `PROFILE_NFT_OPENAI_API_KEY` belongs only to the renderer. The separate OpenAI account's retention controls are independent of Vercel ZDR. See [Profile](../surfaces/profile.md#techno-mordor-art-and-privacy).
 
 ## Verification
 

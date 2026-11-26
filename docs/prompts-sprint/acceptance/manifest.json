@@ -1,0 +1,23 @@
+{
+  "round": 3,
+  "acceptanceRun": "artifacts/prompts/acceptance-1794434252107",
+  "environment": "Synthetic local Task Node Node 24 / Postgres + PFDocs recovered production source",
+  "pfdocsBase": "79f8a2a98c124db88600cdc405c0707a041cc42e",
+  "migrations": [
+    "160_prompt_documents.sql",
+    "161_prompt_devices.sql",
+    "162_prompt_history_erasure.sql"
+  ],
+  "tihExecution": false,
+  "files": {
+    "acceptance.jsonl": "7cbbb21c2b083fb36bafc35e5e5d2f23fa7ae6251389963d92d3e78b3d9a0e03",
+    "history-rows.json": "d3c9cbb71a9d12eec367f068f18970c16aad09368f98b2bf99cfe84de20aef33",
+    "prompts-library.png": "340236896c3b8364ab006adcdae80085df1063bef4f970a06ac2e6790576e7b5",
+    "prompt-editor.png": "ee41c76d585f0f1ebe76da1a9ec8c28f3f7af1e3fb4c55147cd4088f9d51ec2b",
+    "agent-edit-visible.png": "28c1c99eef3456c5eb4a8ff14b196833a4fb835c832094bfac5ec49fbf573758",
+    "version-timeline.png": "3599dc3bb6fbf6486c73daadffab8e2f2674714e2d3c15fb78e6c3771727fb9f",
+    "device-approval.png": "f95b2a1cabafe099b73b12d4782e02367096ef9e3172d2b153e6b96bf701799f",
+    "checks.json": "777dd555dc3f03c23732b352efcccc96ac37b3d219574a6aab2d2c9c814bb089",
+    "checks.log": "e19305be9746264091b9ec1b4e9312b5bd1283446d96b2f242e49546a19acfe6"
+  }
+}

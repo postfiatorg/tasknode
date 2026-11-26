@@ -4,7 +4,7 @@ import {
   chatModePrices,
 } from "./chat-router.js";
 import { inferenceModels } from "./inference.js";
-import { providerBaseUrl } from "./inference-policy.js";
+import { ambientBackupEnabled, providerBaseUrl } from "./inference-policy.js";
 import { databaseEnabled, query } from "./db/pool.js";
 
 const inferenceModelsUrl = `${providerBaseUrl("vercel")}/models`;
@@ -24,9 +24,9 @@ const cacheEfficiencyWindowDays = Math.min(
 );
 
 const modeDescriptions = {
-  Instant: "GLM 5.3 Flash through Vercel AI Gateway, with Ambient as backup.",
-  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway, with Ambient as backup.",
-  Help: "Plain-English Task Node help through Vercel AI Gateway, with Ambient as backup.",
+  Instant: "DeepSeek V4.1 Flash through Vercel AI Gateway, reasoning off.",
+  Thinking: "DeepSeek V4.1 Flash with deep reasoning through Vercel AI Gateway.",
+  Help: "Plain-English Task Node help through Vercel AI Gateway.",
 };
 
 function pricingEnabled() {
@@ -204,7 +204,7 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
           ? "none"
           : "",
       privacyPolicy: config.zeroDataRetention ? "Requests use the selected model through Vercel AI Gateway, routed only to zero-data-retention providers." : config.exactModel ? "Requests use the selected model through Vercel AI Gateway." : "Requests go to Vercel AI Gateway, with Ambient as backup. OpenAI Images is isolated to sanitized profile NFT rendering.",
-      providerOrder: ["vercel", ...(!config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])],
+      providerOrder: ["vercel", ...(!config.exactModel && ambientBackupEnabled() ? ["ambient"] : [])],
       liveModel,
       liveEndpoints: endpointsByModel.get(execution.model) || [],
     };
@@ -267,7 +267,7 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     references: [],
     notes: [
       "Instant, Thinking, and Help use the configured user tariff for estimates and ledger debits.",
-      "GPT-6 Astra, Kimi K3 and Claude Opus 5.5 estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
+      "GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5 and Gemini 4 Hydrogen estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
     ],
   };
   pricingCache = { cachedAtMs: now, value };

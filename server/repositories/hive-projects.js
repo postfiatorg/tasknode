@@ -707,6 +707,8 @@ export async function getHiveProjectsDocument({
   const boardSecretaryMemos = await getCurrentHiveBoardSecretaryMemos({
     projectIds: projectsResult.rows.map((row) => row.id),
   }).catch(() => []);
+  const { listWantedItems } = await import("../board-wanted.js");
+  const wantedItems = await listWantedItems(projectsResult.rows.map((row) => row.id)).catch(() => []);
   const projectCommentsByProject = await listHiveProjectComments({
     projectIds: projectsResult.rows.map((row) => row.id),
     limitPerProject: 6,
@@ -738,6 +740,7 @@ export async function getHiveProjectsDocument({
     projectCommentsByProject,
     productDocs,
     boardSecretaryMemos,
+    wantedItems,
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
     walletIdentities,

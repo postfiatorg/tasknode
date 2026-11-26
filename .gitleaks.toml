@@ -24,3 +24,12 @@ regexes = ['''000B013A95F14B0044F78A264E41713C64B5F89242540EE2''']
 description = "Published protocol verification key embedded in the public Post Fiat knowledge corpus"
 regexTarget = "secret"
 regexes = ['''0x004d1cd3f36e6ea60662af428edbea9d3aba45f04fe496da909d6bbe9fbf9258''']
+
+[[allowlists]]
+description = "Public on-chain identifiers in L1 bridge and profile test fixtures: the Ethereum mainnet USDC contract address, a contract runtime code hash and an SP1 program verification key"
+regexTarget = "secret"
+regexes = [
+  '''0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48''',
+  '''0x07ad118d6cc8642c86c03827f276d8b791a65e5c99a3845faf186be720a1455d''',
+  '''0x003aa6418ef9f87dde386129a1464ea15daf9757849aa66f63cdb779e89266c6'''
+]

@@ -123,7 +123,7 @@ try {
   });
   assert.equal(capturedRequest.url, "https://ai-gateway.vercel.sh/v1/chat/completions");
   assert.equal(capturedRequest.headers.authorization, "Bearer vercel-smoke-key");
-  assert.equal(capturedRequest.body.model, "zai/glm-5.3-flash");
+  assert.equal(capturedRequest.body.model, "deepseek/deepseek-v4.1-flash-1017");
   assert.equal(capturedRequest.body.max_tokens, 32_000, "the budget must provide ample headroom for GLM hidden reasoning and the JSON report");
   assert.deepEqual(capturedRequest.body.response_format, { type: "json_object" });
   assert.equal(capturedRequest.body.messages[0].content.includes("evidence-grounded operating summary"), true);
@@ -289,7 +289,7 @@ try {
   assert.equal(revoked.members.length, 0);
   assert.equal(formatTeamContextForPrompt(revoked), "", "revoked collaborators must not leak through stale generated context");
 
-  console.log("team context smoke ok: counts, Vercel GLM 5.3 Flash, reward fanout, opt-in prompt, revocation");
+  console.log("team context smoke ok: counts, Vercel DeepSeek V4.1 Flash, reward fanout, opt-in prompt, revocation");
 } finally {
   await query("DELETE FROM team_context_jobs WHERE account_id = $1", [viewer]).catch(() => {});
   await query("DELETE FROM team_context_reports WHERE account_id = $1", [viewer]).catch(() => {});

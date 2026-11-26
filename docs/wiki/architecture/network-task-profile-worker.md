@@ -22,7 +22,7 @@ System Status row: `network_task_profile`
 ## Provider Contract
 
 Network Task Profile jobs run inside the memory worker through the shared
-`fast_text` capability: Vercel DeepSeek Flash primary and Ambient backup. The request disables hidden reasoning
+`fast_text` capability: Vercel DeepSeek Flash. The request disables hidden reasoning
 and requires JSON output with `reasoning.effort = "none"`,
 `reasoning.exclude = true`, and `response_format.type = "json_object"`.
 

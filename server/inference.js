@@ -1,6 +1,7 @@
 import { inferenceError, inferenceRoutes, providerBaseUrl } from "./inference-policy.js";
 import { normalizeInferenceRequest } from "./inference-protocol.js";
 import { completeWithProvider, inferenceHttp, readInferenceJson, streamWithProvider, withInferenceDeadline } from "./inference-transport.js";
+import { reportInferenceCompletion } from "./inference-usage-context.js";
 
 export { INFERENCE_MODELS, inferenceConfigured, inferenceProviderConfigured, inferenceProviderForResponse, resolveInferenceModel } from "./inference-policy.js";
 export { normalizeInferenceRequest, outputTextFromInference } from "./inference-protocol.js";
@@ -36,6 +37,7 @@ async function execute({ body = {}, capability = "reasoning_text", env = process
         fallbackReason: provider === "ambient" ? attempts[0]?.code || "primary_not_configured" : "", attempts };
       result.body.tasknode_inference = metadata;
       result.body.model ||= result.model;
+      reportInferenceCompletion({ provider, requestedModel: body.model || "", model: result.model, capability, body: result.body });
       return { ...result, ...metadata, latencyMs: attempts.reduce((sum, attempt) => sum + attempt.latencyMs, 0) };
     } catch (error) {
       attempts.push({ provider, status: "failed", code: error.code || "inference_error", httpStatus: error.status || 502, latencyMs: Date.now() - started });

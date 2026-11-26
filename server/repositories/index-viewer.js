@@ -125,44 +125,46 @@ export async function issueCode({ indexId, accountId, returnOrigin = "" } = {}) 
 }
 
 /** Single use: the same code can never mint a second token. */
-export async function consumeCode({ code = "", indexId = "" } = {}) {
-  if (!code) return null;
+export async function consumeCode({ code = "", indexId = "", returnOrigin = "" } = {}) {
+  if (!code || !returnOrigin) return null;
   const result = await query(
     `UPDATE index_viewer_codes
         SET consumed_at = now()
       WHERE code_hash = $1
         AND index_id = $2
+        AND return_origin = $3
         AND consumed_at IS NULL
         AND expires_at > now()
       RETURNING account_id, return_origin`,
-    [hashOpaque(code), String(indexId)]
+    [hashOpaque(code), String(indexId), String(returnOrigin)]
   );
   const row = result.rows[0];
   return row ? { accountId: row.account_id, returnOrigin: row.return_origin || "" } : null;
 }
 
-export async function issueViewerToken({ indexId, accountId, walletAddress = "" } = {}) {
+export async function issueViewerToken({ indexId, accountId, walletAddress = "", returnOrigin = "" } = {}) {
   const token = newOpaqueSecret();
   const expiresAt = new Date(Date.now() + TOKEN_TTL_SECONDS * 1000);
   await query(
-    `INSERT INTO index_viewer_tokens (token_hash, index_id, account_id, wallet_address, expires_at)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [hashOpaque(token), String(indexId), String(accountId), String(walletAddress), expiresAt]
+    `INSERT INTO index_viewer_tokens (token_hash, index_id, account_id, wallet_address, expires_at, return_origin)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [hashOpaque(token), String(indexId), String(accountId), String(walletAddress), expiresAt, String(returnOrigin)]
   );
   return { token, expiresAt };
 }
 
-export async function resolveViewerToken({ token = "", indexId = "" } = {}) {
-  if (!token) return null;
+export async function resolveViewerToken({ token = "", indexId = "", returnOrigin = "" } = {}) {
+  if (!token || !returnOrigin) return null;
   const result = await query(
     `UPDATE index_viewer_tokens
         SET last_used_at = now()
       WHERE token_hash = $1
         AND index_id = $2
+        AND return_origin = $3
         AND revoked_at IS NULL
         AND expires_at > now()
       RETURNING account_id, wallet_address, expires_at`,
-    [hashOpaque(token), String(indexId)]
+    [hashOpaque(token), String(indexId), String(returnOrigin)]
   );
   const row = result.rows[0];
   return row

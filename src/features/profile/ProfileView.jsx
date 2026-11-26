@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { PublicProfile } from "./PublicProfileView.jsx";
 import { PrivateProfile } from "./ProfileIdentityPanels.jsx";
-import { C, SANS, useStylesheet } from "./profile-view-shared.jsx";
+import { C, useStylesheet } from "./profile-view-shared.jsx";
+import "./profile.css";
 
 export function ProfileView({
   accountId = "",
@@ -100,52 +101,28 @@ export function ProfileView({
     if (typeof setProfilePublic === "function") setProfilePublic(previousVisibility !== "private");
   };
 
+  const visibilityBusy = !accountId || visibilityState.saving || visibilityState.loading;
   return (
     <div className="route-scroll">
-      <div className="tn-root" style={{ minHeight: "100vh" }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "40px 36px 140px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div>
-            <button
-              className={`tn-tab ${view === "private" ? "tn-tab-active" : ""}`}
-              onClick={() => setView("private")}
-            >Private</button>
-            <button
-              className={`tn-tab ${view === "public" ? "tn-tab-active" : ""}`}
-              onClick={() => setView("public")}
-            >Public</button>
+      <div className="tn-root" style={{ background: "var(--tn-bg)", minHeight: "100vh" }}>
+      <div className="pf-page">
+        <div className="pf-topbar">
+          <div className="pf-tabs" role="tablist" aria-label="Profile view">
+            <button aria-selected={view === "private"} onClick={() => setView("private")} role="tab" type="button">Your profile</button>
+            <button aria-selected={view === "public"} onClick={() => setView("public")} role="tab" type="button">Public view</button>
           </div>
-
           <button
+            className={`pf-visibility${effectiveProfilePublic ? " is-public" : ""}`}
+            disabled={visibilityBusy}
             onClick={togglePublic}
-            disabled={!accountId || visibilityState.saving || visibilityState.loading}
-            style={{
-              alignItems: "center",
-              background: "transparent",
-              border: 0,
-              color: effectiveProfilePublic ? C.success : C.ink4,
-              cursor: !accountId || visibilityState.saving || visibilityState.loading ? "default" : "pointer",
-              display: "inline-flex",
-              fontFamily: SANS,
-              fontSize: 13,
-              fontWeight: 500,
-              gap: 7,
-              padding: 0,
-            }}
+            title={effectiveProfilePublic ? "Make your profile private" : "Make your profile public"}
             type="button"
           >
-            <span
-              className="tn-pulseGreen"
-              style={{ background: effectiveProfilePublic ? C.success : C.ink5 }}
-            />
-            {visibilityState.saving ? "Saving..." : effectiveProfilePublic ? "Profile public" : "Profile hidden"}
+            <i aria-hidden="true" />
+            {visibilityState.saving ? "Saving…" : effectiveProfilePublic ? "Profile is public" : "Profile is hidden"}
           </button>
         </div>
-        {visibilityState.error && (
-          <div style={{ color: C.rust, fontSize: 12.5, marginBottom: 12, textAlign: "right" }}>
-            {visibilityState.error}
-          </div>
-        )}
+        {visibilityState.error && <p className="pf-note is-error">{visibilityState.error}</p>}
 
         <div className="tn-fadeIn" key={view}>
           {view === "private" ? (

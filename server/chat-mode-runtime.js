@@ -1,3 +1,4 @@
+import { ambientBackupEnabled } from "./inference-policy.js";
 import { apiChatModels } from "./chat-api-models.js";
 import {
   INFERENCE_MODELS,
@@ -52,6 +53,7 @@ const deprecatedChatModeAliases = Object.freeze({
   "Private Thinking": "Thinking",
   "Discount Thinking": "Thinking",
   "Frontier Thinking": "Thinking",
+  "Kimi K3": "Kimi K3.1 Pro",
 });
 export { effectiveDefaultChatMode, fallbackChatModeLabel };
 export const defaultChatMode = fallbackChatModeLabel;
@@ -148,8 +150,8 @@ export function chatExecutionStatus(mode) {
     model: modelForMode(normalizedMode),
     configured,
     primaryConfigured,
-    backupConfigured: !config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" && chatProviderConfigured("ambient"),
-    backupProvider: config.exactModel ? "" : "ambient",
+    backupConfigured: !config.exactModel && ambientBackupEnabled() && chatProviderConfigured("ambient"),
+    backupProvider: !config.exactModel && ambientBackupEnabled() ? "ambient" : "",
     enabled,
     status: enabled ? "ready" : configured ? "disabled" : "missing_config",
   };

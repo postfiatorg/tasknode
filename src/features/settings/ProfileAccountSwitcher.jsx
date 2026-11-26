@@ -1,5 +1,4 @@
-import { Check, ChevronRight, Settings as SettingsIcon, User as UserIcon, X } from "lucide-react";
-import { profileAvatarText } from "../chat/AppChatDialogs.jsx";
+import { Plus, User as UserIcon, X } from "lucide-react";
 import { ToolMenuRow } from "../shell/ShellControls";
 
 export function ProfileAccountSwitcher({
@@ -12,26 +11,31 @@ export function ProfileAccountSwitcher({
   pending = "",
   selectedAccountId = "",
 }) {
+  // The menu header already shows the current account; list others only when
+  // there are others to switch to.
+  const others = accounts.filter((account) => account.accountId !== selectedAccountId);
   return (
     <>
-      <div className="profile-session-state">Switch profile</div>
-      {accounts.length > 0 && (
+      {others.length > 0 && (
         <div className="profile-account-list" aria-label="Accounts on this browser">
-          {accounts.map((account) => {
-            const selected = account.accountId === selectedAccountId;
+          <div className="profile-account-heading">
+            <span>Switch account</span>
+            <button onClick={() => onManagingChange?.(!managing)} type="button">{managing ? "Done" : "Manage"}</button>
+          </div>
+          {others.map((account) => {
             const accountLabel = account.displayName || account.hiveHandle || account.maskedEmail || "Member";
             const accountDetail = account.hiveHandle
               ? `@${account.hiveHandle}`
               : account.maskedEmail
-                || (account.walletAddress ? `${account.walletAddress.slice(0, 8)}…${account.walletAddress.slice(-6)}` : "Authenticated account");
+                || (account.walletAddress ? `${account.walletAddress.slice(0, 8)}…${account.walletAddress.slice(-6)}` : "");
             return (
-              <div className={selected ? "profile-account-row selected" : "profile-account-row"} key={account.accountId}>
-                <button disabled={selected || Boolean(pending)} onClick={() => onSwitch?.(account.accountId)} type="button">
-                  <span className="profile-account-avatar">{profileAvatarText({ displayName: accountLabel })}</span>
-                  <span><strong>{accountLabel}</strong><small>{accountDetail}</small></span>
-                  {selected ? <Check size={14} strokeWidth={2} /> : pending === account.accountId ? <small>Switching</small> : null}
+              <div className="profile-account-row" key={account.accountId}>
+                <button disabled={Boolean(pending)} onClick={() => onSwitch?.(account.accountId)} type="button">
+                  <UserIcon size={16} strokeWidth={1.75} />
+                  <span><strong>{accountLabel}</strong>{accountDetail && accountDetail !== accountLabel && <small>{accountDetail}</small>}</span>
+                  {pending === account.accountId && <small className="profile-account-pending">Switching…</small>}
                 </button>
-                {managing && !selected && (
+                {managing && (
                   <button aria-label={`Remove ${accountLabel} from this browser`} className="profile-account-remove" disabled={Boolean(pending)} onClick={() => onRemove?.(account.accountId)} type="button">
                     <X size={14} />
                   </button>
@@ -41,10 +45,7 @@ export function ProfileAccountSwitcher({
           })}
         </div>
       )}
-      <ToolMenuRow icon={UserIcon} label={pending === "add" ? "Starting account login" : "Add account"} onClick={onAdd} trailing={<ChevronRight size={14} />} />
-      {accounts.length > 1 && (
-        <ToolMenuRow icon={SettingsIcon} label={managing ? "Done managing accounts" : "Manage accounts"} onClick={() => onManagingChange?.(!managing)} />
-      )}
+      <ToolMenuRow icon={Plus} label={pending === "add" ? "Starting account login…" : "Add account"} onClick={onAdd} />
     </>
   );
 }

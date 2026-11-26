@@ -25,6 +25,11 @@ export function ContextToolButton({ active, children, disabled = false, onMouseD
       aria-pressed={active ? "true" : "false"}
       className={`ctx-tool-btn${active ? " is-active" : ""}`}
       disabled={disabled}
+      onClick={(event) => {
+        // Keyboard activation (Enter/Space) fires click with detail 0; mouse
+        // input is handled on mousedown so the editor keeps its selection.
+        if (event.detail === 0 && !disabled) onMouseDown?.(event);
+      }}
       onMouseDown={(event) => {
         event.preventDefault();
         if (!disabled) onMouseDown?.(event);

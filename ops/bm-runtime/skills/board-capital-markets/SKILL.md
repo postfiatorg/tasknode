@@ -1,191 +1,61 @@
 ---
 name: board-capital-markets
-description: Board context for the Capital Markets board manager. Use with the board-manager skill when operating board_capital_markets to turn AGTI, goodalexander, and community-sourced alpha ideas into reviewable research artifacts.
+description: Board context for the Capital Markets board manager. Use with the board-manager skill when operating board_capital_markets - actionable alpha and amplification of existing goodalexander research, held to a high bar.
 ---
 
-# Capital Markets Board
+# Trading Board
 
-Board id: `board_capital_markets`.
+> Public name since 2026-11-25: **Trading**. Every task comes from this board's Wanted list (`bm wanted board_capital_markets`). There is no freshness window on goodalexander material: if an item links to it, it is current enough.
 
-Use the board-manager skill for general board operations and this context for Capital Markets sourcing, task design, evidence standards, and review. Here, “operator” means goodalexander. “AGTI” refers to the AGTI codebase, research infrastructure, and public surface identified below.
 
-You route capital markets engagement from three source streams:
+Board id: `board_capital_markets`. "Operator" means goodalexander.
 
-- AGTI research and infrastructure.
-- The operator’s published public work.
-- Community-sourced alpha ideas that can be converted into testable research.
+This board has a high bar and is usually empty. It pays for two things only:
 
-## Sources to read before generating tasks
+1. **Actionable alpha** (`--work-type domain_analysis`, expert badge): a
+   specific, sourced, testable idea someone could act on.
+2. **Amplification of existing goodalexander research and trade ideas**
+   (`--work-type amplification_x`, `amplification`, `article_distribution`,
+   `medium_article`, kol badge): spreading work the operator has already
+   published, including NAVCoin posts.
 
-- `goodalexander.github.io` repository; known local checkout:
-  `/home/pfrpc/repos/goodalexander.github.io` — the operator’s public
-  research. Use it only to find testable quantitative claims to replicate
-  or extend with code. Never route critiques, fact-checks, claim audits,
-  falsifiability reviews, stress tests, rebuttals or scorecards of the
-  operator's essays or any other published writing.
-- `agti` repository; known local checkout:
-  `/home/pfrpc/repos/agti` — AGTI codebase and research infrastructure.
-- agti.net — current public AGTI surface.
+It does not pay for data-pull definitions, pipeline specs, research plans,
+sprint plans, glossaries, summaries of published work, or critiques of the
+operator's writing. If you cannot name the trade idea or the published piece,
+there is no task.
 
-Prefer sources with inspectable artifacts. The board packet's `sources` entries (`repo:goodalexander.github.io`, `repo:agti`, `web:https://agti.net`) are the canonical grounding with `status` and `fetched_at`; local checkouts are optional. If a source is unavailable, use another available public source. Do not create a source-dependent task when the underlying source cannot be inspected. A dependency on an operator decision (for example a merge) is recorded once with `operator-action --add`, not repeated as a blocker every round; route the work that does not depend on it.
+## Sources
 
-When sources conflict, prioritize the artifact and its reproducible evidence over unsupported summaries or promotional claims.
+The board packet's `sources` entries: `repo:goodalexander.github.io` (the
+operator's published research), `repo:agti` and `web:https://agti.net` (AGTI
+research surface). Never open a pull request against these sites to deliver
+research or to satisfy a task; they are the operator's publications, not a
+place to store contributor output.
 
-## Task generation and routing
+## Actionable alpha: what a task must ask for
 
-Route an idea only when it can become a bounded, reviewable artifact.
+- One named instrument, pair, sector or NAVCoin and a direction or structure.
+- The reasoning in plain words and the evidence, with public sources.
+- What would prove it wrong, and over what horizon.
+- Delivery as a public research note or post the contributor publishes
+  themselves; the link is the proof.
 
-Prioritize:
+Reject on review: commentary with no actionable call, restated consensus,
+unsourced numbers, backtests with no code or data, and anything already
+published by the operator.
 
-1. Replications or stress tests of published AGTI/operator research.
-2. Extensions or evidence-backed contradictions of that research.
-3. Community ideas with a falsifiable thesis and sufficient data provenance.
+## Amplification: what a task must ask for
 
-Use this lifecycle:
+- The URL of one specific goodalexander piece (from the Wanted item).
+- A quote-post, thread or article that adds the contributor's own context, a
+  number or a chart. Not a repost and not a summary.
+- The resulting public URL as proof.
 
-1. **Intake:** Identify the source idea and its relationship to existing
-   AGTI or operator work.
-2. **Scope:** Convert it into a falsifiable research question with explicit
-   deliverables and acceptance criteria.
-3. **Evidence check:** Confirm that the proposed data, benchmark, date
-   range, and reproducible artifact can be inspected.
-4. **Review:** Check the submission against the task contract, evidence
-   norms, and red flags below.
-5. **Resolve:** Accept a complete artifact, request revision for a
-   correctable omission, or reject work that is untestable, misleading,
-   plagiarized, or dependent on placing trades.
+Reject: emoji replies, generic praise, identical wording across accounts,
+cropped screenshots instead of a link, accounts with no real audience.
 
-## Required task contract
+## Rewards
 
-Every routed task must specify:
-
-- **Research question or thesis:** The claim being tested.
-- **Source connection:** The AGTI artifact, operator publication, or
-  community idea being replicated, extended, contradicted, or tested.
-- **Signal or entry:** The conditions under which the claim applies.
-- **Invalidation:** The observation or result that would prove the claim
-  wrong.
-- **Horizon:** The period over which the claim is evaluated.
-- **Data:** Named sources and required provenance.
-- **Method:** The analysis, replication, backtest, stress test, or
-  comparison to perform.
-- **Date range and benchmark:** The evaluation period and relevant
-  comparison.
-- **Costs and survivorship:** Required treatment where applicable.
-- **Out-of-sample evidence:** Required for backtests vulnerable to
-  cherry-picking; use out-of-sample or walk-forward evidence.
-- **Deliverable:** A notebook, script, or repository PR with the code and
-  data provenance needed to rerun the result. A prose write-up or gist on
-  its own is never a deliverable.
-- **Acceptance criteria:** Objective checks that determine whether the
-  artifact is complete.
-
-Do not route open-ended prompts whose completion cannot be verified.
-
-## Example task shapes
-
-### Replication
-
-Replicate a finding actually published in the operator’s public research.
-Name the source, reproduce the result with code against a named data
-source, report the complete series and date range, compare it with a
-relevant benchmark, and document costs and survivorship where applicable.
-Include evidence that could invalidate the finding.
-
-### Extension or contradiction
-
-Select an AGTI research artifact and test an extension or contradiction.
-State the original claim, the changed condition, the expected horizon,
-and the result that would disprove the extension. Deliver reproducible
-code and out-of-sample or walk-forward evidence when the work includes a
-backtest vulnerable to cherry-picking.
-
-### Community idea
-
-Convert a community-sourced alpha idea into a testable thesis. Define the
-signal or entry, invalidation, horizon, named data source, benchmark,
-method, and reproducible deliverable. Reject the idea if it cannot be
-made falsifiable or requires anyone to place trades.
-
-A rejected task shape is: “Number go up because narrative.” It has no
-testable claim, invalidation condition, evidence plan, or reviewable
-artifact.
-
-## What good looks like here
-
-- Falsifiable ideas: a thesis with entry, invalidation, horizon, and the
-  data that would prove it wrong.
-- Backtests with code: reproducible notebooks or scripts against named
-  data sources, with honest treatment of costs and survivorship.
-- Engagement with published AGTI/operator research: replications,
-  extensions, or contradictions supported by evidence.
-- Deliverables that satisfy an explicit task contract rather than merely
-  presenting an interesting conclusion.
-
-## Evidence norms
-
-- Primary evidence is the artifact itself: notebook, script, or write-up
-  with data provenance. Public gist or PR links are preferred over pasted
-  text.
-- Performance claims require the complete series, not a screenshot of a
-  P&L cropped to the good part. Check date ranges and benchmarks.
-- X threads count only as distribution of an artifact, not as the
-  artifact.
-- Reproducibility, provenance, and the stated acceptance criteria
-  determine completion.
-
-## Review checklist
-
-Before accepting an artifact, verify that:
-
-- The thesis, signal or entry, invalidation, and horizon are explicit.
-- The connection to AGTI, operator research, or a community idea is
-  identified.
-- Data sources and provenance are named.
-- Code or analysis is reproducible.
-- Date ranges and benchmarks are disclosed and appropriate to the claim.
-- Costs and survivorship are treated honestly where applicable.
-- Performance claims include the complete series.
-- Backtests vulnerable to data mining include out-of-sample or
-  walk-forward evidence.
-- Distinctive phrasing and charts have been spot-checked for plagiarism.
-- The deliverable matches the task’s objective acceptance criteria.
-- Completion does not depend on anyone placing a trade.
-
-## Watch for
-
-- Financial-advice-shaped submissions with no testable content.
-- Data mining dressed as alpha: 400 backtests and one cherry-picked
-  winner. Require out-of-sample or walk-forward evidence.
-- Plagiarized research: spot-check distinctive phrasing and charts before
-  rewarding write-ups.
-- Promotional summaries presented in place of an inspectable artifact.
-- Cropped P&L screenshots presented without the underlying series.
-- Tasks or submissions that substitute trading outcomes for research
-  quality.
-
-## Banned task shapes (operator policy, 2026-09-26)
-
-The server rejects these; do not attempt them:
-
-- Critiques, fact-checks, claim-by-claim audits, falsifiability reviews,
-  stress tests, rebuttals, prediction scorecards or "expert critiques" of
-  essays, posts, articles, threads or Medium pieces — the operator's or
-  anyone else's.
-- Audits, reviews or assessments whose deliverable is a gist, report,
-  memo or write-up rather than code.
-
-Every task must produce code or data that advances the network's economic
-value; commentary on writing does not.
-
-## Operating boundaries and unresolved settings
-
-This board pays for research artifacts, not trading outcomes. Never route
-tasks that require anyone to place trades.
-
-Do not infer missing operating policy:
-
-- Intake: submissions arrive only through the task evidence flow; ideas floated in hive chat become tasks only after you verify a concrete artifact plan with the author's account via `user`.
-- Cadence: at most 2 open research tasks at once; research review is expensive.
-- Reward tiers (cap 5,000 PFT): replication or extension of published work 1,000–3,000; original falsifiable thesis with reproducible backtest 3,000–5,000; distribution-only work 250–1,000.
-- Escalation: unresolved or high-stakes reviews go to the operator via a referral task, per the board-manager skill.
+Per-task cap 5,000 PFT. Routine amplification 250-1,000. Alpha is priced on
+verified value: 500-2,000 for a sound, sourced idea; above that only when you
+have checked the evidence yourself and it holds. When in doubt, do not route.

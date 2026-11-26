@@ -611,7 +611,14 @@ export function projectHasBoardEvidence(project = {}) {
   );
 }
 
+// Boards kept running but off the public Hive (2026-11-25): AI Layer 1
+// Governance (in-flight only) and the penalty boards.
+export function projectHiddenFromHive(project = {}) {
+  return safeObject(project.metadata).hive_hidden === true;
+}
+
 export function projectVisibleOnActiveBoard(project = {}, { includeEmptyActive = false } = {}) {
+  if (projectHiddenFromHive(project)) return false;
   if (projectHasOperatorArchiveLock({ metadata_json: project.metadata })) return false;
   const status = safeText(project.status, 80);
   if (status !== "active") return false;
@@ -625,6 +632,7 @@ export function visiblePublicProject(project = {}) {
 }
 
 export function projectArchivedForIndex(project = {}) {
+  if (projectHiddenFromHive(project)) return false;
   const status = safeText(project.status, 80).toLowerCase();
   return status === "archived" || projectHasOperatorArchiveLock({ metadata_json: project.metadata });
 }
@@ -676,8 +684,9 @@ export function documentFromRows({
   activityRows = [],
   pendingGenerationRows = [],
   projectCommentsByProject = {},
-  productDocs = [],
-  boardSecretaryMemos = [],
+  productDocs: _productDocs = [],
+  boardSecretaryMemos: _boardSecretaryMemos = [],
+  wantedItems = [],
   latestSecretary = null,
   projectPlanning = null,
   walletIdentities = [],
@@ -709,13 +718,12 @@ export function documentFromRows({
     const project = projects[row.project_id];
     if (project) project.pendingGenerationCount = intValue(row.pending_generation_count);
   }
-  for (const doc of safeArray(productDocs)) {
-    const project = projects[doc.projectId];
-    if (project) project.productDocument = doc;
-  }
-  for (const memo of safeArray(boardSecretaryMemos)) {
-    const project = projects[memo.projectId];
-    if (project) project.secretaryMemo = memo;
+  // The model-written Project Status memo and product documents are no longer
+  // shown (2026-11-25). Each board shows its Wanted list and live facts instead.
+  for (const project of Object.values(projects)) project.wanted = [];
+  for (const item of safeArray(wantedItems)) {
+    const project = projects[item.boardId];
+    if (project) project.wanted.push(item);
   }
   for (const [projectId, comments] of Object.entries(safeObject(projectCommentsByProject))) {
     const project = projects[projectId];
@@ -744,18 +752,22 @@ export function documentFromRows({
   const archivedProjects = Object.fromEntries(archivedBoards.map((project) => [project.id, project]));
   const archivedProjectIds = archivedBoards.map((project) => project.id);
   const operators = operatorMap(visibleProjects);
+  // The feed shows finished, paid work only. Refusals and cancellations stay
+  // on the board's own task list, not in the feed (2026-11-25).
   const routingFeed = Object.values(visibleProjects)
     .flatMap((project) =>
-      safeArray(project.activity).map((entry) => ({
-        ...entry,
-        project: project.name,
-      }))
+      safeArray(project.activity)
+        .filter((entry) => entry.action === "rewarded")
+        .map((entry) => ({
+          ...entry,
+          project: project.name,
+        }))
     )
     .sort((left, right) =>
       timestampMs(right.updatedAt || right.createdAt) - timestampMs(left.updatedAt || left.createdAt) ||
       safeText(right.id).localeCompare(safeText(left.id))
     )
-    .slice(0, 12);
+    .slice(0, 20);
   const activeOperators = Object.values(operators).filter((operator) => operator.status === "active").length;
   const taskRowCount = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
   const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + intValue(project.tasksInFlight), 0);

@@ -39,6 +39,12 @@ rollback before a full explanation is published.
   relays. Task Node stores the public identity binding, not message bodies.
 - Public-chain records and independent relay copies cannot be removed by Task
   Node account deletion.
+- Agent tokens start with `tns_` and act as the account that approved them.
+  Report a token found in a public place (repository, issue, chat log) here;
+  the owner can revoke it per device at `https://tasknode.postfiat.org/connect`.
+  Connect agents with `curl -fsSL https://tasknode.postfiat.org/install | sh`,
+  which writes tokens straight into agent config files and never prints them.
+  Secret scanners can match agent tokens with `tns_[A-Za-z0-9_-]{43}`.
 
 Operational runbooks, credentials, incident evidence, and production topology
 belong in the private operations system, not public reports or issues.

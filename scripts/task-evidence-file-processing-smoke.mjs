@@ -23,7 +23,7 @@ async function processFile({ bytes, name, type }) {
     },
     method: "file",
     value: name,
-    env: { AMBIENT_API_KEY: "evidence-file-smoke" },
+    env: { AMBIENT_API_KEY: "evidence-file-smoke", INFERENCE_AMBIENT_BACKUP_ENABLED: "true" },
     fetchImpl: async () => new Response(JSON.stringify({
       id: "ambient_vision_document_smoke",
       model: "moonshotai/kimi-k2.7-code",
@@ -167,6 +167,32 @@ function samplePdf() {
     () => processFile({ bytes: Buffer.from([0, 1, 2]), name: "opaque.bin", type: "application/octet-stream" }),
     /evidence_file_type_unsupported/
   );
+}
+
+{
+  // A reasoning vision model spends output tokens before it writes anything
+  // visible. The screenshot read must leave room for that.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nUwAAAAASUVORK5CYII=", "base64");
+  const reasoningTokens = 1800;
+  let requested = 0;
+  const result = await processEvidenceFileForSubmission({
+    file: { dataUrl: dataUrl(png, "image/png"), name: "dense-terminal.png", size: png.length, type: "image/png" },
+    method: "screenshot",
+    task: { title: "Link wallet to validator" },
+    env: { AMBIENT_API_KEY: "evidence-file-smoke", INFERENCE_AMBIENT_BACKUP_ENABLED: "true" },
+    fetchImpl: async (_url, init) => {
+      requested = JSON.parse(init.body).max_tokens;
+      const truncated = requested < reasoningTokens + 300;
+      return new Response(JSON.stringify({
+        id: "vision_reasoning_budget_smoke",
+        model: "moonshotai/kimi-k2.7-code",
+        choices: [{ finish_reason: truncated ? "length" : "stop", message: { content: truncated ? "" : "Terminal shows the wallet linked to the validator." } }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  assert.ok(requested >= reasoningTokens + 300, `screenshot read asked for only ${requested} output tokens`);
+  assert.equal(result.processing.status, "described");
+  assert.match(result.description, /wallet linked to the validator/);
 }
 
 console.log("task evidence file processing smoke ok");

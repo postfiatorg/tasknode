@@ -1,6 +1,6 @@
 import { inferenceChatCompletion } from "./inference.js";
 export { vercelAiGatewayApiKey, vercelAiGatewayBaseUrl, vercelAiGatewayConfigured } from "./inference-provider-config.js";
-export const TEAM_CONTEXT_VERCEL_MODEL = "zai/glm-5.3-flash";
+export const TEAM_CONTEXT_VERCEL_MODEL = "deepseek/deepseek-v4.1-flash-1017";
 
 // Preserve Team Context's JSON contract while sharing the application failover policy.
 export async function vercelChatCompletion({

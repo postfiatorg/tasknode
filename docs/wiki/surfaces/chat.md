@@ -8,10 +8,10 @@ conversations without losing state.
 
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
-3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3, Claude Opus 5.5, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
+3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5, Gemini 4 Hydrogen, or Help independently from the Jobs, ODV, Trading Coach, Kravis, or BasedGPT personality.
 4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
-6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel with Ambient backup.
+6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel AI Gateway.
 7. The assistant response is streamed back when available. Long Thinking and modality requests send a progress heartbeat every 15 seconds so proxies do not treat a reasoning-only interval as an idle connection; the pending turn shows elapsed time until visible model text arrives. If the connection fails or closes without a terminal `done`/`error` event, the browser reconnects after 0.75, 2, and 5 seconds. A stable client request/message identity lets the server replay an already-committed turn instead of generating or billing it twice.
 8. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
 
@@ -29,11 +29,11 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-Chat model mode and personality are separate structured fields. Mode chooses the inference capability/model; personality or modality chooses prompt assembly and retrieval policy. `shared/chat-personas.js` owns the allowlisted IDs and aliases, `server/chat-persona-prompts.js` loads the canonical prompt, and `server/chat-memory-context.js::taskNodeInstructions` assembles the final system packet. Jobs uses `prompts/chat/jobs_standard_chat_codex_style_draft.md` plus pgvector Jobs retrieval. ODV uses `prompts/docs/odv_lindy_v1.md`; Trading Coach uses `prompts/docs/trading_coach_v1.md`; Kravis uses the system-prompt section of `prompts/kravis.md`. Restored modalities use the canonical legacy prompts under `prompts/chat_modules/`. Every non-Jobs selection still receives the account Context document, memory, task projection, conversation history, and attachments, but never the Jobs Markdown prompt or Jobs vector excerpts. The current user message remains a normal provider user message rather than being copied into the system prompt.
+Chat model mode and personality are separate structured fields. Mode chooses the inference capability/model; personality or modality chooses prompt assembly and retrieval policy. `shared/chat-personas.js` owns the allowlisted IDs and aliases, `server/chat-persona-prompts.js` loads the canonical prompt, and `server/chat-memory-context.js::taskNodeInstructions` assembles the final system packet. Jobs uses `prompts/chat/jobs_standard_chat_codex_style_draft.md` plus pgvector Jobs retrieval. ODV uses `prompts/docs/odv_lindy_v1.md`; Trading Coach uses `prompts/docs/trading_coach_v1.md`; Kravis uses the system-prompt section of `prompts/kravis.md`; BasedGPT uses the system-prompt section of `prompts/basedgpt.md`. Restored modalities use the canonical legacy prompts under `prompts/chat_modules/`. Every non-Jobs selection still receives the account Context document, memory, task projection, conversation history, and attachments, but never the Jobs Markdown prompt or Jobs vector excerpts. The current user message remains a normal provider user message rather than being copied into the system prompt.
 
 Post Fiat Q&A is the sourced exception to the otherwise static restored-modality prompts. `scripts/sync-post-fiat-knowledge.mjs` snapshots `docs/whitepaper.md` from `postfiatorg/postfiatl1v2` and every Markdown article under `content/blog/` from `postfiatorg/postfiatorg.github.io`, recording immutable source commits and hashes in `prompts/chat_modules/post_fiat_knowledge.json`. `server/post-fiat-knowledge.js` always supplies the canonical whitepaper boundary and a catalog synopsis for every archived article, then selects a diverse set of question-relevant whitepaper and blog snippets. Whitepaper claims outrank blog claims; dated published posts outrank older posts; source files marked `draft: true` remain labeled unpublished drafts/proposals and link to their pinned repository source instead of masquerading as public pages. Refreshing this corpus is an explicit reviewed sync, not a live network fetch during a user turn.
 
-The server, not the browser, enforces this boundary. `server/chat-router.js::resolveChatJobsContext` returns a typed skipped result before invoking the retrieval function for ODV, Trading Coach, or Kravis, even when an internal caller supplies a pre-rendered `jobsEssence`. Unknown personality values return `unknown_chat_persona`. Each persisted user/assistant turn and run record stores the validated `chatPersona` for auditability.
+The server, not the browser, enforces this boundary. `server/chat-router.js::resolveChatJobsContext` returns a typed skipped result before invoking the retrieval function for ODV, Trading Coach, Kravis, or BasedGPT, even when an internal caller supplies a pre-rendered `jobsEssence`. Unknown personality values return `unknown_chat_persona`. Each persisted user/assistant turn and run record stores the validated `chatPersona` for auditability.
 
 When there is no signed-in account, `appState` sets the chat default to Help and marks other chat modes as login-required. The frontend filters the signed-out model picker to Help and disables the `+` menu because Request a task and Context Refine are account actions. Server preflight allows anonymous Help execution only; every other chat mode still returns `chat_login_required`. Anonymous Help sends a bounded `clientHistory` packet containing the recent visible local thread so first-time users can say "sure" or "what do you mean?" without losing continuity. That history is ephemeral transport context only. Anonymous Help responses are not written to chat history, memory, or the billing ledger because there is no account boundary to attach them to.
 
@@ -59,7 +59,7 @@ This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
 been folded into this surface doc and the single active production scope plan.
 
-The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis. More expands inline to the restored chat modalities and closes after selection. The expanded menu is capped to the current viewport and scrolls as one surface, so every modality remains reachable at short desktop heights and on mobile instead of escaping into a clipped flyout. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and uses the model selected in the composer, including GPT-6 Astra, Kimi K3 and Claude Opus 5.5 at API cost. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
+The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, Kravis, and BasedGPT. More expands inline to the restored chat modalities and closes after selection. The expanded menu is capped to the current viewport and scrolls as one surface, so every modality remains reachable at short desktop heights and on mobile instead of escaping into a clipped flyout. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and uses the model selected in the composer, including GPT-6 Astra, Kimi K3 and Claude Opus 5.5 at API cost. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
 
 I Ching requires both a private birth profile and an explicit question. On first selection, the setup dialog collects birth date, exact birth time, birth city/country, and the gender required by the traditional chart calculation. `POST /api/i-ching/profile` geocodes the place, resolves its historical timezone, adjusts the recorded time to true solar time, generates the Bā Zì and Zǐ Wēi Dòu Shù payloads, and stores them in the account-scoped `i_ching_profiles` row. A successful save does not silently dismiss the modal: it shows an explicit `Profile saved` completion state, reports the resolved timezone and true solar time, and requires the user to continue with `Ask your I Ching question`. On every later selection, the composer displays `Profile ready` after the profile GET confirms the account-scoped chart still exists. The profile and computed chart are private chat inputs; the public profile API never exposes them. Canceling setup exits the modality, and server preflight returns `i_ching_profile_required` before provider execution or billing if the chart is missing.
 
@@ -75,6 +75,7 @@ After setup, attachment-only sends remain disabled. Each question performs a fre
 | ODV | Canonical ODV Lindy prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
 | Trading Coach | Canonical Telegram Trading Coach prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
 | Kravis | Canonical Kravis private-equity prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
+| BasedGPT | Canonical BasedGPT blunt-counsel prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
 
 Personality does not select a model. Any personality can run with any model in the picker. Jobs remains the default for old clients and stored sessions that omit the field; the browser stores an explicit selection per account. Context Refine remains its own GLM-backed workflow and does not inherit a chat personality.
 
@@ -101,12 +102,13 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 
 | Mode | Provider | Default model | Selection and override rules | Tools and attachments | Intended use |
 | --- | --- | --- | --- | --- | --- |
-| Instant | Vercel with Ambient backup | `zai/glm-5.3-flash` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
-| Thinking | Vercel with Ambient backup | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
-| GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Kimi K3 | Vercel | `moonshotai/kimi-k3` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Instant | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
+| Thinking | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `reasoning_text` capability | Local extraction and DeepSeek image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
+| GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Help | Vercel with Ambient backup | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
+| Gemini 4 Hydrogen | Vercel | `google/gemini-4-hydrogen` | Exact selection; zero data retention (Vertex only; the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Help | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
 default is Instant and the signed-out app default is Help. Historical stored
@@ -115,9 +117,8 @@ mode API or shown in a picker.
 
 ## Provider Policies
 
-All chat inference goes through `server/inference.js`. Vercel is primary;
-Ambient currently supplies GLM 5.2 text backup. Completed turns record the
-actual provider and model. See [AI Providers](../architecture/ai-providers.md)
+All chat inference goes through `server/inference.js` to Vercel AI Gateway.
+Completed turns record the actual provider and model. See [AI Providers](../architecture/ai-providers.md)
 for configuration, failover conditions, and vision availability. The OpenAI
 credential remains isolated to sanitized Profile NFT image rendering.
 
@@ -128,12 +129,12 @@ mode's configured preflight estimate and live Vercel model metadata.
 
 ## Web Search Selection
 
-The user-facing chat modes do not enable web search. Vercel server search tools and Ambient backup tools
+The user-facing chat modes do not enable web search. Vercel server search tools
 remain available to explicit research workflows outside the chat mode picker.
 
 ## Jobs pgvector Retrieval
 
-Every model mode can receive up to three retrieved Jobs reference chunks only when the selected personality is Jobs. ODV, Trading Coach, and Kravis report Jobs retrieval as `skipped` and cannot invoke the corpus query. This is not a model-mode switch and the assistant should not mention the retrieval machinery by default. The retrieval layer exists to give the Jobs Markdown prompt concrete source principles to apply, not merely a hidden style hint. The chat thinking disclosure shows the source text passed to the provider so operators can audit which retrieved material should have influenced a Jobs response.
+Every model mode can receive up to three retrieved Jobs reference chunks only when the selected personality is Jobs. ODV, Trading Coach, Kravis, and BasedGPT report Jobs retrieval as `skipped` and cannot invoke the corpus query. This is not a model-mode switch and the assistant should not mention the retrieval machinery by default. The retrieval layer exists to give the Jobs Markdown prompt concrete source principles to apply, not merely a hidden style hint. The chat thinking disclosure shows the source text passed to the provider so operators can audit which retrieved material should have influenced a Jobs response.
 
 The runtime path is:
 
@@ -186,7 +187,7 @@ Runtime path:
 2. `server/product-contracts.js::chatPayload` forces Context Refine through Thinking so the user does not have to choose a model for durable document edits.
 3. `server/context-edit-chat.js::executeContextEditChat` loads chat history, current context, memory, task state, and the active pending proposal for the conversation.
 4. `server/context-edit-prompts.js::renderContextEditPrompt` renders `prompts/context/context_edit_jobs_v1.xml` with the plain context document and a line-numbered copy.
-5. Vercel GLM 5.3 (with Ambient backup) is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
+5. Vercel DeepSeek V4.1 Flash is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
 6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
 7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
 8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.
@@ -254,7 +255,7 @@ Before execution, `server/product-contracts.js` checks login, model mode, person
 
 Task Node's user tariff is 55% below the prior rates. Thinking costs $0.4725/M uncached input, $0.09/M cache-read input, and $1.98/M output. Instant and Help cost $0.063/M uncached input, $0.0126/M cache-read input, and $0.126/M output. For Instant, Thinking, and Help, `server/chat-provider-usage.js` calculates the debit from that cache-aware user tariff; provider cost is comparison metadata.
 
-GPT-6 Astra, Kimi K3 and Claude Opus 5.5 are charged at Vercel's returned API cost with no Task Node markup. Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50, Kimi K3 $3/$15 and Opus 5.5 $4/$20 (catalogue checked September 7 and 24, 2026). Cache-read base rates are $1, $0.30 and $0.20 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
+GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5 and Gemini 4 Hydrogen are charged at Vercel's returned API cost with no Task Node markup. Gemini 4 Hydrogen's base rates are $1.50/$7.50 with $0.075 cache reads (catalogue checked November 16, 2026). Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50, Kimi K3 $3/$15 and Opus 5.5 $4/$20 (catalogue checked September 7 and 24, 2026). Cache-read base rates are $1, $0.30 and $0.20 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
 
 ## Data Model
 
@@ -315,6 +316,25 @@ archive. See [Hive](hive.md) for setup, public visibility and Kimi escalation.
 
 Confirming Delete removes the conversation from Recents and closes the dialog immediately while the server saves the deletion. Deletion does not wait for a full app-state or wallet refresh. If the request fails, the conversation returns to the sidebar with a dismissible error. Older app-state responses cannot bring a deleted row back. Deleting the open conversation clears it after the server confirms success; opening another chat while the request is pending keeps that newer selection.
 
+## Deep Research
+
+All signed-in accounts can select **+ → Deep Research**. GoodAlexander research,
+billed at cost (typically $0.50-1.00, about 3 minutes), uses your Task Node balance.
+At least $0.50 available is required; use **Settings → Billing → Top up** to add
+credit. Validators keep their eligible $20/month credit, while research API keys
+and Finance Hub remains validator-only.
+
+The default maximum is **$1.50**, reduced to your available balance when it is
+between $0.50 and $1.50. You can choose a different maximum. Pending jobs reserve
+the maximum; settlement charges actual provider cost rounded up once to six
+decimals and releases unused credit. Failed jobs may incur provider cost.
+
+The report is saved directly in chat with citations, costs and a Markdown download.
+Its card shows **Improvement round: done** or **skipped** from the service's
+metadata; an interrupted round is labeled explicitly. Older reports without that
+metadata make no round claim. Returning to a saved chat or reading its result
+again does not charge again. Existing Corbanu jobs remain readable.
+
 ## Decisions
 
 Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** next to
@@ -361,8 +381,8 @@ Submitting a new question starts new work. There is no cancellation control for
 Decisions. Inputs, reports, and packets are restricted to the signed-in account;
 processing uses Corbanu and third-party model and research providers.
 
-Task Node uses the same signed server integration as Deep Research. It
-does not ask users for a Corbanu API key. Budget decisions are free; premium
+Task Node uses a signed server integration for Decisions. It does not ask
+users for a Corbanu API key. Budget decisions are free; premium
 decisions debit the Task Node chat balance with Corbanu's reported provider cost.
 The public Corbanu Decisions API has separate prepaid billing. The Task Node
 integration accepts budget and premium modes.

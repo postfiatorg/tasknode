@@ -12,7 +12,7 @@ delete process.env.CHAT_MODEL_HELP;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 process.env.DEEPSEEK_API_KEY = "runtime-smoke-deepseek-key";
-process.env.AMBIENT_API_KEY = "runtime-smoke-ambient-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "runtime-smoke-gateway-key";
 delete process.env.OPENROUTER_MODEL;
 delete process.env.DEEPSEEK_CHAT_MODEL;
 delete process.env.OPENROUTER_CHAT_ENABLED;
@@ -85,20 +85,20 @@ try {
   } = await import("../src/wallet-core.js");
   const { appState } = await import("../server/app-state.js");
 
-  if (modelForMode("Instant") !== "zai/glm-5.3-flash") {
-    throw new Error("Instant must default to GLM 5.3 Flash.");
+  if (modelForMode("Instant") !== "deepseek/deepseek-v4.1-flash-1017") {
+    throw new Error("Instant must default to DeepSeek V4.1 Flash.");
   }
-  if (modelForMode("Thinking") !== "zai/glm-5.3") {
-    throw new Error("Thinking must default to GLM 5.3.");
+  if (modelForMode("Thinking") !== "deepseek/deepseek-v4.1-flash-1017") {
+    throw new Error("Thinking must default to DeepSeek V4.1 Flash.");
   }
-  if (modelForMode("Help") !== "deepseek/deepseek-v4-flash-0731") {
+  if (modelForMode("Help") !== "deepseek/deepseek-v4.1-flash-1017") {
     throw new Error("Help must default to the configured fast-text model.");
   }
   if (!chatExecutionStatus("Instant").enabled || !chatExecutionStatus("Thinking").enabled) {
-    throw new Error("Canonical chat modes should remain enabled when the Ambient backup is configured.");
+    throw new Error("Canonical chat modes should be enabled when Vercel AI Gateway is configured.");
   }
   const canonicalModeLabels = chatModes().map((mode) => mode.label);
-  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3,Claude Opus 5.5,Help") {
+  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3.1 Pro,Claude Opus 5.5,Gemini 4 Hydrogen,Help") {
     throw new Error(`Only canonical chat modes should be exposed: ${canonicalModeLabels.join(", ")}`);
   }
 

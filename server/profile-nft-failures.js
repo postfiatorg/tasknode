@@ -17,7 +17,7 @@ export function classifyProfileNftGenerationFailure(error = {}) {
   const message = privateFailures.has(code)
     ? "The artwork did not pass its privacy or art review. Please try again."
     : permanent ? "Artwork generation is unavailable. The service needs attention."
-      : "Artwork generation was interrupted. It will retry automatically.";
+      : "Artwork generation was interrupted. Generate again to retry.";
   return { code, message, retryable: !permanent };
 }
 

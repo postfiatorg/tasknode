@@ -107,6 +107,7 @@ const chatProperties = {
 };
 
 const taskProperties = {
+  reinstatementRevision: integer(0),
   phase: text(40),
   expectedAccountId: text(180),
   expectedAttemptCount: integer(),
@@ -279,7 +280,14 @@ export const docsLibraryBody = strictBody(400_000, {
   },
   expectedVersion: integer(),
 }, { required: ["encryptedLibraryMetadata", "expectedVersion"] });
+const promptCreationEvent = {
+  type: "object", allowUnknown: false,
+  properties: { eventId: text(36, 36), ciphertext: encryptedEnvelope },
+  required: ["eventId", "ciphertext"],
+};
 export const docsCreateBody = strictBody(512 * KiB, {
+  documentType: { type: "string", enum: ["rich_text", "prompt"] },
+  initialEvent: promptCreationEvent,
   documentId: text(80, 1), channelHash: text(128, 1), encryptedMetadata: encryptedEnvelope, proof,
 }, { required: ["documentId", "channelHash", "encryptedMetadata", "proof"] });
 export const docsUpdateBody = strictBody(512 * KiB, {
@@ -389,6 +397,7 @@ export const decisionBody = strictBody(256 * KiB, {
   mode: text(20, 1, { enum: ["budget", "premium"] }),
 }, { required: ["input", "conversationId", "requestId"] });
 export const deepResearchBody = strictBody(128 * KiB, {
+  maxCostUsd: { type: "number", minimum: 0.01, maximum: 5 },
   question: text(50_000, 1),
   message: text(50_000, 1),
   title: text(500),
@@ -460,3 +469,11 @@ export const campaignTrackerBody = strictBody(1100 * KiB, {
   historyFrom: { type: ["string", "null"] }, historyTo: { type: ["string", "null"] },
   expiresAt: { type: ["string", "null"] }, grantId: { type: "string" },
 });
+
+// Prompt plaintext never belongs in these HTTP contracts.
+export const promptKeyBody = strictBody(16384, { envelope: encryptedEnvelope }, { required: ["envelope"] });
+export const promptEventBody = strictBody(2100000, { eventId: text(36,36), documentId: text(36,36), ciphertext: encryptedEnvelope }, { required: ["eventId","documentId","ciphertext"] });
+export const promptDeviceBody = strictBody(10000, { deviceId: text(36,36), publicKey: text(44,44), label: text(100,1) }, { required: ["deviceId","publicKey","label"] });
+export const promptDeviceApprovalBody = strictBody(10000, { deviceId: text(36,36), envelope: encryptedEnvelope }, { required: ["deviceId","envelope"] });
+export const promptDeviceRevokeBody = strictBody(1000, { deviceId: text(36,36) }, { required: ["deviceId"] });
+export const promptDocumentBody = strictBody(2100000, { initialEvent: promptCreationEvent, documentId: text(36,36), channelHash: text(32,32), encryptedMetadata: encryptedEnvelope }, { required: ["documentId","channelHash","encryptedMetadata","initialEvent"] });

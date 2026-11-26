@@ -12,6 +12,7 @@
  * The code is single use and short lived, and the token is scoped to one index
  * and one account, so a leaked token cannot open the rest of the catalog.
  */
+import { hasValidatorBinding } from "./repositories/validator-bindings.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
 import {
   consumeCode,
@@ -28,6 +29,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://agti.net",
   "https://www.agti.net",
   "https://agtico.github.io",
+  "https://tasknode.postfiat.org",
 ];
 
 /* These endpoints are designed to be called cross-origin by a static site, so
@@ -61,7 +63,7 @@ function bearerToken(req) {
 }
 
 /** Only ever bounce back to an https origin the caller actually supplied. */
-export function safeReturnTo(rawReturnTo = "") {
+export function safeReturnTo(rawReturnTo = "", env = process.env) {
   const value = String(rawReturnTo || "").trim();
   if (!value) return null;
   let url;
@@ -70,7 +72,8 @@ export function safeReturnTo(rawReturnTo = "") {
   } catch {
     return null;
   }
-  if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
+  if (url.username || url.password || !allowedStaticOrigins(env).includes(url.origin) ||
+      (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))) {
     return null;
   }
   url.hash = "";
@@ -79,6 +82,10 @@ export function safeReturnTo(rawReturnTo = "") {
 
 export async function accountMeetsTier({ accountId = "", tier = TIER_ACTIVE_WALLET } = {}) {
   if (!accountId) return { ok: false, reason: "not_signed_in", walletAddress: "" };
+  if (tier === "validator") {
+    const ok = await hasValidatorBinding(accountId);
+    return { ok, reason: ok ? "" : "validator_required", walletAddress: "" };
+  }
   if (tier !== TIER_ACTIVE_WALLET) {
     // Unknown tiers fail closed rather than silently granting access.
     return { ok: false, reason: "unsupported_tier", walletAddress: "" };
@@ -106,7 +113,7 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
   // than answered without CORS headers, so the failure is legible.
   if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
     const origin = String(req.headers?.origin || "");
-    if (origin && !corsHeadersFor(req)) {
+    if (!origin || !corsHeadersFor(req)) {
       json(res, 403, { ok: false, error: "origin_not_allowed" }, cors);
       return true;
     }
@@ -171,9 +178,9 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
       json(res, 400, { ok: false, error: "code_and_index_id_required" }, cors);
       return true;
     }
-    const claimed = await consumeCode({ code, indexId });
+    const claimed = await consumeCode({ code, indexId, returnOrigin: req.headers.origin });
     if (!claimed) {
-      json(res, 401, { ok: false, error: "code_invalid_or_expired" }, cors);
+      json(res, 403, { ok: false, error: "code_invalid_or_expired" }, cors);
       return true;
     }
     const index = await getIndex(indexId);
@@ -192,6 +199,7 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
       indexId,
       accountId: claimed.accountId,
       walletAddress: eligibility.walletAddress,
+      returnOrigin: req.headers.origin,
     });
     json(res, 200, { ok: true, viewer_token: token, expires_at: expiresAt, index_id: indexId }, cors);
     return true;
@@ -212,12 +220,12 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
     const indexId = decodeURIComponent(parts[3]);
     const token = bearerToken(req);
     if (!token) {
-      json(res, 401, { ok: false, error: "viewer_token_required" }, cors);
+      json(res, 403, { ok: false, error: "viewer_token_required" }, cors);
       return true;
     }
-    const grant = await resolveViewerToken({ token, indexId });
+    const grant = await resolveViewerToken({ token, indexId, returnOrigin: req.headers.origin });
     if (!grant) {
-      json(res, 401, { ok: false, error: "viewer_token_invalid_or_expired" }, cors);
+      json(res, 403, { ok: false, error: "viewer_token_invalid_or_expired" }, cors);
       return true;
     }
     const index = await getIndex(indexId);

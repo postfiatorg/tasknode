@@ -11,10 +11,24 @@ const defaultBody = worker.memoryOpenRouterRequestBody({
   maxTokens: worker.turnMemoryMaxTokens(),
 });
 
-assert.equal(defaultBody.model, "deepseek/deepseek-v4-flash-0731");
+assert.equal(defaultBody.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(defaultBody.max_tokens, 900);
 assert.deepEqual(defaultBody.reasoning, { effort: "none", exclude: true });
 assert.deepEqual(defaultBody.response_format, { type: "json_object" });
+
+const rewardedBody = worker.memoryOpenRouterRequestBody({
+  messages: [{ role: "system", content: "Return JSON." }],
+  maxTokens: worker.rewardedTaskMemoryMaxTokens(),
+  responseFormat: worker.memorySummaryResponseFormat(),
+});
+assert.equal(rewardedBody.response_format.type, "json_schema");
+assert.equal(rewardedBody.response_format.json_schema.strict, true);
+assert.equal(rewardedBody.response_format.json_schema.schema.additionalProperties, false);
+assert.deepEqual(rewardedBody.response_format.json_schema.schema.required, [
+  "user_request_summary_bullets",
+  "system_response_summary_bullets",
+  "memory_text",
+]);
 
 assert.equal(worker.deepMemoryMaxTokens(), 3500);
 assert.equal(worker.networkTaskProfileMaxTokens(), 900);

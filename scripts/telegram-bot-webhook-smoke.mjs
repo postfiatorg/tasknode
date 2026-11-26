@@ -11,7 +11,7 @@ process.env.TASKNODE_POSTGRES_DISABLED = "true";
 process.env.TELEGRAM_AUTH_BOT_TOKEN = "123456:tasknode-telegram-secret";
 process.env.TELEGRAM_BOT_CHAT_MODE = "Private Instant";
 process.env.CHAT_PROVIDER_TIMEOUT_MS = "45000";
-process.env.AMBIENT_API_KEY = "test-ambient-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "test-vercel-key";
 
 try {
   const { ambientChatRequest, chatProviderTimeoutMs } = await import("../server/chat-router.js");

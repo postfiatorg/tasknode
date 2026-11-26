@@ -70,7 +70,7 @@ The deterministic fields come from Postgres and runtime wallet-link state:
 - lifetime task reward PFT from canonical rewarded `task_projections` rows with positive `reward_actual_pft`, nonzero `event_count`, and non-empty `last_event_tx_hash` plus `last_event_cid`;
 - lifetime daily airdrop PFT from submitted `profile_daily_airdrop_issuances`;
 - total lifetime PFT as task rewards plus issued airdrops;
-- alignment score from the latest completed `profile_daily_airdrop_runs.alignment_score_7d`;
+- alignment score: the average `retention_value_score` of eligible production `profile_daily_airdrop_runs` in the trailing 30 days (see Directory);
 - contribution tier from positive task rewards in the trailing 30 days;
 - public NFT gallery from account-scoped public `profile_nfts` rows, up to the bounded 240-row response cap.
 
@@ -131,8 +131,8 @@ The public profile role layout renders the model summary as exactly two sentence
 
 Provider policy:
 
-- model: Vercel `deepseek/deepseek-v4-flash-0731` by default;
-- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
+- model: Vercel `deepseek/deepseek-v4.1-flash-1017` by default;
+- provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -190,7 +190,7 @@ Recent work pace independently drives gesture, speed lines and ink pressure. The
 
 `POST /api/profile/nft/generate` acknowledges a durable job with HTTP 202. It ignores client-supplied task history, context documents and claimed scores. The background worker reads up to 200 recent non-fixture, account-owned task projections plus all-time and recent completion aggregates. It includes task titles/descriptions and relative activity ages, not raw chats, context documents, evidence blobs, wallet/account IDs or provider identities. Optional style text is untrusted input. Any identity information embedded in task prose remains within the private stage.
 
-The private spec and independent review are pinned to `moonshotai/kimi-k3` on Vercel. The account is already configured for ZDR; every request additionally sets `providerOptions.gateway.zeroDataRetention=true`. Missing Vercel credentials, provider failure or lack of a compliant route cannot fall back to Ambient. This exception is limited to the NFT pipeline; general chat defaults remain GLM 5.3.
+The private spec and independent review are pinned to `moonshotai/kimi-k3.1-pro` on Vercel. The account is already configured for ZDR; every request additionally sets `providerOptions.gateway.zeroDataRetention=true`. Missing Vercel credentials, provider failure or lack of a compliant route cannot fall back to Ambient. This exception is limited to the NFT pipeline; general chat defaults remain DeepSeek V4.1 Flash.
 
 Kimi creates detailed anonymous visual fields and separate public scores. A second Kimi ZDR call reviews privacy, prompt injection, evidence grounding and the art contract, returning a corrected complete spec or rejection. Explicit type/bounds checks and identifier-overlap checks reject malformed or leaking results without regex. Private evidence refs are discarded. Only the reviewed visual fields, public art traits and fixed art guide form the OpenAI request. No task history, private rationale or account identifier is sent to OpenAI. Vercel ZDR applies to the private Kimi stage and does not configure the separate OpenAI account.
 
@@ -554,7 +554,7 @@ Visible fields:
 - proposed daily airdrop: `daily_airdrop_pft`;
 - run mode: `run_mode`, currently usually `dry_run`;
 - score date: `completed_at` or `run_date`;
-- alignment: `alignment_score_7d * 100`;
+- alignment: average `retention_value_score` over the trailing 30 days of eligible production runs;
 - rewarded task count from `input_snapshot.reward_totals.rewarded_task_count`;
 - trailing 7-day actual/max PFT: `actual_airdrop_pft_7d` and `max_possible_airdrop_pft_7d`;
 - recipient wallet from `input_snapshot.airdrop_recipient.wallet_address`;
@@ -639,8 +639,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: Vercel `zai/glm-5.3` with Ambient backup by default;
-- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
+- model: Vercel `deepseek/deepseek-v4.1-flash-1017` by default;
+- provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.

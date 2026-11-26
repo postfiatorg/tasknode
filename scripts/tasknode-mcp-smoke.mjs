@@ -127,7 +127,7 @@ try {
   assert.equal((await rpc("resources/list")).error.code, -32601);
 
   // /connect: signed-in browser mints a token and shows paste-ready commands.
-  assert.ok((await (await get("/connect")).text()).includes("/connect/login"), "signed out: sign-in link");
+  assert.ok((await (await get("/connect")).text()).includes('href="/#connect"'), "signed out: sign in through the app, never a bare GitHub login");
   assert.equal(new URL((await get("/connect/login")).headers.get("location")).hostname, "github.com");
   const browser = { "x-smoke-account": account.id, origin };
   assert.ok((await (await fetch(`${origin}/connect`, { headers: browser })).text()).includes('method="post"'));
@@ -201,6 +201,63 @@ try {
   assert.ok((await (await fetch(`${origin}/connect`, { headers: browser })).text()).includes('action="/connect/signout"'));
   assert.ok((await (await fetch(`${origin}/connect/signout`, { method: "POST", headers: browser })).text()).includes("Signed out 1 agent"));
   assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 10, method: "ping" }, { authorization: `Bearer ${pageToken}` })).status, 401);
+  // Device sign-in (RFC 8628): works without a localhost callback, names the
+  // account everywhere, and never creates an account for an unlinked GitHub.
+  assert.equal(authServer.device_authorization_endpoint, `${origin}/oauth/device_authorization`);
+  assert.ok(authServer.grant_types_supported.includes("urn:ietf:params:oauth:grant-type:device_code"));
+  const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
+  const startDevice = async () => (await post("/oauth/device_authorization", { client_name: "tasknode-cli", device_name: "smoke-box", platform: "linux", agents: ["claude", "codex", "bogus"] })).json();
+  const pollDevice = async (deviceCode) => post("/oauth/token", new URLSearchParams({ grant_type: deviceGrant, device_code: deviceCode }).toString(), { "content-type": "application/x-www-form-urlencoded" });
+  const device = await startDevice();
+  assert.match(device.user_code, /^[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}$/);
+  assert.equal(device.verification_uri, `${origin}/activate`);
+  assert.equal(device.interval, 5);
+  assert.equal((await (await pollDevice(device.device_code)).json()).error, "authorization_pending");
+  assert.equal((await (await pollDevice(device.device_code)).json()).error, "slow_down");
+  const signedOutActivate = await get(`/activate?code=${device.user_code}`);
+  assert.equal(signedOutActivate.status, 302);
+  assert.equal(signedOutActivate.headers.get("location"), `/#activate/${device.user_code}`);
+  const otherAccount = runtime.getOrCreateProviderAccount({ provider: "github", providerUserId: `mcp_other_${Date.now()}`, username: "mcp-other" });
+  const activatePage = await (await fetch(`${origin}/activate?code=${device.user_code.toLowerCase().replace("-", "")}`, { headers: browser })).text();
+  assert.ok(activatePage.includes("Signed in as mcp-smoke") && activatePage.includes("Claude Code, Codex") && activatePage.includes("smoke-box"));
+  assert.ok(!activatePage.includes("bogus"), "unknown agent ids are dropped");
+  const decide = (code, decision, headers = browser) => fetch(`${origin}/activate?code=${code}&decision=${decision}`, { method: "POST", headers });
+  assert.equal((await decide(device.user_code, "approve", { ...browser, origin: "https://evil.example" })).status, 403);
+  assert.ok((await (await decide(device.user_code, "approve")).text()).includes("Connected."));
+  await new Promise((resolve) => setTimeout(resolve, 4100));
+  const deviceToken = await (await pollDevice(device.device_code)).json();
+  assert.ok(deviceToken.access_token.startsWith("tns_"));
+  assert.equal(deviceToken.account.accountId, account.id);
+  assert.equal(deviceToken.account.github, "mcp-smoke");
+  assert.ok(["expired_token", "invalid_grant"].includes((await (await pollDevice(device.device_code)).json()).error), "device codes are single use");
+  const deviceAuth = { authorization: `Bearer ${deviceToken.access_token}` };
+  assert.equal((await (await fetch(`${origin}/api/agent/whoami`, { headers: deviceAuth })).json()).account.accountId, account.id);
+  assert.equal((await fetch(`${origin}/api/agent/whoami`)).status, 401);
+  const deviceInit = await (await post("/mcp", { jsonrpc: "2.0", id: 11, method: "initialize", params: {} }, deviceAuth)).json();
+  assert.equal(deviceInit.result.serverInfo.title, "Task Node: mcp-smoke");
+  assert.ok(deviceInit.result.instructions.startsWith("Connected as mcp-smoke (GitHub mcp-smoke)."));
+  const deviceStatus = await (await post("/mcp", { jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "tasknode_status", arguments: {} } }, deviceAuth)).json();
+  assert.equal(JSON.parse(deviceStatus.result.content[0].text).account.name, "mcp-smoke", "every tool reply names the account");
+  const connectWithDevice = await (await fetch(`${origin}/connect`, { headers: browser })).text();
+  assert.ok(connectWithDevice.includes("Claude Code, Codex on smoke-box") && connectWithDevice.includes("Signed in as mcp-smoke"));
+  assert.ok(connectWithDevice.includes("/install | sh"), "connect page leads with the one-step installer");
+  const sessionId = connectWithDevice.match(/\/connect\/revoke\?session=([A-Za-z0-9_-]+)/)[1];
+  assert.equal((await fetch(`${origin}/connect/revoke?session=${sessionId}`, { method: "POST", redirect: "manual", headers: { "x-smoke-account": otherAccount.id, origin } })).status, 303);
+  assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 13, method: "ping" }, deviceAuth)).status, 200, "another account cannot revoke this device");
+  assert.equal((await fetch(`${origin}/connect/revoke?session=${sessionId}`, { method: "POST", redirect: "manual", headers: browser })).status, 303);
+  assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 14, method: "ping" }, deviceAuth)).status, 401, "revoking one device ends its access");
+  // Deny and unlinked-GitHub paths.
+  const denied = await startDevice();
+  assert.ok((await (await decide(denied.user_code, "deny")).text()).includes("Denied"));
+  assert.equal((await (await pollDevice(denied.device_code)).json()).error, "access_denied");
+  const emailOnly = runtime.getOrCreateEmailAccount ? runtime.getOrCreateEmailAccount({ email: `device-${Date.now()}@example.com` }) : null;
+  if (emailOnly?.id) {
+    const unlinked = await startDevice();
+    const unlinkedHeaders = { "x-smoke-account": emailOnly.id, origin };
+    assert.ok((await (await fetch(`${origin}/activate?code=${unlinked.user_code}`, { headers: unlinkedHeaders })).text()).includes("Link GitHub"));
+    assert.ok((await (await decide(unlinked.user_code, "approve", unlinkedHeaders)).text()).includes("Link GitHub to your Task Node account first"));
+  }
+  assert.ok((await (await get("/connect.md")).text()).includes("/install | sh"));
   console.log("tasknode mcp smoke ok");
 } finally {
   server.close();

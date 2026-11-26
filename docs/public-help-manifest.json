@@ -27,6 +27,8 @@
     "docs/wiki/architecture/current-system.md",
     "docs/wiki/architecture/defect-repair-rule.md",
     "docs/wiki/architecture/encryption.md",
-    "docs/wiki/architecture/style-guide.md"
+    "docs/wiki/architecture/style-guide.md",
+    "docs/wiki/legal/privacy.md",
+    "docs/wiki/surfaces/validator-research.md"
   ]
 }

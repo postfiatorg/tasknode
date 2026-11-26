@@ -13,6 +13,7 @@ import {
   consumeWalletChallenge,
   createWalletChallenge,
 } from "./repositories/auth-challenges.js";
+import { absorbEmptyDuplicateAccount } from "./repositories/accounts.js";
 import { getDocsAccount } from "./repositories/collaboration.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { maybeClaimUsdcTopUpInitiationGift } from "./ethereum-deposits.js";
@@ -514,15 +515,40 @@ export async function walletLinkVerify(payload, method, session = null) {
   }
 
   const previousLinkedWallet = await getLinkedWallet({ accountId: session.accountId });
-  const result = await linkWalletToAccount({
-    accountId: session.accountId,
+  const linkOptions = {
     address,
     publicKey,
     tasknodeEncryptionPubkey,
     challengeId: challengeResult.challenge.id,
     signature,
     proofPurpose: challengeResult.challenge.purpose,
-  });
+  };
+  let result = await linkWalletToAccount({ accountId: session.accountId, ...linkOptions });
+  let accountSwitched = false;
+
+  // Some restored accounts hold a wallet but no sign-in, so nobody can open them. The signature
+  // proves the member owns that wallet. When the account they are signed in to is an empty duplicate,
+  // move its sign-ins and this session to the wallet's account. An account that has a sign-in of its
+  // own is never opened this way, and the wallet itself never changes account.
+  if (
+    !result.ok && result.error === "wallet_owned_by_other_account" && result.ownerAccountId
+    && challengeResult.challenge.purpose !== "wallet_create"
+  ) {
+    const absorbed = await absorbEmptyDuplicateAccount({
+      sourceAccountId: session.accountId,
+      targetAccountId: result.ownerAccountId,
+      actorAccountId: session.accountId,
+      moveSessions: true,
+      requireTargetWithoutSignIn: true,
+      expectations: [{ kind: "wallet", address, accountId: result.ownerAccountId }],
+      reason: "member proved the wallet of an account with no sign-in from an empty duplicate account",
+    });
+    if (absorbed.ok) {
+      accountSwitched = true;
+      session = { ...session, accountId: result.ownerAccountId };
+      result = await linkWalletToAccount({ accountId: session.accountId, ...linkOptions });
+    }
+  }
 
   if (!result.ok) {
     if (result.error === "wallet_owned_by_other_account") {
@@ -543,11 +569,11 @@ export async function walletLinkVerify(payload, method, session = null) {
       action: "wallet_link_verify",
       message:
         result.error === "wallet_owned_by_other_account"
-          ? "That wallet is already linked to a different account."
+          ? "That wallet belongs to another Task Node account."
           : "Wallet link could not be saved.",
       actionRequired:
         result.error === "wallet_owned_by_other_account"
-          ? "Use the distinct wallet belonging to this account. Wallet ownership is not moved by linking."
+          ? "If that account is yours, sign in with the method you used for it, then add this sign-in from Profile. If you cannot, ask support to merge the accounts."
           : "Start wallet linking again and sign a fresh challenge.",
     });
   }
@@ -609,13 +635,16 @@ export async function walletLinkVerify(payload, method, session = null) {
     : null;
   const message = isCreate
     ? "Seed wallet created. Save the local vault to send the PFT initiation gift."
-    : "Seed wallet linked.";
+    : accountSwitched
+      ? "This wallet belongs to your existing Task Node account. Your sign-in has been added to it and you are now in that account."
+      : "Seed wallet linked.";
   return {
     status: 200,
     body: {
       ok: true,
       action: "wallet_link_verify",
       message,
+      accountSwitched,
       reclaimedWalletCount,
       initiationGift,
       wallet: result.wallet,

@@ -39,7 +39,7 @@ submit secrets or unlawful or infringing material.
 
 Public profiles, task evidence, protocol memos, and content deliberately
 published to public systems may be copied by others. Private Nostr ciphertext
-is handled as described in `PRIVACY.md`.
+is handled as described in the Privacy Policy at <https://tasknode.postfiat.org/privacy>.
 
 ## Availability and enforcement
 

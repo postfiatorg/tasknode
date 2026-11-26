@@ -3,6 +3,7 @@
 // boundary so private operations, verification evidence, plans, and prompts do
 // not silently become production browser assets.
 const HELP_MARKDOWN_LOADERS = {
+  validatorResearch: () => import("../../../docs/wiki/surfaces/validator-research.md?raw").then((module) => module.default),
   start: () => import("../../../docs/wiki/index.md?raw").then((module) => module.default),
   agents: () => import("../../../docs/wiki/surfaces/agents.md?raw").then((module) => module.default),
   chat: () => import("../../../docs/wiki/surfaces/chat.md?raw").then((module) => module.default),
@@ -29,6 +30,7 @@ const HELP_MARKDOWN_LOADERS = {
   defectRepairRule: () => import("../../../docs/wiki/architecture/defect-repair-rule.md?raw").then((module) => module.default),
   encryption: () => import("../../../docs/wiki/architecture/encryption.md?raw").then((module) => module.default),
   styleGuide: () => import("../../../docs/wiki/architecture/style-guide.md?raw").then((module) => module.default),
+  privacy: () => import("../../../docs/wiki/legal/privacy.md?raw").then((module) => module.default),
 };
 
 function docBody(markdown = "") {
@@ -65,7 +67,7 @@ async function loadIdentityAndWallets() {
 const systemStatusIntro = [
   "# System Status",
   "This page renders live status returned by Task Node. A healthy web process does not prove that background workers, queues, providers, protocol endpoints, or dependent services are healthy.",
-  "Inference uses Vercel AI Gateway first, with Ambient as backup. Provider configuration and live availability are distinct states.",
+  "Inference runs on Vercel AI Gateway. Provider configuration and live availability are distinct states.",
   "Status links lead only to the public product and architecture documentation allowlist.",
 ].join("\n\n");
 
@@ -130,7 +132,8 @@ export const DOC_GROUPS = [
   {
     title: "Product",
     pages: [
-      { slug: "chat", title: "Chat", summary: "Chat models, current task and shared team activity in web and Telegram, Deep Research, budget Decisions with context and memory, billing, and saved reports.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
+      { slug: "validator-research", title: "Validator Rewards & Research", summary: "Open Validator from your avatar menu to connect, track eligibility and $20 monthly credits, and see your validator mark across Task Node.", loadMarkdown: HELP_MARKDOWN_LOADERS.validatorResearch },
+      { slug: "chat", title: "Chat", summary: "Chat models, current task and shared team activity in web and Telegram, GoodAlexander research at cost for all signed-in accounts, budget Decisions, billing, and saved reports.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
       { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, actionable steps, submission requirements, full evidence reports up to 120,000 characters, routing eligibility, exhausted-request retry, allocation recovery, and Campaign Tracker validation.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
       { slug: "docs", title: "Docs", summary: "Encrypted documents, spreadsheets, folders, and chat with Coach and ODV.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
@@ -145,7 +148,7 @@ export const DOC_GROUPS = [
       { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Alignment score, rewarded contributions, and payout status.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },
       { slug: "refine-context", title: "Refine Context", summary: "Targeted Context editing.", loadMarkdown: HELP_MARKDOWN_LOADERS.refineContext },
       { slug: "context-rewrite", title: "Context Rewrite", summary: "Asynchronous full-document rewrite.", loadMarkdown: HELP_MARKDOWN_LOADERS.contextRewrite },
-      { slug: "agents", title: "Agents", summary: "External wallet-native workers.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
+      { slug: "agents", title: "Agents", summary: "Connect Claude Code, Codex and other AI agents with one command.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
     ],
   },
   {
@@ -197,6 +200,17 @@ export const DOC_GROUPS = [
         title: "Style Guide",
         summary: "Visual system and interaction rules.",
         loadMarkdown: HELP_MARKDOWN_LOADERS.styleGuide,
+      },
+    ],
+  },
+  {
+    title: "Legal",
+    pages: [
+      {
+        slug: "privacy",
+        title: "Privacy Policy",
+        summary: "Operated by Chatterwise Limited (BVI). What Task Node processes, who receives it, retention and deletion.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.privacy,
       },
     ],
   },

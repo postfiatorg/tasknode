@@ -555,7 +555,10 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
 export async function getTaskDetail({ accountId = "", walletAddress = "", taskId = "" } = {}) {
   const linked = Boolean(String(walletAddress || "").trim());
   const normalizedTaskId = safeText(taskId, 180);
-  if (!linked || !normalizedTaskId) return null;
+  const accountTask = Boolean(accountId && normalizedTaskId.startsWith("task_reinstate_"));
+  if ((!linked && !accountTask) || !normalizedTaskId) return null;
+  // System reinstatement offers are account-owned and always use an empty wallet.
+  if (accountTask) walletAddress = "";
   if (!databaseEnabled()) {
     const error = new Error("database_not_configured");
     error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
@@ -575,6 +578,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
   );
   const row = taskResult.rows[0];
   if (!row) {
+    if (accountTask) return null;
     return getLegacyTaskDetail({ accountId, walletAddress, taskId: normalizedTaskId });
   }
 

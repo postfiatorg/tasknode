@@ -1,3 +1,4 @@
+import { publicValidatorBindingsByAccount } from "./repositories/validator-bindings.js";
 import { decisionsAvailable } from "./corbanu-decisions.js";
 import {
   authProviders,
@@ -39,7 +40,7 @@ import {
 import { listTaskState } from "./repositories/tasks.js";
 import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
 import { expertAccessFromTaskState } from "./expert-badge.js";
-import { deepResearchAvailable } from "./corbanu-deep-research.js";
+import { chatResearchAccess } from "./chat-research-provider.js";
 
 const signedOutUsageSummary = Object.freeze({
   currentSpendUsd: 0,
@@ -484,8 +485,10 @@ export async function appState(session = null, { refreshTaskProjection = false }
     hiveConversation,
     seedMessages,
     contextDocument,
+    researchAccess,
+    validatorMembership,
   ] = await Promise.all([
-    timed("readiness", () => readiness(), () => ({
+    timed("readiness", () => readiness({ creditWaitMs: 0 }), () => ({
       wallet: {
         seedStorageReady: true,
         challengeProofReady: true,
@@ -521,6 +524,8 @@ export async function appState(session = null, { refreshTaskProjection = false }
       () => getContextDocument({ accountId }),
       () => fallbackContextDocument({ accountId })
     ),
+    timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "goodalexander", atCost: true })),
+    accountId ? timed("validator_membership", () => publicValidatorBindingsByAccount([accountId]), () => new Map()) : new Map(),
   ]);
 
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
@@ -631,7 +636,8 @@ export async function appState(session = null, { refreshTaskProjection = false }
 
   return {
     generatedAt: new Date().toISOString(),
-    session: sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
+    session: { ...sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
+      validator: { bindings: validatorMembership.get(accountId) || [] } },
     chat: {
       conversationId,
       conversationsPath: "/api/chat/conversations",
@@ -639,7 +645,9 @@ export async function appState(session = null, { refreshTaskProjection = false }
       recents: chatRecents,
       hiveConversation,
       defaultMode: signedOut ? "Help" : enabledMode?.label || "Instant",
-      deepResearchAvailable: deepResearchAvailable({ accountId }),
+      deepResearchAvailable: researchAccess.available,
+      deepResearchProvider: researchAccess.provider,
+      deepResearchAtCost: researchAccess.atCost,
       decisionsAvailable: decisionsAvailable({ accountId }),
       modes,
       seedMessages,

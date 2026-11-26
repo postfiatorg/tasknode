@@ -31,14 +31,29 @@ export async function withInferenceDeadline({ signal, timeoutMs = 45_000, provid
   }
 }
 
+// Gateway error types that mean the account has no spendable credit. Vercel AI
+// Gateway answers 402 with these when the team balance or a budget runs out.
+const providerErrorStatuses = {
+  rate_limit_exceeded: 429,
+  insufficient_quota: 402,
+  insufficient_funds: 402,
+  insufficient_credits: 402,
+  quota_for_entity_exceeded: 402,
+  model_not_found: 404,
+};
+
 function providerError(provider, response, body) {
   const explicitStatus = Number(body?.error?.status || body?.error?.code);
-  const statuses = { rate_limit_exceeded: 429, insufficient_quota: 402, model_not_found: 404 };
+  const type = typeof body?.error?.type === "string" ? body.error.type.trim().slice(0, 80) : "";
   const status = !response.ok ? response.status
     : explicitStatus >= 400 && explicitStatus <= 599 ? explicitStatus
-      : statuses[body?.error?.type] || 502;
+      : providerErrorStatuses[type] || 502;
   // Do not log upstream text: errors can echo credentials or private prompts.
-  return inferenceError(`inference_http_${status}`, { status, provider });
+  // The machine-readable type is safe and lets callers tell a credit outage
+  // apart from other failures.
+  const error = inferenceError(`inference_http_${status}`, { status, provider });
+  if (type && Object.hasOwn(providerErrorStatuses, type)) error.providerErrorType = type;
+  return error;
 }
 
 export async function inferenceHttp(provider, path, { body, env = process.env, fetchImpl = fetch, signal, method = "POST" } = {}) {

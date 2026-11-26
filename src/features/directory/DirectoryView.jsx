@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Server } from "lucide-react";
+import { ValidatorMark } from "../research/ValidatorStatus.jsx";
 import { requestJson } from "../../api";
 import { compactWallet, formatCompactPft } from "../hive/HiveView.jsx";
 import { ProfilePortrait, ProfileArtTraits } from "../profile/ProfilePortrait.jsx";
 import "./directory.css";
 
-const SORT_COLUMNS = [
-  { key: "networkTasks", label: "Network" },
-  { key: "personalTasks", label: "Personal" },
-  { key: "rewards", label: "Rewards" },
-  { key: "alignment", label: "Alignment (7d)" },
-  { key: "score", label: "Score" },
-];
+function sortColumns(windowDays = 30) {
+  return [
+    { key: "networkTasks", label: "Network" },
+    { key: "personalTasks", label: "Personal" },
+    { key: "rewards", label: "Rewards" },
+    { key: "alignment", label: `Alignment (${windowDays}d)` },
+    { key: "score", label: "Score" },
+  ];
+}
 
 function rankOperators(operators = []) {
   return [...operators]
@@ -67,13 +70,16 @@ function DirectoryStatus({ status, onRefresh }) {
   return <div className="directory-empty">No operators yet.</div>;
 }
 
-function OperatorIdentity({ operator }) {
+export function OperatorIdentity({ operator }) {
   return (
     <span className="directory-operator">
       <ProfilePortrait nft={operator.heroNft} seed={operator.accountId || operator.handle} label={`${operator.displayName || operator.handle || "Member"} profile picture`} size={64} className="directory-avatar" />
       <span className="directory-operator-copy">
-        <strong>
-          {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
+        <strong className={operator.validator?.bindings?.length ? "has-validator" : undefined}>
+          <span className="directory-operator-name" title={operator.handle ? `@${operator.handle}` : operator.displayName}>
+            {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
+          </span>
+          <ValidatorMark bindings={operator.validator?.bindings} />
           {operator.isYou && <em>You</em>}
         </strong>
         {operator.operatorDisclosure?.isMachineOperator && (
@@ -86,7 +92,7 @@ function OperatorIdentity({ operator }) {
   );
 }
 
-function OperatorRow({ operator }) {
+function OperatorRow({ operator, windowDays = 30 }) {
   const RowTag = operator.hasPublicProfile ? "a" : "div";
   const rowProps = operator.hasPublicProfile
     ? { href: profileHref(operator.accountId), "aria-label": `Open ${operator.displayName || operator.handle} public profile` }
@@ -120,7 +126,7 @@ function OperatorRow({ operator }) {
           <i className={`tone-${alignmentTone(alignment)}`}>
             <b style={{ width: hasAlignment ? `${Math.max(0, Math.min(100, Number(alignment)))}%` : "0%" }} />
           </i>
-          <small title="Airdrop PFT received over the last 7 days as a share of the maximum possible">Alignment (7d)</small>
+          <small title={`Average daily work-quality score over the last ${windowDays} days${operator.alignmentScoredDays ? ` (${operator.alignmentScoredDays} scored days)` : ""}`}>Alignment ({windowDays}d)</small>
         </span>
         <span className="directory-stat-cell is-score">
           {Math.round(Number(operator.score || 0))}
@@ -136,6 +142,7 @@ export function DirectoryView() {
   const [status, setStatus] = useState("loading");
   const [refreshing, setRefreshing] = useState(false);
   const [sortKey, setSortKey] = useState("score");
+  const [validatorsOnly, setValidatorsOnly] = useState(false);
 
   const loadDirectory = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
     if (showLoading && shouldApply()) setStatus("loading");
@@ -163,8 +170,10 @@ export function DirectoryView() {
     };
   }, [loadDirectory]);
 
-  const operators = useMemo(() => sortOperators(document?.operators || [], sortKey), [document?.operators, sortKey]);
+  const operators = useMemo(() => sortOperators(document?.operators || [], sortKey)
+    .filter(operator => !validatorsOnly || operator.validator?.bindings?.length), [document?.operators, sortKey, validatorsOnly]);
   const totals = document?.totals || {};
+  const windowDays = Number(document?.rankFormula?.alignmentWindowDays) || 30;
   const readyWithRows = status === "ready" && operators.length > 0;
 
   return (
@@ -177,7 +186,8 @@ export function DirectoryView() {
               {readyWithRows ? "Live" : "Directory"}
             </div>
             <h1>Directory</h1>
-            <p>Public, discoverable operators ranked by rewarded work, PFT earned, and current alignment score.</p>
+            <p>Public operators ranked by rewarded work, PFT earned and alignment, the average daily work-quality score over the last {windowDays} days.</p>
+            <a className="validator-directory-cta" href="#settings/validator"><Server size={16} aria-hidden="true" />Run a validator? Link it</a>
           </div>
           <div className="directory-header-actions">
             <div className="directory-stats">
@@ -203,14 +213,18 @@ export function DirectoryView() {
             <div>
               <h2>Leaderboard</h2>
               <p>Rank score = 3x network tasks + personal tasks + rewards/25000 + alignment.</p>
+              <small>Showing public, discoverable operators only.</small>
             </div>
-            <small>Showing public, discoverable operators only.</small>
+            <div className="validator-filter" aria-label="Filter leaderboard">
+              <button type="button" aria-pressed={!validatorsOnly} onClick={() => setValidatorsOnly(false)}>All operators</button>
+              <button type="button" aria-pressed={validatorsOnly} onClick={() => setValidatorsOnly(true)}>Validators</button>
+            </div>
           </div>
 
           <div className="directory-row directory-row-head" role="row">
             <span>Rank</span>
             <span>Operator</span>
-            {SORT_COLUMNS.map((column) => (
+            {sortColumns(windowDays).map((column) => (
               <button
                 className={sortKey === column.key ? "is-active" : ""}
                 key={column.key}
@@ -225,11 +239,12 @@ export function DirectoryView() {
           {operators.length > 0 ? (
             <div className="directory-rows">
               {operators.map((operator) => (
-                <OperatorRow key={operator.accountId} operator={operator} />
+                <OperatorRow key={operator.accountId} operator={operator} windowDays={windowDays} />
               ))}
             </div>
           ) : (
-            <DirectoryStatus onRefresh={() => loadDirectory()} status={status} />
+            validatorsOnly && status === "ready" ? <div className="directory-empty">No publicly listed validators in this leaderboard yet.</div>
+              : <DirectoryStatus onRefresh={() => loadDirectory()} status={status} />
           )}
         </section>
 

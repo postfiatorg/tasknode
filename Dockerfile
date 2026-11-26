@@ -12,15 +12,20 @@ COPY . .
 RUN npm run build \
     && node scripts/build-runtime-tree.mjs \
       --entry server/index.js \
+      --entry scripts/publish-validator-bundle.mjs \
       --include server/db/migrations \
       --include docs/wiki/surfaces/user-guide.md \
+      --include packages/tasknode-cli \
       --include prompts \
       --exclude prompts/non_production \
       --include schemas \
       --out /runtime-web \
     && node scripts/build-runtime-tree.mjs \
       --entry server/worker-entry.js \
+      --entry scripts/reinstatement-roster.mjs \
       --entry scripts/migrate-db.mjs \
+      --entry scripts/validator-rewards.mjs \
+      --entry scripts/profile-daily-airdrop-recover.mjs \
       --include server/db/migrations \
       --include prompts \
       --exclude prompts/non_production \

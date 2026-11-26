@@ -19,7 +19,7 @@ harvester were also removed.
 | Component | Runtime | Role |
 | --- | --- | --- |
 | Kimi board manager | Operator-host Corbanu TUI; `kimi-code` / `kimi-k3` | Inspect boards, select work, and execute authorized `bm` commands |
-| Network/task generation | Fly `worker-taskgen`; GLM 5.3 | Prepare the request and generate the concrete task |
+| Network/task generation | Fly `worker-taskgen`; DeepSeek V4.1 Flash | Prepare the request and generate the concrete task |
 | Task review publication | Fly `worker-task-review` | Consume Kimi decisions and publish verification/reward transitions |
 | Hive support | Fly `worker-hive` | Hive context secretary, board secretary memos, reports, and Kimi activity narrator |
 
@@ -30,12 +30,37 @@ code through `scripts/bm/writes.mjs`. That path records network intents,
 allocations and generation jobs. Final task wording comes from
 `server/task-generation-worker.js`. See [network generation](network-task-generation-worker.md).
 
-Eligible contributors with free account capacity create a routing duty even when
-the board already has three or more proposed/accepted tasks. Board-specific
-`assignable_handles` restrictions filter the candidate packet; badge/work fit,
-account capacity and reward budgets remain mandatory. The candidate set is part
-of the duty identity, so an earlier round's cooldown cannot hide a newly eligible
-contributor. Board task counts are context, not a fixed allocation ceiling.
+## Five boards and the Wanted list (2026-11-25)
+
+The public boards are Layer 1 (`board_postfiat_l1v2`), Task Node
+(`board_tasknode_fixes`), Corbanu Terminal (`board_pf_terminal`), Trading
+(`board_capital_markets`) and Media (`board_community_promotion`). Board ids
+predate the names. AI Layer 1 Governance is closed to new work; it, Value
+Accountability and Reinstatement carry `metadata_json.hive_hidden` and are off
+the public Hive page while still running.
+
+`server/board-work-policy.js` is the single table for which board pays for
+which work type and what proof a payment needs.
+
+Work starts from the Wanted list (`board_wanted_items`, migration 165,
+`server/board-wanted.js`): one row per thing Post Fiat needs, with a source
+link, optional work type, reward and preferred owner. An item's state is
+derived from the tasks created for it (`open`, `in_progress`, `done`,
+`rewrite`, `dropped`). `task create` requires `--wanted <id>` for an open item
+on the same board, writes the item's reason and source into the task need, and
+links the run to the item; one item has one live task. Two refusals since the
+last revision put the item in `rewrite`.
+
+Each open item on an open board is a `wanted_open` duty listing contributors
+with free slots, the item's preferred owner first. It is answered `completed`
+(the item has a live task) or `blocked` with a reason; `deferred` is refused.
+A blocked item is not re-asked for 12 hours. Items in `rewrite` produce a
+`wanted_rewrite` duty. The former `routing_due` invitation and the daily
+`board_info_stale` summary rewrite were removed; the manager may change only a
+board's status and phase. Operator and manager add items with `bm wanted add`.
+
+The Hive page shows each board's Wanted list, a "Shipped" feed of rewarded
+work only, and no model-written Project Status memo.
 
 The scheduler also emits explicit follow-ups for seven-day unaccepted proposals,
 accepted tasks with seven days without recorded activity, and verification
@@ -132,30 +157,14 @@ Launch, supervisor, reset and status publication use that same registry.
   receipts remain authoritative; no retry creates a replacement round.
   Identical completed rounds have a fifteen-minute cooldown. Crash recovery
   resumes the saved thread. Daily reset preserves pending/busy work.
-- Routing is answered per contributor. A `routing_due` duty result carries
-  `--dispositions`, one entry per eligible candidate: `routed` or
-  `investigation_routed` (each must match an executed `task create` for that
-  account in the round, verified against `bm_audit_log`) or `not_served` with a
-  `reason_code` (`no_badge_fit`, `source_unavailable`, `budget_exhausted`,
-  `capacity_taken_this_round`, `restricted_board`,
-  `contributor_declined_recently`, `other` with a 40+ character reason). A duty
-  that routed nobody is recorded as the outcome `not_served`, never
-  `completed`. Three consecutive `not_served` rounds for a board with candidates
-  write `duty_blocked_across_rounds` and an `ALERTS.log` line, a `Routing
-  stalled:` status line, and a work-order directive naming each unserved
-  contributor with handle, badges and reason code. A `deferred` routing duty
-  with no candidates does not escalate.
-- Allocation health is published with every runtime status: idle badge-verified
-  contributors without a live network task, executed task creates in 24h/7d,
-  distinct accounts offered in 7d, live allocations, per-board failure families
-  and `not_served` streaks. Ten or more idle with zero creates in 24h is
-  critical: the supervisor appends to `ALERTS.log` at most every six hours and
-  System Status shows a `Network Allocation Health` item separate from
-  generation-worker freshness.
+- Allocation health is published with every runtime status: tasks created,
+  accounts offered, live allocations, per-board failure families, and
+  submissions waiting on the manager. Only an unanswered submission or a
+  decision that cannot publish is a warning or critical state.
 - A processed round is not a resolved task. The supervisor keeps
   `<alias>.blockers.json` and tracks progress duties (`review_due`,
   `verification_due`, `hive_chat_escalation`) that were reported anything but
-  completed in consecutive processed rounds, keyed by type, board and task. These
+  completed in consecutive processed rounds, keyed by type, board and task. Routing invitations are never tracked. These
   duties disappear as soon as the required decision or reply exists, so recurrence
   means the task did not advance. Two consecutive rounds log
   `duty_blocked_across_rounds`, append to `ALERTS.log`, publish a
@@ -186,7 +195,7 @@ The scoped CLI provides local `help`/`--help` without loading a credential, and
 names `round-status <round-id>` and `duty-result`. The round ID comes from the
 supervisor work order; no work order is expected while current duties are empty.
 
-The `kimi-code` credential remains in the Corbanu vault. Shared Vercel GLM 5.3
+The `kimi-code` credential remains in the Corbanu vault. Shared Vercel DeepSeek V4.1 Flash
 models handle downstream task generation and applicable review operations;
 Kimi retains board selection and board review decisions. No retired selector is
 reintroduced. Operator fallback to another Kimi provider remains explicit.
@@ -233,7 +242,7 @@ Routing completion evidence is checked by board even if eligible-pool membership
 ## Public Hive escalation inbox
 
 The production manager remains Kimi K3 in the supervised Corbanu TUI. A public
-Hive bot uses GLM 5.3 Flash to decide whether to participate and GLM 5.3 to
+Hive bot uses DeepSeek V4.1 Flash to decide whether to participate and DeepSeek V4.1 Flash to
 compose replies. It cannot execute board tasks. Its structured escalation
 creates a `hive_group_escalations` row assigned to one existing network board.
 

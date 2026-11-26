@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { checkRouteRateLimit, sharedRateLimitStartupIssues } from "./rate-limit.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
 import * as trustedProxy from "./trusted-proxy.js";
+import { l1Enabled } from "./l1/release-config.js";
 import {
   isProductionEnvironment,
   moneySeedStartupIssues,
@@ -32,6 +33,7 @@ const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
 const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
 
 const contentTypes = new Map([
+  [".wasm", "application/wasm"],
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -110,6 +112,7 @@ export function runtimeConfig() {
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
     walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
+    l1Wallet: { enabled: l1Enabled() },
     collaboration: {
       docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
       teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),
@@ -468,7 +471,7 @@ export async function serveStatic(url, res) {
   const ext = path.extname(filePath);
   res.writeHead(200, {
     "content-type": contentTypes.get(ext) || "application/octet-stream",
-    "cache-control": ext === ".html" || ["theme-init.js", "theme-page.js"].includes(path.basename(filePath)) ? "no-store" : "public, max-age=31536000, immutable",
+    "cache-control": ext === ".html" || ["theme-init.js", "theme-page.js", "validator.sh", "l1-validator.sh"].includes(path.basename(filePath)) ? "no-store" : "public, max-age=31536000, immutable",
     ...securityHeaders(),
   });
   createReadStream(filePath).on("error", () => res.destroy()).pipe(res);

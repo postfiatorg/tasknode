@@ -316,7 +316,7 @@ export async function runDailyAirdropWorkerOnce({
   submittingStaleMinutes = Number(process.env.TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES || 30),
   maxIssuanceAttempts = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS || 5),
   maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || 10000),
-  model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || "zai/glm-5.3",
+  model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || "deepseek/deepseek-v4.1-flash-1017",
   runMode = dailyAirdropWorkerRunMode(process.env),
   trigger = "daily_airdrop_worker",
   recordAgentRun = true,

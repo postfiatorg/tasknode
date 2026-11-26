@@ -1,0 +1,634 @@
+
+> tasknode@0.1.0 check
+> npm run check:fast && npm run test:unit && npm run test:integration && npm run test:smoke && npm run build && npm run bundle-budget-check && npm run test:e2e
+
+
+> tasknode@0.1.0 check:fast
+> npm run file-size-check && npm run format-check && npm run lint && npm run api-reference-check && npm run security
+
+
+> tasknode@0.1.0 file-size-check
+> node scripts/check-file-size.mjs
+
+file size check ok: 0 active exceptions, no file over its configured limit
+
+> tasknode@0.1.0 format-check
+> node scripts/format-check.mjs
+
+format check ok
+
+> tasknode@0.1.0 lint
+> eslint src server scripts shared packages
+
+
+> tasknode@0.1.0 api-reference-check
+> node scripts/generate-api-reference.mjs
+
+API reference ok: 213 policies match the generated inventory
+
+> tasknode@0.1.0 security
+> npm audit --audit-level=high && npm run public-help-check && npm run route-auth-policy-smoke && npm run trusted-proxy-rate-limit-smoke && npm run account-data-lifecycle-smoke && npm run data-retention-smoke && npm run data-recovery-safety-smoke && npm run asset-provenance-check && npm run dependency-license-check
+
+found 0 vulnerabilities
+
+> tasknode@0.1.0 public-help-check
+> node scripts/public-help-boundary.mjs
+
+public Help boundary ok: 28 explicitly allowlisted Markdown sources
+
+> tasknode@0.1.0 route-auth-policy-smoke
+> node scripts/route-auth-policy-smoke.mjs
+
+route auth policy smoke ok: 213 policies cover 151 registered literal paths and 8 modes
+
+> tasknode@0.1.0 trusted-proxy-rate-limit-smoke
+> node scripts/trusted-proxy-rate-limit-smoke.mjs
+
+trusted proxy and shared rate-limit smoke ok
+
+> tasknode@0.1.0 account-data-lifecycle-smoke
+> node scripts/account-data-lifecycle-smoke.mjs
+
+account data export and deletion lifecycle smoke ok
+
+> tasknode@0.1.0 data-retention-smoke
+> node scripts/data-retention-smoke.mjs
+
+data retention smoke ok
+
+> tasknode@0.1.0 data-recovery-safety-smoke
+> node scripts/data-recovery-safety-smoke.mjs
+
+data recovery safety smoke ok: remote, destructive-target, and malformed-store guards verified
+
+> tasknode@0.1.0 asset-provenance-check
+> node scripts/asset-provenance-check.mjs
+
+asset provenance check ok: 10 reviewed public assets
+
+> tasknode@0.1.0 dependency-license-check
+> node scripts/dependency-license-check.mjs
+
+dependency license check ok: 460 packages; reviewed reciprocal/content licenses: LGPL-3.0-or-later=10, Apache-2.0 AND LGPL-3.0-or-later AND MIT=1, Apache-2.0 AND LGPL-3.0-or-later=3, MPL-2.0=13, CC-BY-4.0=1
+
+> tasknode@0.1.0 test:unit
+> node --test scripts/validator-bundle-files.test.mjs scripts/validator-encrypted-bundle.test.mjs && npm run validator-bundle-loader-smoke && npm run task-review-blacklist-park-smoke && npm run bm-codex-backup-smoke && npm run inference-no-regex-check && npm run wallet-vault-durability-smoke && npm run route-auth-policy-smoke && npm run request-validation-smoke && npm run campaign-tracker-body-smoke && npm run durable-identity-boundary-smoke && npm run app-state-cache-gate-smoke && npm run app-state-switch-perf-smoke && npm run nostr-messages-smoke && npm run wallet-state-regression && npm run container-entrypoint-smoke && npm run runtime-role-boundary-smoke && npm run extension-registry-smoke && npm run finance-hub-route-smoke && npm run inference-failover-smoke
+
+✔ encrypted files bind bytes to the index, version and path (3.207265ms)
+✔ 40 cold home requests read only the home file once; a model loads on demand (13.636432ms)
+✔ cached files remain gated; revocation and invalid paths never read files (0.79283ms)
+✔ missing or corrupt files never fall back to the archive, and retries recover (0.816726ms)
+✔ cache bounds bytes and entries, refreshes LRU, and separates versions (1.440993ms)
+✔ legacy publications still use their existing loader (0.21968ms)
+✔ database lookup is constrained to one path and immutable version (0.46637ms)
+✔ 40 concurrent public downloads and warm reads fetch one identical encrypted buffer (473.131019ms)
+✔ failed reads are not cached; integrity and version changes cannot return stale bytes (1.088434ms)
+✔ missing bundles stay 404; encrypted cache remains bounded at existing two versions (0.784498ms)
+✔ public and authenticated loader share one read; decryption and integrity checks remain (1.71822ms)
+✔ actual public handler deduplicates reads and verifies the exact bytes; viewer still requires tier (1.52542ms)
+✔ route preserves missing/future and integrity failures and logs transient failures without secrets (0.630767ms)
+✔ bounded database reads reconstruct the exact payload without large bytea frames (5.896623ms)
+✔ publication changes, truncation and invalid sizes never return partial or mixed bytes (0.38662ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 630.163755
+
+> tasknode@0.1.0 validator-bundle-loader-smoke
+> node scripts/validator-bundle-loader-smoke.mjs
+
+validator bundle loader smoke ok: 40 concurrent cold requests -> 1 fetch/1 decrypt; serialized decrypts; LRU of 2; failures not cached
+
+> tasknode@0.1.0 task-review-blacklist-park-smoke
+> node scripts/task-review-blacklist-park-smoke.mjs
+
+{"ok":true,"blacklistedParkedBeforeScoring":true,"nonBlacklistedUnaffected":true,"thrownBlacklistNotRetried":true,"parkIsFixedWait":true,"claimExcludesBlacklisted":true}
+
+> tasknode@0.1.0 bm-codex-backup-smoke
+> node scripts/bm-codex-backup-smoke.mjs
+
+bm codex backup smoke ok: stall detection, exclusive lease, no takeover beside a live Kimi turn, provider-limit detection
+
+> tasknode@0.1.0 inference-no-regex-check
+> node scripts/inference-no-regex-check.mjs
+
+{"ok":true,"entryFiles":77,"checkedFiles":266}
+
+> tasknode@0.1.0 wallet-vault-durability-smoke
+> node scripts/wallet-vault-durability-smoke.mjs
+
+wallet vault durability smoke ok
+
+> tasknode@0.1.0 route-auth-policy-smoke
+> node scripts/route-auth-policy-smoke.mjs
+
+route auth policy smoke ok: 213 policies cover 151 registered literal paths and 8 modes
+
+> tasknode@0.1.0 request-validation-smoke
+> node scripts/request-validation-smoke.mjs
+
+request validation smoke ok: 213 route policies, 120 fail-closed mutation policies
+
+> tasknode@0.1.0 campaign-tracker-body-smoke
+> node scripts/campaign-tracker-body-smoke.mjs
+
+Campaign Tracker body envelopes: all command shapes accepted; undeclared fields rejected
+
+> tasknode@0.1.0 durable-identity-boundary-smoke
+> node scripts/durable-identity-boundary-smoke.mjs
+
+durable identity boundary smoke ok: 7 identity operations are repository-only
+
+> tasknode@0.1.0 app-state-cache-gate-smoke
+> node scripts/app-state-cache-gate-smoke.mjs
+
+app_state_anon_cache_skipped { reason: 'signed_out_payload_not_cache_safe' }
+app_state_anon_cache_skipped { reason: 'signed_out_payload_not_cache_safe' }
+app-state cache gate smoke ok
+
+> tasknode@0.1.0 app-state-switch-perf-smoke
+> node scripts/app-state-switch-perf-smoke.mjs
+
+app-state switch perf smoke ok
+
+> tasknode@0.1.0 nostr-messages-smoke
+> node scripts/nostr-messages-smoke.mjs
+
+nostr messages smoke passed
+
+> tasknode@0.1.0 wallet-state-regression
+> node scripts/wallet-state-regression.mjs
+
+wallet state regression ok
+
+> tasknode@0.1.0 container-entrypoint-smoke
+> node scripts/container-entrypoint-smoke.mjs
+
+container entrypoint smoke ok: 10 npm-free production process commands
+
+> tasknode@0.1.0 runtime-role-boundary-smoke
+> node scripts/runtime-role-boundary-smoke.mjs
+
+runtime role boundary ok: web 382 files/22 packages; worker 255 files/13 packages
+
+> tasknode@0.1.0 extension-registry-smoke
+> node scripts/extension-registry-smoke.mjs
+
+extension registry smoke ok: validation, ordering, feature gates, and duplicate rejection verified
+
+> tasknode@0.1.0 finance-hub-route-smoke
+> node scripts/finance-hub-route-smoke.mjs
+
+finance-hub-route-smoke ok: validator gate, deep links both ways, unsafe segments, round trip, embed/theme frame source
+
+> tasknode@0.1.0 inference-failover-smoke
+> node scripts/inference-failover-smoke.mjs
+
+{"ok":true,"assertions":109,"boundaries":["routing","models","backup","timeouts","cancellation","streaming","search","vision","usage","compatibility","concurrency","catalogue"]}
+
+> tasknode@0.1.0 test:integration
+> npm run runtime-smoke && npm run chat-attachment-smoke && npm run pftl-cache-smoke && npm run pftl-cache-watcher-smoke && npm run security-smoke
+
+
+> tasknode@0.1.0 runtime-smoke
+> node scripts/runtime-store-smoke.mjs
+
+app_state_timing {
+  key: 'account',
+  totalMs: 17,
+  sections: {
+    linked_wallet: 2,
+    eth_deposit_account: 2,
+    identity_profile: 2,
+    usage_summary: 2,
+    chat_conversations: 2,
+    hive_conversation: 2,
+    context_document: 2,
+    deep_research_access: 0,
+    validator_membership: 0,
+    qa_worker_access: 2,
+    chat_messages: 2,
+    readiness: 15,
+    context_history: 0,
+    wallet_initiation_grant: 1,
+    usdc_top_up_grant: 1,
+    task_state: 1
+  }
+}
+app_state_timing {
+  key: 'account',
+  totalMs: 1,
+  sections: {
+    linked_wallet: 0,
+    eth_deposit_account: 0,
+    identity_profile: 0,
+    usage_summary: 0,
+    chat_conversations: 0,
+    hive_conversation: 0,
+    context_document: 0,
+    deep_research_access: 0,
+    validator_membership: 0,
+    qa_worker_access: 0,
+    chat_messages: 0,
+    readiness: 0,
+    context_history: 0,
+    wallet_initiation_grant: 0,
+    task_state: 0
+  }
+}
+app_state_timing {
+  key: 'account',
+  totalMs: 1,
+  sections: {
+    linked_wallet: 0,
+    eth_deposit_account: 0,
+    identity_profile: 0,
+    usage_summary: 0,
+    chat_conversations: 0,
+    hive_conversation: 0,
+    context_document: 0,
+    deep_research_access: 0,
+    validator_membership: 0,
+    qa_worker_access: 0,
+    chat_messages: 0,
+    readiness: 0,
+    context_history: 0,
+    wallet_initiation_grant: 1,
+    usdc_top_up_grant: 1,
+    task_state: 0
+  }
+}
+app_state_timing {
+  key: 'account',
+  totalMs: 1,
+  sections: {
+    linked_wallet: 0,
+    eth_deposit_account: 0,
+    identity_profile: 0,
+    usage_summary: 0,
+    chat_conversations: 0,
+    hive_conversation: 0,
+    context_document: 0,
+    deep_research_access: 0,
+    validator_membership: 0,
+    qa_worker_access: 0,
+    chat_messages: 0,
+    readiness: 0,
+    context_history: 0,
+    wallet_initiation_grant: 0,
+    usdc_top_up_grant: 0,
+    task_state: 0
+  }
+}
+runtime store smoke ok
+
+> tasknode@0.1.0 chat-attachment-smoke
+> node scripts/chat-attachment-smoke.mjs
+
+chat attachment smoke ok
+
+> tasknode@0.1.0 pftl-cache-smoke
+> node scripts/pftl-cache-smoke.mjs
+
+pftl cache smoke ok
+
+> tasknode@0.1.0 pftl-cache-watcher-smoke
+> node scripts/pftl-cache-watcher-smoke.mjs
+
+pftl cache watcher smoke ok
+
+> tasknode@0.1.0 security-smoke
+> node scripts/security-smoke.mjs
+
+app_state_timing {
+  key: 'anon',
+  totalMs: 15,
+  sections: {
+    linked_wallet: 0,
+    eth_deposit_account: 0,
+    context_document: 0,
+    deep_research_access: 0,
+    readiness: 13,
+    context_history: 1,
+    wallet_initiation_grant: 1,
+    task_state: 1
+  }
+}
+security smoke ok
+
+> tasknode@0.1.0 test:smoke
+> node scripts/run-smokes.mjs verify && node scripts/run-smokes.mjs unit
+
+smoke suites ok: 200 unit, 43 db, 13 manual
+ok scripts/validator-encrypted-bundle.test.mjs 647ms
+ok scripts/account-unlink-provider-smoke.mjs 121ms
+ok scripts/agent-quality-gates-smoke.mjs 63ms
+ok scripts/agent-rate-limit-persistence-smoke.mjs 53ms
+ok scripts/agent-wallet-login-smoke.mjs 519ms
+ok scripts/ambient-inference-smoke.mjs 311ms
+ok scripts/background-worker-liveness-smoke.mjs 3422ms
+ok scripts/bm-runtime-harness-smoke.mjs 2031ms
+ok scripts/board-manager-action-hooks-smoke.mjs 303ms
+ok scripts/board-manager-action-pressure-smoke.mjs 33ms
+ok scripts/board-manager-cancel-network-task-smoke.mjs 276ms
+ok scripts/board-manager-capability-profile-smoke.mjs 276ms
+ok scripts/board-manager-cost-smoke.mjs 368ms
+ok scripts/board-manager-evidence-evaluation-smoke.mjs 258ms
+ok scripts/board-manager-message-delivery-repair-smoke.mjs 54ms
+ok scripts/board-manager-micro-summary-smoke.mjs 258ms
+ok scripts/board-manager-orc-accounting-smoke.mjs 287ms
+ok scripts/board-manager-orc-ui-smoke.mjs 158ms
+ok scripts/board-manager-phase-d-prompt-taskgen-smoke.mjs 244ms
+ok scripts/board-manager-repo-integrity-smoke.mjs 1016ms
+ok scripts/board-manager-secretary-packet-smoke.mjs 317ms
+ok scripts/board-manager-source-packet-smoke.mjs 282ms
+ok scripts/board-manager-source-read-resilience-smoke.mjs 288ms
+ok scripts/board-manager-v0-smoke.mjs 263ms
+ok scripts/campaign-tracker-contract-smoke.mjs 141ms
+ok scripts/chat-api-models-smoke.mjs 344ms
+ok scripts/chat-auth-loading-state-smoke.mjs 29ms
+ok scripts/chat-cache-accounting-smoke.mjs 293ms
+ok scripts/chat-context-status-smoke.mjs 429ms
+ok scripts/chat-deletion-state.test.mjs 68ms
+ok scripts/chat-markdown-smoke.mjs 58ms
+ok scripts/chat-memory-worker-request-smoke.mjs 175ms
+ok scripts/chat-modality-model-selection-smoke.mjs 1050ms
+ok scripts/chat-mode-deprecation-smoke.mjs 374ms
+ok scripts/chat-persona-routing-smoke.mjs 444ms
+ok scripts/chat-search-smoke.mjs 68ms
+ok scripts/chat-spirit-prompt-smoke.mjs 320ms
+ok scripts/chat-stream-reliability-smoke.mjs 1480ms
+ok scripts/collaboration-contract-smoke.mjs 257ms
+ok scripts/context-edit-smoke.mjs 283ms
+ok scripts/context-history-rpc-smoke.mjs 185ms
+ok scripts/context-ipfs-gateway-smoke.mjs 76ms
+ok scripts/context-line-map-parity-smoke.mjs 58ms
+ok scripts/corbanu-x-callback-smoke.mjs 35ms
+ok scripts/core-contributor-allowlist-smoke.mjs 30ms
+ok scripts/deathmarch-smoke.mjs 301ms
+ok scripts/deathmarch-team-fanout-smoke.mjs 196ms
+ok scripts/decisions-boundary-smoke.mjs 136ms
+ok scripts/deep-research-boundary-smoke.mjs 191ms
+ok scripts/deterministic-boards-smoke.mjs 267ms
+ok scripts/device-account-concurrency-smoke.mjs 495ms
+ok scripts/directory-leaderboard-smoke.mjs 147ms
+ok scripts/directory-rewarded-tasks-smoke.mjs 269ms
+ok scripts/docs-assistant-limits-smoke.mjs 327ms
+ok scripts/docs-chat-history-smoke.mjs 263ms
+ok scripts/ethereum-deposit-smoke.mjs 26ms
+ok scripts/evm-wallet-pay-smoke.mjs 173ms
+ok scripts/expert-badge-evaluation-smoke.mjs 304ms
+ok scripts/fleet-heartbeat-smoke.mjs 447ms
+ok scripts/hive-acceptance-gate-smoke.mjs 261ms
+ok scripts/hive-agent-message-rendering-smoke.mjs 1318ms
+ok scripts/hive-board-secretary-smoke.mjs 260ms
+ok scripts/hive-brain-smoke.mjs 293ms
+ok scripts/hive-clickable-smoke.mjs 311ms
+ok scripts/hive-context-smoke.mjs 403ms
+ok scripts/hive-generation-intelligence-smoke.mjs 282ms
+ok scripts/hive-public-identity-smoke.mjs 280ms
+ok scripts/hive-report-identity-smoke.mjs 267ms
+ok scripts/hive-report-markdown-smoke.mjs 33ms
+ok scripts/hive-route-cache-observability-smoke.mjs 82ms
+ok scripts/hive-secretary-project-views-smoke.mjs 261ms
+ok scripts/hive-state-integrity-smoke.mjs 332ms
+ok scripts/i-ching-profile-smoke.mjs 438ms
+ok scripts/identity-provider-resolvers-smoke.mjs 61ms
+ok scripts/inference-feature-smoke.mjs 73ms
+ok scripts/ipfs-active-replay-window-smoke.mjs 82ms
+ok scripts/ipfs-cid-inventory-smoke.mjs 92ms
+ok scripts/ipfs-gateway-health-smoke.mjs 98ms
+ok scripts/ipfs-new-write-replication-check.mjs 53ms
+ok scripts/ipfs-replication-postgres-smoke.mjs 62ms
+ok scripts/ipfs-replication-smoke.mjs 103ms
+ok scripts/legacy-pftasks-history-smoke.mjs 213ms
+ok scripts/migration-registration-smoke.mjs 111ms
+ok scripts/multi-account-password-wallet-smoke.mjs 1646ms
+ok scripts/network-badge-admin-route-smoke.mjs 270ms
+ok scripts/network-badge-approval-state-smoke.mjs 411ms
+ok scripts/network-badge-profile-smoke.mjs 169ms
+ok scripts/network-badge-verifier-jobs-smoke.mjs 266ms
+ok scripts/network-task-badge-gate-smoke.mjs 255ms
+ok scripts/network-task-capacity-smoke.mjs 179ms
+ok scripts/network-task-eligibility-panel-smoke.mjs 79ms
+ok scripts/network-task-generation-recovery-smoke.mjs 241ms
+ok scripts/network-task-profile-smoke.mjs 207ms
+ok scripts/network-task-recovery-smoke.mjs 292ms
+ok scripts/network-task-reward-followup-smoke.mjs 169ms
+ok scripts/network-task-status-packet-smoke.mjs 55ms
+ok scripts/offchain-task-lifecycle-smoke.mjs 126ms
+ok scripts/pftl-cache-reducer-replay-smoke.mjs 233ms
+ok scripts/pftl-cache-sync-state-smoke.mjs 186ms
+ok scripts/post-fiat-knowledge-smoke.mjs 424ms
+ok scripts/production-guards-smoke.mjs 33ms
+ok scripts/profile-daily-airdrop-debt-smoke.mjs 431ms
+ok scripts/profile-daily-airdrop-feedback-smoke.mjs 106ms
+ok scripts/profile-daily-airdrop-issuance-smoke.mjs 297ms
+ok scripts/profile-daily-airdrop-packet-smoke.mjs 232ms
+ok scripts/profile-daily-airdrop-reconcile-smoke.mjs 307ms
+ok scripts/profile-daily-airdrop-recovery-smoke.mjs 284ms
+ok scripts/profile-daily-airdrop-worker-smoke.mjs 345ms
+ok scripts/profile-nft-art-smoke.mjs 192ms
+ok scripts/profile-nft-cid-repin-smoke.mjs 97ms
+ok scripts/profile-nft-daily-worker-smoke.mjs 597ms
+ok scripts/profile-nft-flow-smoke.mjs 244ms
+ok scripts/profile-nft-image-proxy-smoke.mjs 307ms
+ok scripts/profile-nft-prompt-smoke.mjs 81ms
+ok scripts/profile-nft-recovery-smoke.mjs 116ms
+ok scripts/profile-nft-selection-smoke.mjs 263ms
+ok scripts/prompt-boundary-check.mjs 73ms
+ok scripts/provider-egress-check.mjs 194ms
+ok scripts/qa-worker-access-smoke.mjs 495ms
+ok scripts/qa-worker-profile-state-smoke.mjs 51ms
+ok scripts/realtime-wallet-events-smoke.mjs 55ms
+ok scripts/recommended-connections-smoke.mjs 188ms
+ok scripts/reliability-text-contract-smoke.mjs 221ms
+ok scripts/retired-task-loops-smoke.mjs 1699ms
+ok scripts/rewarded-task-memory-smoke.mjs 86ms
+ok scripts/sybil-review-detector-smoke.mjs 95ms
+ok scripts/system-status-agent-activity-smoke.mjs 359ms
+ok scripts/system-status-network-spend-smoke.mjs 368ms
+ok scripts/system-status-smoke.mjs 405ms
+ok scripts/task-accounting-harvester-smoke.mjs 89ms
+ok scripts/task-action-receipts-smoke.mjs 54ms
+ok scripts/task-action-route-smoke.mjs 34ms
+ok scripts/task-app-state-refresh-smoke.mjs 61ms
+ok scripts/task-client-offchain-completion-smoke.mjs 141ms
+ok scripts/task-copy-payload-smoke.mjs 49ms
+ok scripts/task-detail-loading-state-smoke.mjs 30ms
+ok scripts/task-detail-optimistic-state-smoke.mjs 35ms
+ok scripts/task-evidence-drafts-smoke.mjs 69ms
+ok scripts/task-evidence-file-processing-smoke.mjs 438ms
+ok scripts/task-evidence-report-smoke.mjs 255ms
+ok scripts/task-evidence-tar-size-smoke.mjs 72ms
+ok scripts/task-forensics-state-smoke.mjs 29ms
+ok scripts/task-generation-reliability-smoke.mjs 345ms
+ok scripts/task-generation-step-readiness-smoke.mjs 75ms
+ok scripts/task-lifecycle-smoke.mjs 252ms
+ok scripts/task-payload-size-smoke.mjs 170ms
+ok scripts/task-read-resilience-smoke.mjs 260ms
+ok scripts/task-receipt-projection-smoke.mjs 32ms
+ok scripts/task-refresh-policy-smoke.mjs 61ms
+ok scripts/task-request-context-budget-smoke.mjs 318ms
+ok scripts/task-request-handoff-smoke.mjs 254ms
+ok scripts/task-request-public-state-smoke.mjs 87ms
+ok scripts/task-request-unlock-policy-smoke.mjs 60ms
+ok scripts/task-review-integrity-smoke.mjs 235ms
+ok scripts/task-review-prompts-smoke.mjs 31ms
+ok scripts/task-review-publication-contract-smoke.mjs 248ms
+ok scripts/task-reward-forensics-signatures-smoke.mjs 324ms
+ok scripts/task-time-format-smoke.mjs 64ms
+ok scripts/task-visible-state-smoke.mjs 66ms
+ok scripts/task-workflow-visibility-smoke.mjs 53ms
+ok scripts/taskgen-network-v2-smoke.mjs 229ms
+ok scripts/taskgen-replay-smoke.mjs 278ms
+ok scripts/tasknode-cli-smoke.mjs 8096ms
+ok scripts/tasknode-mcp-smoke.mjs 4792ms
+ok scripts/team-context-state-smoke.mjs 117ms
+ok scripts/telegram-bot-webhook-smoke.mjs 515ms
+ok scripts/terminal-account-selection-smoke.mjs 386ms
+ok scripts/terminal-chat-smoke.mjs 497ms
+ok scripts/terminal-task-request-smoke.mjs 245ms
+ok scripts/theme-store-smoke.mjs 43ms
+ok scripts/url-evidence-extraction-smoke.mjs 272ms
+ok scripts/user-observability-smoke.mjs 415ms
+ok scripts/validator-work-evidence-smoke.mjs 235ms
+ok scripts/verified-seed-backup-smoke.mjs 1358ms
+ok scripts/wallet-balance-smoke.mjs 182ms
+ok scripts/wallet-challenge-account-binding-smoke.mjs 446ms
+ok scripts/wallet-challenge-replay-regression.mjs 86ms
+ok scripts/wallet-nft-inventory-smoke.mjs 147ms
+ok scripts/wallet-transactions-smoke.mjs 220ms
+ok scripts/wallet-unlocked-session-smoke.mjs 52ms
+ok scripts/worker-crash-resilience-smoke.mjs 1008ms
+ok scripts/network-task-content-policy.test.mjs 81ms
+ok scripts/validator-research-smoke.mjs 357ms
+ok scripts/validator-connect-shell-smoke.mjs 2255ms
+ok scripts/validator-token-signing-smoke.mjs 1783ms
+ok scripts/deep-research-chat-smoke.mjs 36ms
+ok scripts/l1-validator-smoke.mjs 206ms
+ok scripts/l1-validator-shell-smoke.mjs 192ms
+ok scripts/validator-ux-smoke.mjs 2030ms
+ok scripts/gateway-credit-readiness-smoke.mjs 498ms
+ok scripts/tasknode-diagnosis-regression.test.mjs 260ms
+ok scripts/airdrop-payment-guard.test.mjs 156ms
+ok scripts/l1-uptime-rewards.test.mjs 133ms
+ok scripts/airdrop-recovery-preview.test.mjs 248ms
+ok scripts/board-review-retry.test.mjs 60ms
+ok scripts/prompt-stats-smoke.mjs 58ms
+ok scripts/prompt-device-smoke.mjs 157ms
+ok scripts/prompt-assistant-smoke.mjs 254ms
+ok scripts/prompt-recovery-smoke.mjs 221ms
+ok scripts/prompt-installer-smoke.mjs 2074ms
+unit smokes passed
+
+> tasknode@0.1.0 build
+> vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2162 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        1.14 kB │ gzip:   0.47 kB
+dist/assets/FinanceHubView-BYnkdurv.css                1.02 kB │ gzip:   0.46 kB
+dist/assets/AppDialogs-C-9IAheq.css                    1.98 kB │ gzip:   0.72 kB
+dist/assets/ethereum-top-up-modal-CSFdHMwX.css         6.96 kB │ gzip:   1.71 kB
+dist/assets/directory-BITkVPIs.css                     8.46 kB │ gzip:   2.06 kB
+dist/assets/HiveGroupChat-D8bdY2SF.css                 9.19 kB │ gzip:   2.43 kB
+dist/assets/MemoryView-DVfFL2Q8.css                   10.90 kB │ gzip:   2.26 kB
+dist/assets/ProfileView-Dnq-Q8Cx.css                  12.23 kB │ gzip:   2.86 kB
+dist/assets/MessagesView-Cl1Kf81C.css                 12.92 kB │ gzip:   2.82 kB
+dist/assets/DocsView-C_l2ZHJj.css                     17.39 kB │ gzip:   3.20 kB
+dist/assets/ethereum-top-up-Bik0MllW.css              18.53 kB │ gzip:   3.52 kB
+dist/assets/DocsLibraryView-DDLJ8W8Z.css              32.14 kB │ gzip:   6.15 kB
+dist/assets/TeamView-_-_03OeR.css                     52.33 kB │ gzip:   9.42 kB
+dist/assets/hive-SAa3Ep0G.css                         93.68 kB │ gzip:  13.90 kB
+dist/assets/index-DpDaAUJ-.css                       198.19 kB │ gzip:  32.33 kB
+dist/assets/rolldown-runtime-BWaJ3C7D.js               0.91 kB │ gzip:   0.51 kB
+dist/assets/collaboration-client-CZRMly4S.js           1.00 kB │ gzip:   0.56 kB
+dist/assets/ethereum-top-up-mC1q7fFs.js                2.18 kB │ gzip:   1.00 kB
+dist/assets/defect-repair-rule-DSbTbELw.js             2.24 kB │ gzip:   1.12 kB
+dist/assets/BlacklistView-CbfnlcXQ.js                  2.63 kB │ gzip:   1.03 kB
+dist/assets/FinanceHubView-B2P_VxvC.js                 3.11 kB │ gzip:   1.33 kB
+dist/assets/search-DJtweN0N.js                         3.42 kB │ gzip:   1.54 kB
+dist/assets/refine-context-CAsJLEuc.js                 3.47 kB │ gzip:   1.50 kB
+dist/assets/privacy-CkHiJAzf.js                        3.94 kB │ gzip:   1.80 kB
+dist/assets/messages-C9h8HECH.js                       4.46 kB │ gzip:   2.05 kB
+dist/assets/ValidatorRewards-BIDrgcFE.js               4.50 kB │ gzip:   1.77 kB
+dist/assets/agents-ChXTccRS.js                         4.69 kB │ gzip:   2.19 kB
+dist/assets/directory-CkxDUxgI.js                      4.79 kB │ gzip:   2.22 kB
+dist/assets/encryption-BOuf7_b3.js                     5.01 kB │ gzip:   2.02 kB
+dist/assets/bootup-IAs326Xo.js                         5.57 kB │ gzip:   2.62 kB
+dist/assets/context-DLoGecnu.js                        6.42 kB │ gzip:   2.68 kB
+dist/assets/wiki--vXmcuK4.js                           6.42 kB │ gzip:   2.92 kB
+dist/assets/HiveBrainView-B9dnPCxZ.js                  6.83 kB │ gzip:   2.50 kB
+dist/assets/style-guide-B4T05OD7.js                    7.22 kB │ gzip:   3.29 kB
+dist/assets/team-_OELeeMj.js                           7.23 kB │ gzip:   3.19 kB
+dist/assets/ai-providers-DePatjms.js                   7.74 kB │ gzip:   3.53 kB
+dist/assets/DirectoryView-ajDShIzZ.js                  8.01 kB │ gzip:   2.75 kB
+dist/assets/validator-research-BO7B64U7.js             9.87 kB │ gzip:   4.04 kB
+dist/assets/docs-QBEOkueZ.js                          10.80 kB │ gzip:   4.54 kB
+dist/assets/current-system-BeOwQSGc.js                11.66 kB │ gzip:   4.88 kB
+dist/assets/wallet-core-D7XrB_Yt.js                   12.36 kB │ gzip:   4.20 kB
+dist/assets/auth-wallet-boundary-CTRrpWFQ.js          13.09 kB │ gzip:   5.25 kB
+dist/assets/wallet-BCXpCxx0.js                        13.75 kB │ gzip:   5.33 kB
+dist/assets/memory-CyKOI16q.js                        14.02 kB │ gzip:   5.07 kB
+dist/assets/MemoryView-BhO9i0e_.js                    15.00 kB │ gzip:   4.58 kB
+dist/assets/HiveGroupChat-BGIqomc4.js                 15.70 kB │ gzip:   5.69 kB
+dist/assets/ethereum-top-up-modal-76Mhy329.js         16.02 kB │ gzip:   6.01 kB
+dist/assets/context-rewrite-CFiEOZsn.js               16.24 kB │ gzip:   6.20 kB
+dist/assets/MessagesView-DLpY3AY8.js                  16.50 kB │ gzip:   5.28 kB
+dist/assets/auth-and-connected-accounts-BWogPvpV.js   17.78 kB │ gzip:   6.58 kB
+dist/assets/daily-airdrop-rytg4Q0z.js                 19.20 kB │ gzip:   7.38 kB
+dist/assets/TeamView-CQP9Tnro.js                      21.41 kB │ gzip:   6.10 kB
+dist/assets/ContextView-CVxtyAWr.js                   24.90 kB │ gzip:   7.73 kB
+dist/assets/icon-runtime-BZ6bHYjC.js                  25.44 kB │ gzip:   8.67 kB
+dist/assets/nostr-messages-vceJ3VUG.js                30.86 kB │ gzip:   9.70 kB
+dist/assets/AppDialogs-D82lLgCm.js                    35.47 kB │ gzip:  10.19 kB
+dist/assets/DocsView-D-0xVNB2.js                      38.97 kB │ gzip:  11.96 kB
+dist/assets/user-guide-zo5AwwRH.js                    39.83 kB │ gzip:  13.50 kB
+dist/assets/chat-oZj7_FbI.js                          41.71 kB │ gzip:  15.30 kB
+dist/assets/WalletView-DUZSfJn9.js                    42.82 kB │ gzip:  11.63 kB
+dist/assets/profile-BdH9WUjs.js                       52.38 kB │ gzip:  19.13 kB
+dist/assets/DocsLibraryView-3fZOawNA.js               63.86 kB │ gzip:  17.89 kB
+dist/assets/hive-bVoWrE2W.js                          64.98 kB │ gzip:  22.51 kB
+dist/assets/tasks-CJF0JnUD.js                         67.37 kB │ gzip:  22.85 kB
+dist/assets/HiveView-CZhvR6hx.js                      70.24 kB │ gzip:  18.77 kB
+dist/assets/ProfileView-Cgh5gmYF.js                   79.61 kB │ gzip:  22.53 kB
+dist/assets/key-cryptography-GocBfGc5.js              82.99 kB │ gzip:  33.42 kB
+dist/assets/react-runtime-Ctaik3bb.js                189.52 kB │ gzip:  59.60 kB
+dist/assets/index-x3bWEJoX.js                        315.00 kB │ gzip:  92.90 kB
+dist/assets/libsodium-wrappers-Ck1Io6Nr.js           432.34 kB │ gzip: 152.73 kB
+dist/assets/wallet-encoding-Dk8dyxJL.js              449.20 kB │ gzip: 129.48 kB
+
+✓ built in 499ms
+
+> tasknode@0.1.0 bundle-budget-check
+> node scripts/bundle-budget-check.mjs
+
+bundle budget ok: 70 built assets checked
+
+> tasknode@0.1.0 test:e2e
+> npm run route-smoke && npm run static-asset-fallback-smoke
+
+
+> tasknode@0.1.0 route-smoke
+> node scripts/route-smoke.mjs
+
+route smoke ok: /, #wallet, #context, #tasks, #hive, #directory, #profile, #memory, #help, #help/wallet
+
+> tasknode@0.1.0 static-asset-fallback-smoke
+> node scripts/static-asset-fallback-smoke.mjs
+
+static asset fallback smoke ok
+
+PASS prompt erasure: full account deletion transaction, history and devices erased, hard/soft document deletion, archive retention, UPDATE/direct DELETE blocked, other account preserved
+
+PASS prompt history: ciphertext-only columns, envelope validation, tenant isolation, append-only, retry idempotency, atomic creation rollback
+
+PASS prompt pad: PFDocs channel vector, custom base64 alphabet, edit-only capabilities, exact origin, create/reopen agreement

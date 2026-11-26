@@ -929,6 +929,10 @@ export const getTerminalSessionByToken = terminalAuthStore.getTerminalSessionByT
 export const pruneExpiredTerminalAuthRequests = terminalAuthStore.pruneExpiredTerminalAuthRequests;
 export const pruneExpiredTerminalSessions = terminalAuthStore.pruneExpiredTerminalSessions;
 export const revokeTerminalSessions = terminalAuthStore.revokeTerminalSessions;
+export const getRuntimeDeviceAuthRequest = terminalAuthStore.getRuntimeDeviceAuthRequest;
+export const decideRuntimeDeviceAuthRequest = terminalAuthStore.decideRuntimeDeviceAuthRequest;
+export const listRuntimeAgentDevices = terminalAuthStore.listRuntimeAgentDevices;
+export const revokeRuntimeAgentDevice = terminalAuthStore.revokeRuntimeAgentDevice;
 
 export function createDevSession({ email = "dev@tasknode.local" } = {}) {
   pruneExpiredSessions();

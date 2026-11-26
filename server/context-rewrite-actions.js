@@ -92,7 +92,7 @@ async function createJob({ readJson, req, session }) {
       error: "context_rewrite_provider_not_configured",
       action: "context_rewrite_create",
       message: "Context Rewrite requires inference provider configuration.",
-      actionRequired: "Configure VERCEL_AI_GATEWAY_API_KEY (or AMBIENT_API_KEY for backup) or enable the mock provider for local smoke tests.",
+      actionRequired: "Configure VERCEL_AI_GATEWAY_API_KEY or enable the mock provider for local smoke tests.",
       estimate: estimatePayload(),
     });
   }

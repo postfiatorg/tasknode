@@ -1,5 +1,6 @@
 import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { transientDatabaseError } from "./transient-errors.js";
 
 const commandTransaction = new AsyncLocalStorage();
 
@@ -44,7 +45,11 @@ function processRole(env = process.env) {
 }
 
 function defaultPoolMaxForRole(role = processRole()) {
-  if (["web", "app", "api"].includes(role)) return 10;
+  // 10 starved the request path on 2026-10-22: app-state fires ~15 queries per
+  // request across its sections, and with millisecond queries the pool still
+  // queued 25 callers, turning a 600ms response into 78s. Workers keep their
+  // small pools; this is per role, which an app-wide DATABASE_POOL_MAX is not.
+  if (["web", "app", "api"].includes(role)) return 30;
   if (role === "board-manager") return 3;
   if (role === "worker:taskgen" || role === "worker:context-rewrite") return 4;
   if (role === "worker:pftl") return 4;
@@ -166,6 +171,9 @@ export async function transaction(work) {
     await client.query("COMMIT");
     return result;
   } catch (error) {
+    // A driver timeout does not cancel the server statement. Never hand this
+    // connection to another request after an uncertain transaction outcome.
+    if (transientDatabaseError(error)) connectionError ||= error;
     try {
       await client.query("ROLLBACK");
     } catch {

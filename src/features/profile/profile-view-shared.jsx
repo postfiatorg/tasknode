@@ -75,7 +75,7 @@ export const identityApprovalBadges = [
     requirements: [
       { id: "personal_task_count", label: "20 completed Personal tasks", personalTaskCount: 20 },
       { id: "expert_topic", label: "Expert topic supplied", expertTopic: true },
-      { id: "expert_score", label: "GLM 5.3 expertise score passes threshold", expertScore: 80 },
+      { id: "expert_score", label: "DeepSeek V4.1 Flash expertise score passes threshold", expertScore: 80 },
     ],
   },
   {

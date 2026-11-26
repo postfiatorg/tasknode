@@ -12,7 +12,14 @@ export function SettingsLine({ danger, desc, label, right }) {
   );
 }
 
-export function SmallPill({ children, danger, disabled, onClick }) {
+export function SmallPill({ children, danger, disabled, href, onClick }) {
+  if (href) {
+    return (
+      <a className={danger ? "small-pill danger" : "small-pill"} href={href} rel="noopener noreferrer" target="_blank">
+        {children}
+      </a>
+    );
+  }
   return (
     <button className={danger ? "small-pill danger" : "small-pill"} disabled={disabled} onClick={onClick} type="button">
       {children}
