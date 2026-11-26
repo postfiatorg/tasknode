@@ -6,7 +6,7 @@ const ROUTES = new Map([
   ['page', { maxRequestBytes: 4 * 1024, timeoutMs: 30_000 }],
   ['authorize', { maxRequestBytes: 4 * 1024, timeoutMs: 30_000 }],
   ['submit', { maxRequestBytes: 1024 * 1024, timeoutMs: 120_000 }],
-  ['receipt', { maxRequestBytes: 8 * 1024, timeoutMs: 30_000 }],
+  ['receipt', { maxRequestBytes: 1024 * 1024, timeoutMs: 30_000 }],
 ]);
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
