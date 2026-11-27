@@ -10,7 +10,11 @@ export const WALLET_CHALLENGE_PREFIXES = Object.freeze({
   task_transition: "Post Fiat Task Node task transition",
 });
 
-const WALLET_PROOF_SUBPURPOSES = new Set(["wallet_link", "wallet_create", "password_enable"]);
+// Wallet proof purposes each browser flow may sign: the seed wallet dialog
+// (link, create, relink) and the password enable dialog.
+export const WALLET_LINK_PROOF_PURPOSES = Object.freeze(["wallet_link", "wallet_create", "wallet_relink"]);
+export const PASSWORD_ENABLE_PROOF_PURPOSES = Object.freeze(["password_enable"]);
+const WALLET_PROOF_SUBPURPOSES = new Set([...WALLET_LINK_PROOF_PURPOSES, ...PASSWORD_ENABLE_PROOF_PURPOSES]);
 const CONFUSABLE_MAP = {
   "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c",
   "\u0445": "x", "\u0456": "i", "\u0442": "t", "\u043d": "h", "\u043a": "k",

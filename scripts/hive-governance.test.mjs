@@ -23,6 +23,7 @@ import {
 import { createInMemoryGovernanceStore } from "../server/repositories/hive-governance.js";
 import { createGovernanceSessionEngine } from "../server/hive-governance-engine.js";
 import { handleHiveGovernanceRoute } from "../server/hive-governance-routes.js";
+import { hiveGovernanceFounderAccess } from "../server/hive-operator-access.js";
 import { relaySyncSinceForChannel } from "../server/hive-group-worker.js";
 import { verifyGovernanceSessionBundle } from "./verify-governance-session.mjs";
 
@@ -537,6 +538,7 @@ test("HTTP route handler exposes public read archive and gates mutations to foun
           ? { ok: true }
           : { ok: false, status: sess ? 403 : 401, error: "hive_governance_founder_required" }
       ),
+      env: { TASKNODE_HIVE_GOVERNANCE_MUTATIONS_ENABLED: "true" },
     });
     assert.equal(handled, true);
     return response;
@@ -576,4 +578,78 @@ test("HTTP route handler exposes public read archive and gates mutations to foun
   const detail = await callRoute({ method: "GET", pathname: "/api/hive/governance/sessions/gov-http-1" });
   assert.equal(detail.status, 200);
   assert.equal(detail.body.session.session_id, "gov-http-1");
+});
+
+test("Founder authority comes only from configured account ids, never from a display name or handle", async () => {
+  const founderEnv = { TASKNODE_GOVERNANCE_FOUNDER_ACCOUNT_IDS: "acct_founder, acct_cofounder" };
+  const impostor = { accountId: "acct_ordinary", displayName: "goodalexander", hiveHandle: "@goodalexander" };
+
+  const refusedImpostor = await hiveGovernanceFounderAccess(impostor, { env: founderEnv });
+  assert.equal(refusedImpostor.ok, false);
+  assert.equal(refusedImpostor.status, 403);
+  const refusedWithHandleList = await hiveGovernanceFounderAccess(impostor, {
+    env: { ...founderEnv, TASKNODE_GOVERNANCE_FOUNDER_HANDLES: "goodalexander", TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES: "goodalexander" },
+  });
+  assert.equal(refusedWithHandleList.ok, false);
+  const refusedBrainOperator = await hiveGovernanceFounderAccess(impostor, {
+    env: { ...founderEnv, TASKNODE_HIVE_BRAIN_OPERATOR_ACCOUNT_IDS: "acct_ordinary" },
+  });
+  assert.equal(refusedBrainOperator.ok, false);
+
+  assert.equal((await hiveGovernanceFounderAccess({ accountId: "acct_cofounder" }, { env: founderEnv })).ok, true);
+  assert.equal((await hiveGovernanceFounderAccess({ accountId: "ACCT_FOUNDER" }, { env: founderEnv })).ok, false);
+
+  for (const session of [impostor, { accountId: "acct_founder" }]) {
+    const unconfigured = await hiveGovernanceFounderAccess(session, { env: {} });
+    assert.equal(unconfigured.ok, false);
+    assert.equal(unconfigured.status, 403);
+  }
+  assert.equal((await hiveGovernanceFounderAccess(null, { env: founderEnv })).status, 401);
+});
+
+test("Governance session changes answer not enabled unless the setting is on, and reads stay open", async () => {
+  const h = createFixtureHarness();
+  const callRoute = async ({ method, pathname, env }) => {
+    let response = null;
+    await handleHiveGovernanceRoute({
+      req: { method },
+      res: {},
+      url: new URL(pathname, "https://tasknode.postfiat.org"),
+      session: { accountId: h.founder.accountId },
+      json: (_, status, payload) => { response = { status, body: payload }; },
+      readJson: async () => ({
+        sessionId: "gov-flag-1",
+        title: "Flag check",
+        founderL1Address: h.founder.l1Address,
+        founderNostrPubkey: h.founder.pubkey,
+      }),
+      engine: h.engine,
+      store: h.store,
+      checkFounderAccess: async () => ({ ok: true }),
+      env,
+    });
+    return response;
+  };
+
+  const mutationPaths = ["", "/gov-flag-1/open", "/gov-flag-1/close", "/gov-flag-1/minutes", "/gov-flag-1/anchor", "/gov-flag-1/archive"];
+  for (const env of [{}, { TASKNODE_HIVE_GOVERNANCE_MUTATIONS_ENABLED: "false" }]) {
+    for (const suffix of mutationPaths) {
+      const refused = await callRoute({ method: "POST", pathname: `/api/hive/governance/sessions${suffix}`, env });
+      assert.equal(refused.status, 503, suffix || "schedule");
+      assert.equal(refused.body.error, "hive_governance_mutations_not_enabled");
+    }
+  }
+  assert.equal(await h.store.getSession("gov-flag-1"), null);
+
+  const list = await callRoute({ method: "GET", pathname: "/api/hive/governance/sessions", env: {} });
+  assert.equal(list.status, 200);
+
+  const created = await callRoute({
+    method: "POST",
+    pathname: "/api/hive/governance/sessions",
+    env: { TASKNODE_HIVE_GOVERNANCE_MUTATIONS_ENABLED: "true" },
+  });
+  assert.equal(created.status, 201);
+  const detail = await callRoute({ method: "GET", pathname: "/api/hive/governance/sessions/gov-flag-1", env: {} });
+  assert.equal(detail.status, 200);
 });

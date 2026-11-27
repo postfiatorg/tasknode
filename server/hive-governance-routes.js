@@ -22,6 +22,7 @@ export async function handleHiveGovernanceRoute({
   engine = null,
   store = null,
   checkFounderAccess = hiveGovernanceFounderAccess,
+  env = process.env,
 }) {
   const parts = sessionPathParts(url.pathname);
   if (!parts) return false;
@@ -60,8 +61,19 @@ export async function handleHiveGovernanceRoute({
       return true;
     }
 
+    // Off unless enabled: the engine does not yet pin artifacts or confirm anchors
+    // on chain, so a changed session would publish records nobody can verify.
+    if (env.TASKNODE_HIVE_GOVERNANCE_MUTATIONS_ENABLED !== "true") {
+      json(res, 503, {
+        ok: false,
+        error: "hive_governance_mutations_not_enabled",
+        message: "Governance session changes are not enabled on this server.",
+      });
+      return true;
+    }
+
     // All mutations are strictly founder-only (1-of-1 at launch).
-    const access = await checkFounderAccess(session);
+    const access = await checkFounderAccess(session, { env });
     if (!access.ok) {
       json(res, access.status || 403, { ok: false, error: access.error, message: access.message });
       return true;

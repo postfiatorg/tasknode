@@ -3,12 +3,20 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import * as keypairs from "ripple-keypairs";
 import { Wallet } from "xrpl/dist/npm/Wallet/index.js";
 import {
+  PASSWORD_ENABLE_PROOF_PURPOSES,
   WALLET_CHALLENGE_PREFIXES,
+  WALLET_LINK_PROOF_PURPOSES,
   parseChallengeFields,
   validateWalletChallengeMessage,
 } from "../shared/wallet-challenge-guard.js";
 
-export { WALLET_CHALLENGE_PREFIXES, parseChallengeFields, validateWalletChallengeMessage };
+export {
+  PASSWORD_ENABLE_PROOF_PURPOSES,
+  WALLET_CHALLENGE_PREFIXES,
+  WALLET_LINK_PROOF_PURPOSES,
+  parseChallengeFields,
+  validateWalletChallengeMessage,
+};
 
 export const TASKNODE_DERIVATION_PATH = "m/44'/144'/0'/0/0";
 export const TASKNODE_VAULT_VERSION = 1;

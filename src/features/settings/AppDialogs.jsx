@@ -280,7 +280,7 @@ function PasswordSecurity({ linkedWallet, onSessionChange, onWalletUnlock, sessi
         const walletCore = await import("../../wallet-core");
         const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, start.body.challenge.message, {
           purpose: "wallet_proof",
-          allowedSubPurposes: ["password_enable"],
+          allowedSubPurposes: walletCore.PASSWORD_ENABLE_PROOF_PURPOSES,
           expectedAccountId: session?.accountId || "",
         });
         if (proof.address !== linkedWallet.address) {
