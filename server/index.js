@@ -1,4 +1,5 @@
 import { handlePromptRoute } from "./prompt-routes.js";
+import { handleIdentityRoute } from "./identity/routes.js";
 import { handleReinstatementRoute } from "./reinstatement-routes.js";
 import { handleValidatorBundleRoute } from "./validator-bundles.js";
 import { handleValidatorResearchRoute } from "./validator-research-routes.js";
@@ -194,6 +195,7 @@ async function routeApi(req, url, res) {
   if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await enforceRoutePolicy(req, url, res, session)) return true;
+  if (await handleIdentityRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleReinstatementRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorConnectRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorResearchRoute({ json, readJson, req, res, session, url })) return true;
