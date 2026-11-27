@@ -176,7 +176,7 @@ function validateOldBurnProof({ burnProof, expectedOldOwner, expectedNftokenId, 
     throw new Error("old_chain_burn_account_mismatch");
   }
   const burnedTokenId = normalizeTokenId(burnProof.nftokenId || burnProof.NFTokenID);
-  if (burnedTokenId && burnedTokenId !== expectedNftokenId) {
+  if (!burnedTokenId || burnedTokenId !== expectedNftokenId) {
     throw new Error("old_chain_burn_token_id_mismatch");
   }
   const memoClaimHash = safeText(burnProof.claimHashHex || burnProof.memoClaimHashHex, 128).toLowerCase();
@@ -213,6 +213,7 @@ export function createBurnFirstNftMigrator({
   newOwnerAccount = "",
   pinRawBlock,
   burnOldChainNft,
+  findOldChainBurn = null,
   verifyOldChainBurn,
   queryL1NftInfo = null,
   queryL1UsedSerial = null,
@@ -489,36 +490,49 @@ export function createBurnFirstNftMigrator({
     }
 
     // 4. Step B: Burn old-chain NFT FIRST with claim_hash in memo, then validate burn via history RPC.
+    // A stop at any point resumes without loss: a durable burn_intent precedes the burner, an
+    // old-chain look-up for this burn precedes every burn call, and a saved burn hash is never re-burned.
     if (!item.burnTxHash || item.burnValidated !== true) {
+      if (typeof findOldChainBurn !== "function") throw new Error("old_chain_burn_lookup_required");
+      const burnQuery = {
+        nftokenId: tokenId,
+        oldOwner: allowed.oldOwner,
+        expectedOldOwner: allowed.oldOwner,
+        claimHashHex: item.claimHashHex,
+        expectedClaimHashHex: item.claimHashHex,
+      };
+      const lookUp = async (txHash) => {
+        const verified = txHash && typeof verifyOldChainBurn === "function"
+          ? await verifyOldChainBurn({ ...burnQuery, txHash })
+          : null;
+        return verified || findOldChainBurn(burnQuery);
+      };
       let rawBurn = null;
-      if (item.burnTxHash && typeof verifyOldChainBurn === "function") {
-        rawBurn = await verifyOldChainBurn({
-          txHash: item.burnTxHash,
-          nftokenId: tokenId,
-          expectedOldOwner: allowed.oldOwner,
-          expectedClaimHashHex: item.claimHashHex,
-        });
+      if (item.burnTxHash || item.status === "burn_submitted") {
+        // The burner already answered for this item: look up only, never burn again.
+        rawBurn = await lookUp(item.burnTxHash);
       } else {
-        if (typeof burnOldChainNft !== "function") throw new Error("old_chain_burn_fn_required");
-        const burnSubmitted = await burnOldChainNft({
-          nftokenId: tokenId,
-          oldOwner: allowed.oldOwner,
-          claimHashHex: item.claimHashHex,
-          claimCid: item.claimCid,
-        });
-        item = ledgerStore.saveItem(tokenId, {
-          ...item,
-          status: "burn_submitted",
-          burnTxHash: safeText(burnSubmitted?.txHash, 128),
-        });
-        rawBurn = typeof verifyOldChainBurn === "function"
-          ? await verifyOldChainBurn({
-              txHash: item.burnTxHash,
-              nftokenId: tokenId,
-              expectedOldOwner: allowed.oldOwner,
-              expectedClaimHashHex: item.claimHashHex,
-            })
-          : burnSubmitted;
+        rawBurn = await findOldChainBurn(burnQuery);
+        if (!rawBurn) {
+          if (typeof burnOldChainNft !== "function") throw new Error("old_chain_burn_fn_required");
+          item = ledgerStore.saveItem(tokenId, {
+            ...item,
+            status: "burn_intent",
+            burnIntentAt: new Date().toISOString(),
+          });
+          const burnSubmitted = await burnOldChainNft({
+            nftokenId: tokenId,
+            oldOwner: allowed.oldOwner,
+            claimHashHex: item.claimHashHex,
+            claimCid: item.claimCid,
+          });
+          item = ledgerStore.saveItem(tokenId, {
+            ...item,
+            status: "burn_submitted",
+            burnTxHash: safeText(burnSubmitted?.txHash, 128),
+          });
+          rawBurn = await lookUp(item.burnTxHash);
+        }
       }
       const verifiedBurn = validateOldBurnProof({
         burnProof: rawBurn,

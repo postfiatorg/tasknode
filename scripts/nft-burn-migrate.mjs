@@ -75,6 +75,9 @@ async function main() {
   const targetChainId = argValue("target-chain-id", allowlist.targetChainId || DEFAULT_L1_CHAIN_ID);
   const targetCollectionId = argValue("collection-id", allowlist.targetCollectionId || DEFAULT_OFFICIAL_COLLECTION_ID);
 
+  if (execute && !ledgerPath) {
+    throw new Error("execute_requires_ledger_path: a durable --ledger file is required with --execute");
+  }
   if (!dryRun) {
     throw new Error(
       "live_chain_execute_requires_injected_rpc_and_wallet_signers: pass --dry-run to preview or invoke createBurnFirstNftMigrator() with live old-chain burn + postfiatl1v2 mint transports"
