@@ -1,3 +1,4 @@
+import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import {
   BODY_ENCODING,
   CONTENT_KIND,
@@ -18,6 +19,11 @@ import {
 } from "./message-protocol.js";
 
 export const FASTPAY_TRANSFER_ORDER_DOMAIN = "postfiat.fastpay.transfer-order.v3";
+export const FASTPAY_LOCK_ID_DOMAIN_V1 = "postfiat.fastpay.lock-id.v1";
+export const FASTPAY_ORDER_RECOVERY_SCHEMA_V1 = "postfiat-fastpay-order-recovery-v1";
+export const OWNED_CERTIFICATE_DOMAIN_SCHEMA_V2 = "postfiat-owned-certificate-domain-v2";
+export const OWNED_TRANSFER_CONTEXT_V3 = "postfiat-l1-v2/owned-transfer/v3";
+export const OWNED_NATIVE_ASSET = "PFT";
 export const FASTPAY_MIN_BASE_FEE_ATOMS = 25n;
 export const FASTPAY_FEE_BYTE_QUANTUM = 512n;
 export const FASTPAY_FEE_PER_BYTE_QUANTUM_ATOMS = 1n;
@@ -60,33 +66,105 @@ export function fastpayMinimumFeeAtoms({ weightBytes = 512, inputsConsumed = 1, 
   return FASTPAY_MIN_BASE_FEE_ATOMS + byteFee + newObjectFee + inputFee;
 }
 
-export function canonicalOrderSigningBytes(order = {}) {
-  const normalized = {
-    chain_id: safeText(order.chain_id || order.chainId, 120),
-    owner_pubkey_hex: safeText(order.owner_pubkey_hex || order.ownerPubkeyHex, 8192).toLowerCase(),
-    nonce: Number(order.nonce || 0),
-    inputs: (Array.isArray(order.inputs) ? order.inputs : []).map((id) => String(id).toLowerCase()),
-    outputs: (Array.isArray(order.outputs) ? order.outputs : []).map((out) => ({
-      owner_pubkey_hex: safeText(out.owner_pubkey_hex || out.ownerPubkeyHex, 8192).toLowerCase(),
-      owner_account: safeText(out.owner_account || out.ownerAccount, 120).toLowerCase(),
-      value: String(out.value),
-    })),
-    fee: String(order.fee),
-    memos: (Array.isArray(order.memos) ? order.memos : []).map((memo) => ({
-      memo_type: safeText(memo.memo_type, 256).toLowerCase(),
-      memo_format: safeText(memo.memo_format, 256).toLowerCase(),
-      memo_data: safeText(memo.memo_data, 1024).toLowerCase(),
-    })),
-  };
-  return Buffer.from(JSON.stringify(normalized), "utf8");
+// Byte ports of Train A (postfiatl1v2 1d41d5bf4): fastpay_transfer_lock_preimage_v1
+// (crates/types/src/fastpay_recovery_types.rs), owned_transfer_v3_signing_bytes and
+// fastpay_transfer_order_digest_v3 (crates/execution/src/owned_transfer_recovery.rs).
+// Pinned against a Rust-printed vector in fixtures/fastpay-owned-transfer-v3-vector.json.
+function u64le(value) {
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(BigInt(value));
+  return out;
 }
 
-// Canonical immutable 96-hex SHA3-384 order_hash independent of validator certificate signatures.
+function u32le(value) {
+  const out = Buffer.alloc(4);
+  out.writeUInt32LE(Number(value));
+  return out;
+}
+
+function lenText(value = "") {
+  const bytes = Buffer.from(String(value), "utf8");
+  return Buffer.concat([u64le(bytes.length), bytes]);
+}
+
+export function fastpayTransferLockPreimageV1(order = {}) {
+  const { domain = {}, recovery = {} } = order;
+  const inputs = Array.isArray(order.inputs) ? order.inputs : [];
+  const outputs = Array.isArray(order.outputs) ? order.outputs : [];
+  const memos = Array.isArray(order.memos) ? order.memos : [];
+  return Buffer.concat([
+    Buffer.from("postfiat.fastpay.transfer-lock-preimage.v1\0", "utf8"),
+    lenText(domain.schema),
+    lenText(domain.chain_id),
+    lenText(domain.genesis_hash),
+    u32le(domain.protocol_version),
+    lenText(domain.registry_id),
+    u64le(recovery.committee_epoch),
+    u64le(recovery.valid_from_height),
+    u64le(recovery.expires_at_height),
+    u64le(recovery.recovery_closes_at_height),
+    u64le(inputs.length),
+    ...inputs.flatMap((input) => [lenText(input.id), u64le(input.version)]),
+    u64le(outputs.length),
+    ...outputs.flatMap((output) => [lenText(output.owner_pubkey_hex), u64le(output.value), lenText(output.asset)]),
+    u64le(order.fee),
+    u64le(order.nonce),
+    u64le(memos.length),
+    ...memos.flatMap((memo) => [lenText(memo.memo_type), lenText(memo.memo_format), lenText(memo.memo_data)]),
+  ]);
+}
+
+export function fastpayTransferLockIdV1(order = {}) {
+  return hashHexDomain(FASTPAY_LOCK_ID_DOMAIN_V1, fastpayTransferLockPreimageV1(order));
+}
+
+export function ownedTransferV3SigningBytes(order = {}) {
+  const preimage = fastpayTransferLockPreimageV1(order);
+  return Buffer.concat([
+    Buffer.from("postfiat.owned-transfer.v3\0", "utf8"),
+    u64le(preimage.length),
+    preimage,
+    lenText(order.recovery?.lock_id),
+  ]);
+}
+
+export function fastpayTransferOrderDigestV3(order = {}) {
+  return hashHexDomain(FASTPAY_TRANSFER_ORDER_DOMAIN, ownedTransferV3SigningBytes(order));
+}
+
+// The order hash is the chain's order digest; it is what queries and the chain's index use.
 export function computeFastPayOrderHash(orderOrBytes) {
-  const bytes = Buffer.isBuffer(orderOrBytes) || orderOrBytes instanceof Uint8Array
-    ? orderOrBytes
-    : canonicalOrderSigningBytes(orderOrBytes);
-  return hashHexDomain(FASTPAY_TRANSFER_ORDER_DOMAIN, bytes);
+  if (Buffer.isBuffer(orderOrBytes) || orderOrBytes instanceof Uint8Array) {
+    return hashHexDomain(FASTPAY_TRANSFER_ORDER_DOMAIN, orderOrBytes);
+  }
+  return fastpayTransferOrderDigestV3(orderOrBytes);
+}
+
+// SignedOwnedTransferOrderV3 {order, owner_pubkey_hex, owner_signature_hex}, signed with the
+// Task Node's ML-DSA-65 wallet code under OWNED_TRANSFER_CONTEXT_V3.
+export function signOwnedTransferOrderV3(order, signer) {
+  if (!signer?.publicKey || !signer?.secretKey) throw new Error("fastpay_owner_signer_required");
+  const signature = ml_dsa65.sign(ownedTransferV3SigningBytes(order), Uint8Array.from(signer.secretKey), {
+    context: Buffer.from(OWNED_TRANSFER_CONTEXT_V3, "utf8"),
+  });
+  return {
+    order,
+    owner_pubkey_hex: Buffer.from(signer.publicKey).toString("hex"),
+    owner_signature_hex: Buffer.from(signature).toString("hex"),
+  };
+}
+
+export function verifyOwnedTransferV3Signature(signed = {}) {
+  const pubkey = safeText(signed?.owner_pubkey_hex, 8192);
+  const signature = safeText(signed?.owner_signature_hex, 16384);
+  if (!/^[0-9a-f]+$/.test(pubkey) || !/^[0-9a-f]+$/.test(signature) || !signed?.order) return false;
+  try {
+    return ml_dsa65.verify(Buffer.from(signature, "hex"), ownedTransferV3SigningBytes(signed.order), Buffer.from(pubkey, "hex"), {
+      context: Buffer.from(OWNED_TRANSFER_CONTEXT_V3, "utf8"),
+    });
+  } catch {
+    return false;
+  }
 }
 
 // Spoof-proof Explorer / Task Node "Task reward" badge verification (Pillar 2 Section 4).
@@ -293,6 +371,9 @@ export function createFastPayPayoutDriver({
   verifyFastPayLockCancellation = null,
   submitConsensusFallback = null,
   pinEnvelope = null,
+  fastpayDomain = null,
+  fastpayRecoveryWindow = null,
+  signOwnedTransferOrder = null,
   env = process.env,
 } = {}) {
   if (!store) throw new Error("fastpay_payout_store_required");
@@ -431,54 +512,100 @@ export function createFastPayPayoutDriver({
         schema: "pf.reward.v1",
       });
 
-      const estimatedFee = fastpayMinimumFeeAtoms({
-        weightBytes: 640 + artifact.memo.byteLength,
-        inputsConsumed: 1,
-        outputsCreated: 2,
-      });
-      const leased = await store.leaseObject({ payoutId: id, minAtoms: payAtoms + estimatedFee });
-      if (!leased) throw new Error("fastpay_payout_pool_exhausted");
-
-      const changeAtoms = leased.valueAtoms - payAtoms - estimatedFee;
-      const outputs = [
-        { owner_account: recipientAccount, owner_pubkey_hex: recipientPubkeyHex, value: payAtoms.toString() },
-      ];
-      if (changeAtoms > 0n) {
-        outputs.push({
-          owner_account: senderAccount,
-          owner_pubkey_hex: senderPubkeyHex,
-          value: changeAtoms.toString(),
-        });
+      if (!/^[0-9a-f]+$/.test(safeText(recipientPubkeyHex, 8192).toLowerCase())) {
+        throw new Error("fastpay_recipient_pubkey_required");
       }
-      const exactFee = fastpayMinimumFeeAtoms({
-        weightBytes: 512 + artifact.memo.byteLength,
-        inputsConsumed: 1,
-        outputsCreated: outputs.length,
-      });
-      const finalChangeAtoms = leased.valueAtoms - payAtoms - exactFee;
-      if (finalChangeAtoms < 0n) {
-        await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
-        throw new Error("fastpay_leased_object_insufficient_for_fee");
-      }
-      if (outputs.length === 2) outputs[1].value = finalChangeAtoms.toString();
-
-      const order = {
-        chain_id: chainId,
-        owner_pubkey_hex: senderPubkeyHex,
-        nonce: leased.nonce + 1,
-        inputs: [leased.objectId],
-        outputs,
-        fee: exactFee.toString(),
-        memos: [
-          {
-            memo_type: artifact.memo.memo_type,
-            memo_format: artifact.memo.memo_format,
-            memo_data: artifact.memo.memo_data,
-          },
-        ],
+      const domain = {
+        schema: safeText(fastpayDomain?.schema || OWNED_CERTIFICATE_DOMAIN_SCHEMA_V2, 120),
+        chain_id: safeText(fastpayDomain?.chain_id || chainId, 120),
+        genesis_hash: safeText(fastpayDomain?.genesis_hash, 128).toLowerCase(),
+        protocol_version: Number(fastpayDomain?.protocol_version || 0),
+        registry_id: safeText(fastpayDomain?.registry_id, 128).toLowerCase(),
       };
-      const signedOrderBytes = canonicalOrderSigningBytes(order);
-      const orderHash = computeFastPayOrderHash(signedOrderBytes);
+      if (!domain.genesis_hash || !domain.registry_id || !domain.protocol_version) {
+        throw new Error("fastpay_order_domain_required");
+      }
+      if (typeof fastpayRecoveryWindow !== "function") throw new Error("fastpay_recovery_window_required");
+      const window = await fastpayRecoveryWindow({ chainId: domain.chain_id });
+      const recoveryBase = {
+        schema: FASTPAY_ORDER_RECOVERY_SCHEMA_V1,
+        committee_epoch: Number(window?.committee_epoch || 0),
+        lock_id: "",
+        valid_from_height: Number(window?.valid_from_height || 0),
+        expires_at_height: Number(window?.expires_at_height || 0),
+        recovery_closes_at_height: Number(window?.recovery_closes_at_height || 0),
+      };
+      if (!recoveryBase.committee_epoch || !recoveryBase.valid_from_height || !(recoveryBase.expires_at_height >= recoveryBase.valid_from_height) || !(recoveryBase.recovery_closes_at_height > recoveryBase.expires_at_height)) {
+        throw new Error("fastpay_recovery_window_invalid");
+      }
+      const memos = [{
+        memo_type: artifact.memo.memo_type,
+        memo_format: artifact.memo.memo_format,
+        memo_data: artifact.memo.memo_data,
+      }];
+
+      // Build the chain's OwnedTransferOrderV3 and charge the fee on its real signing-byte length.
+      const buildOrder = (leased, withChange) => {
+        const outputs = [{ owner_pubkey_hex: safeText(recipientPubkeyHex, 8192).toLowerCase(), value: Number(payAtoms), asset: OWNED_NATIVE_ASSET }];
+        if (withChange) outputs.push({ owner_pubkey_hex: senderPubkeyHex, value: 0, asset: OWNED_NATIVE_ASSET });
+        const draft = {
+          domain,
+          recovery: { ...recoveryBase },
+          inputs: [{ id: leased.objectId, version: Number(leased.version || 0) }],
+          outputs,
+          fee: 0,
+          nonce: Number(leased.nonce || 0) + 1,
+          memos,
+        };
+        // Every u64 is fixed width, so the length does not depend on the fee or change values.
+        const minimum = fastpayMinimumFeeAtoms({
+          weightBytes: ownedTransferV3SigningBytes(draft).length,
+          inputsConsumed: draft.inputs.length,
+          outputsCreated: outputs.length,
+        });
+        return { draft, minimum };
+      };
+      const probe = buildOrder({ objectId: "00".repeat(32), version: 0, nonce: 0 }, true);
+      const leased = await store.leaseObject({ payoutId: id, minAtoms: payAtoms + probe.minimum });
+      if (!leased) throw new Error("fastpay_payout_pool_exhausted");
+      const leasedValue = BigInt(leased.valueAtoms);
+      let { draft: order, minimum } = buildOrder(leased, true);
+      let changeAtoms = leasedValue - payAtoms - minimum;
+      if (changeAtoms > 0n) {
+        order.fee = Number(minimum);
+        order.outputs[1].value = Number(changeAtoms);
+      } else {
+        ({ draft: order, minimum } = buildOrder(leased, false));
+        const fee = leasedValue - payAtoms;
+        if (fee < minimum) {
+          await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
+          throw new Error("fastpay_leased_object_insufficient_for_fee");
+        }
+        order.fee = Number(fee);
+        changeAtoms = 0n;
+      }
+      if (!order.outputs.every((out) => Number.isSafeInteger(out.value)) || !Number.isSafeInteger(order.fee)) {
+        await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
+        throw new Error("fastpay_order_value_exceeds_safe_integer");
+      }
+      order.recovery.lock_id = fastpayTransferLockIdV1(order);
+      const exactFee = BigInt(order.fee);
+      const finalChangeAtoms = changeAtoms;
+
+      // The owner signature must be real: a hook may sign elsewhere, but nothing is sent without a valid one.
+      const signedOrder = typeof signOwnedTransferOrder === "function"
+        ? await signOwnedTransferOrder(order)
+        : signOwnedTransferOrderV3(order, payoutSigner);
+      if (
+        !verifyOwnedTransferV3Signature(signedOrder) ||
+        signedOrder.owner_pubkey_hex !== senderPubkeyHex ||
+        fastpayTransferOrderDigestV3(signedOrder.order) !== fastpayTransferOrderDigestV3(order)
+      ) {
+        await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
+        throw new Error("fastpay_owner_signature_invalid");
+      }
+      const signedOrderBytes = Buffer.from(JSON.stringify(signedOrder), "utf8");
+      const orderHash = fastpayTransferOrderDigestV3(order);
 
       persisted = await store.savePayout(id, {
         payoutId: id,
@@ -490,7 +617,9 @@ export function createFastPayPayoutDriver({
         changeAtoms: finalChangeAtoms.toString(),
         nonce: order.nonce,
         orderHash,
+        lockId: order.recovery.lock_id,
         order,
+        signedOrder,
         signedOrderBytesHex: signedOrderBytes.toString("hex"),
         cid: artifact.cid,
         cidBinHex: artifact.cidBinHex,
@@ -538,6 +667,7 @@ export function createFastPayPayoutDriver({
       const submitted = await submitFastPayOrder({
         orderHash: persisted.orderHash,
         order: persisted.order,
+        signedOrder: persisted.signedOrder,
         signedOrderBytes: Buffer.from(persisted.signedOrderBytesHex, "hex"),
       });
       const submitVerdict = await verifyChainResult(submitted, persisted, "submit");
