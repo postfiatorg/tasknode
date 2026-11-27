@@ -28,7 +28,7 @@ export async function revokeResearchKey(accountId, id) {
 export async function authenticateResearchKey(key) {
   if (typeof key !== "string" || !key.startsWith("tnr_") || key.length !== 47) throw validatorError("research_key_invalid", 401);
   const result = await query(`UPDATE research_api_keys SET last_used_at=now() WHERE key_hash=$1 AND revoked_at IS NULL
-    AND scope='research:run' AND EXISTS(SELECT 1 FROM validator_bindings b WHERE b.account_id=research_api_keys.account_id AND b.revoked_at IS NULL)
+    AND scope='research:run' AND EXISTS(SELECT 1 FROM validator_bindings b WHERE b.account_id=research_api_keys.account_id AND b.revoked_at IS NULL AND b.access_suspended_at IS NULL)
     RETURNING id,account_id`, [hashResearchKey(key)]);
   if (!result.rowCount) throw validatorError("research_key_invalid", 401);
   return { accountId: result.rows[0].account_id, apiKeyId: result.rows[0].id };
