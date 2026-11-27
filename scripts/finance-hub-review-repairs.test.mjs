@@ -1,0 +1,135 @@
+// Review of PR 447 (8616a0f44): each test reproduces a finding and fails on that head.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  evaluateFinanceHubAccess,
+  evaluateValidatorFinanceHubState,
+} from "../server/finance-hub-access.js";
+
+// ============================================================================
+// (e) An access check that cannot decide refuses (review 447-02, 447-03, 447-04)
+// ============================================================================
+
+const L1_KEY = "a".repeat(3904);
+const L1_BINDING = {
+  id: "bind-l1",
+  network: "l1-devnet",
+  validator_id: "v1",
+  chain_id: "postfiat-wan-devnet-2",
+  ml_dsa_public_key: L1_KEY,
+  bound_at: "2026-06-01T00:00:00Z",
+};
+const l1Registry = (row, at) => ({
+  chain_id: L1_BINDING.chain_id,
+  generated_at: at.toISOString(),
+  validators: [{ validator_id: "v1", ml_dsa_public_key: L1_KEY, active: true, ...row }],
+});
+function memoryValidatorAccess() {
+  const states = new Map();
+  return {
+    states,
+    readRecordedState: async (binding) => states.get(binding.id) || null,
+    recordState: async (binding, state) => { states.set(binding.id, state); },
+  };
+}
+const feedDown = async () => { throw new Error("feed down"); };
+
+test("(e.1) a failed blacklist or suspension lookup is unavailable, never no restriction", async () => {
+  const now = new Date("2026-11-27T10:00:00Z");
+  for (const broken of ["getBlacklist", "getSuspension"]) {
+    const result = await evaluateFinanceHubAccess({
+      accountId: "acct_blocked",
+      now,
+      env: {},
+      getBlacklist: async () => null,
+      getSuspension: async () => null,
+      getValidatorBindings: async () => [{ network: "devnet" }],
+      getTop30Snapshot: async () => null,
+      [broken]: async () => { throw new Error("query failed"); },
+    });
+    assert.equal(result.ok, false, `${broken} failure must refuse`);
+    assert.equal(result.reason, "access_check_unavailable");
+  }
+});
+
+test("(e.2) a feed outage never creates or revives access; only a recorded authorized state is preserved until its expiry", async () => {
+  const now = new Date("2026-11-27T10:00:00Z");
+  const store = memoryValidatorAccess();
+  const fresh = (row, at = now) => evaluateValidatorFinanceHubState({
+    bindings: [L1_BINDING], now: at, env: {}, loadL1Registry: async () => l1Registry(row, at), ...store,
+  });
+  const outage = (at = now, binding = L1_BINDING) => evaluateValidatorFinanceHubState({
+    bindings: [binding], now: at, env: {}, loadL1Registry: feedDown, ...store,
+  });
+  const staleFeed = (at = now) => evaluateValidatorFinanceHubState({
+    bindings: [L1_BINDING], now: at, env: {}, loadL1Registry: async () => l1Registry({ access_state: "active" }, new Date(at.getTime() - 2 * 3600_000)), ...store,
+  });
+
+  // An old binding with nothing recorded gets nothing from an outage; neither does a missing bound_at.
+  assert.equal((await outage()).ok, false);
+  assert.equal((await outage(now, { ...L1_BINDING, bound_at: null })).ok, false);
+  assert.equal((await staleFeed()).ok, false);
+
+  // A fresh revocation is recorded and stays revoked through an outage.
+  assert.equal((await fresh({ access_state: "revoked" })).ok, false);
+  assert.equal(store.states.get("bind-l1").access_state, "revoked");
+  assert.equal((await outage()).ok, false);
+  assert.equal((await outage(new Date("2026-12-20T00:00:00Z"))).ok, false);
+
+  // A fresh active decision is recorded and preserved through an outage, but only until its own expiry.
+  assert.equal((await fresh({ access_state: "active" })).ok, true);
+  const preserved = await outage(new Date("2026-11-28T10:00:00Z"));
+  assert.equal(preserved.ok, true);
+  assert.equal(preserved.validatorState, "stale_feed_preserved");
+  assert.equal((await staleFeed(new Date("2026-11-28T10:00:00Z"))).ok, true);
+  assert.equal((await outage(new Date("2026-12-12T10:00:00Z"))).ok, false);
+
+  // A failed lookup of the recorded state refuses.
+  const unreadable = await evaluateValidatorFinanceHubState({
+    bindings: [L1_BINDING], now, env: {}, loadL1Registry: feedDown,
+    readRecordedState: async () => { throw new Error("db down"); }, recordState: async () => {},
+  });
+  assert.equal(unreadable.ok, false);
+});
+
+test("(e.3) validator grace starts at a recorded time, ramp-in is bounded, and a valid lapse grace survives active:false", async () => {
+  const now = new Date("2026-11-27T10:00:00Z");
+  const later = new Date("2027-01-06T10:00:00Z");
+  const run = (row, at, store) => evaluateValidatorFinanceHubState({
+    bindings: [L1_BINDING], now: at, env: {}, loadL1Registry: async () => l1Registry(row, at), ...store,
+  });
+
+  // A lapsed row with no recorded start is refused, not given a new 14 days, now or 40 days later.
+  const unrecorded = memoryValidatorAccess();
+  assert.equal((await run({ access_state: "lapsed" }, now, unrecorded)).ok, false);
+  assert.equal((await run({ access_state: "lapsed" }, later, unrecorded)).ok, false);
+
+  // After a recorded active state, grace runs 14 days from that record and is not re-issued per request.
+  const recorded = memoryValidatorAccess();
+  assert.equal((await run({ access_state: "active" }, now, recorded)).ok, true);
+  const lapsed = await run({ access_state: "lapsed" }, new Date("2026-11-30T10:00:00Z"), recorded);
+  assert.equal(lapsed.basis, "grace");
+  assert.equal(lapsed.graceEndsAt, "2026-12-11T10:00:00.000Z");
+  const again = await run({ access_state: "lapsed" }, new Date("2026-12-05T10:00:00Z"), recorded);
+  assert.equal(again.graceEndsAt, "2026-12-11T10:00:00.000Z");
+  assert.equal((await run({ access_state: "lapsed" }, later, recorded)).ok, false);
+
+  // A six-month-old binding without enough observed days is past ramp-in: no validator access.
+  const oldBinding = await run({}, now, memoryValidatorAccess());
+  assert.notEqual(oldBinding.basis, "validator");
+  assert.equal(oldBinding.ok, false);
+  // A fresh binding inside the 30-day ramp-in still gets in.
+  const rampIn = await evaluateValidatorFinanceHubState({
+    bindings: [{ ...L1_BINDING, bound_at: "2026-11-20T00:00:00Z" }], now, env: {},
+    loadL1Registry: async () => l1Registry({}, now), ...memoryValidatorAccess(),
+  });
+  assert.equal(rampIn.ok, true);
+  assert.equal(rampIn.validatorState, "pending");
+
+  // Pillar 3: falling out of the registry enters lapsed; an unexpired feed grace is honoured.
+  const inactive = await run({ active: false, access_state: "lapsed", grace_ends_at: "2026-12-01T00:00:00Z" }, now, memoryValidatorAccess());
+  assert.equal(inactive.ok, true);
+  assert.equal(inactive.basis, "grace");
+  assert.equal(inactive.graceEndsAt, "2026-12-01T00:00:00.000Z");
+});
