@@ -43,6 +43,18 @@ export function isFastPayPayoutsEnabled(env = process.env) {
   return truthyEnv(env?.TASKNODE_FASTPAY_PAYOUTS_ENABLED);
 }
 
+export function isProductionFastPayEnvironment(env = process.env) {
+  if (truthyEnv(env?.TASKNODE_FASTPAY_REQUIRE_DURABLE_STORE)) return true;
+  const mode = safeText(env?.TASKNODE_ENV || env?.NODE_ENV, 40).toLowerCase();
+  return mode === "production" || mode === "prod";
+}
+
+export function assertDurableFastPayStore(store, env = process.env) {
+  if (isProductionFastPayEnvironment(env) && store?.durable !== true) {
+    throw new Error("fastpay_durable_store_required_in_production");
+  }
+}
+
 // Off unless switched on: paying by another lane is safe only after a proved cancel.
 export function isFastPayConsensusFallbackEnabled(env = process.env) {
   return truthyEnv(env?.TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED);
@@ -291,6 +303,7 @@ export async function buildFastPayRewardEnvelopeAndMemo({
 
 export class InMemoryFastPayPayoutStore {
   constructor(initialObjects = []) {
+    this.durable = false;
     this.payouts = new Map();
     this.pool = new Map();
     for (const obj of initialObjects) {
@@ -385,6 +398,7 @@ export function createFastPayPayoutDriver({
   env = process.env,
 } = {}) {
   if (!store) throw new Error("fastpay_payout_store_required");
+  assertDurableFastPayStore(store, env);
   if (!payoutSigner?.publicKey || !payoutSigner?.secretKey) throw new Error("fastpay_payout_signer_required");
   if (typeof submitFastPayOrder !== "function") throw new Error("fastpay_submit_fn_required");
   const senderAccount = addressFromPublicKey(payoutSigner.publicKey);
@@ -448,9 +462,51 @@ export function createFastPayPayoutDriver({
 
   function scheduleAsyncPin(rawEnvelopeBytes, cid, meta) {
     if (typeof pinEnvelope !== "function") return Promise.resolve({ ok: true, cid, skipped: true });
+    const payoutId = meta?.payoutId || "";
     return Promise.resolve()
       .then(() => pinEnvelope({ rawEnvelopeBytes, cid, ...meta }))
-      .catch((error) => ({ ok: false, cid, error: error?.message || "pin_failed" }));
+      .then(async (res) => {
+        if (res && res.ok === false) {
+          const errMsg = safeText(res.error || "pin_failed", 500);
+          if (payoutId && typeof store.markPinOutboxFailed === "function") {
+            await store.markPinOutboxFailed({ payoutId, error: errMsg }).catch(() => null);
+          }
+          return { ok: false, cid, error: errMsg };
+        }
+        if (payoutId && typeof store.markPinOutboxPinned === "function") {
+          await store.markPinOutboxPinned({ payoutId, cid }).catch(() => null);
+        }
+        return res && typeof res === "object" ? { ok: true, cid, ...res } : { ok: true, cid };
+      })
+      .catch(async (error) => {
+        const errMsg = error?.message || "pin_failed";
+        if (payoutId && typeof store.markPinOutboxFailed === "function") {
+          await store.markPinOutboxFailed({ payoutId, error: errMsg }).catch(() => null);
+        }
+        return { ok: false, cid, error: errMsg };
+      });
+  }
+
+  async function persistConfirmed(id, persisted, receipt, changeObject = null) {
+    if (typeof store.confirmPayout === "function") {
+      await store.confirmPayout({
+        payoutId: id,
+        record: { ...persisted, lane: receipt.lane, status: "confirmed", receipt },
+        objectId: persisted.objectId,
+        objectVersion: persisted.objectVersion,
+        changeObject,
+      });
+      return;
+    }
+    if (receipt.lane === "fastpay") {
+      await store.completeObjectLease({
+        objectId: persisted.objectId,
+        objectVersion: persisted.objectVersion,
+        payoutId: id,
+        changeObject,
+      });
+    }
+    await store.savePayout(id, { ...persisted, lane: receipt.lane, status: "confirmed", receipt });
   }
 
   async function executePayout({
@@ -515,13 +571,6 @@ export function createFastPayPayoutDriver({
           payoutSigner,
         });
 
-        // Kick off async IPFS pinning in parallel so it never blocks FastPay submission.
-        pinPromise = scheduleAsyncPin(artifact.rawEnvelopeBytes, artifact.cid, {
-          taskId: taskId || id,
-          payoutId: id,
-          schema: "pf.reward.v1",
-        });
-
         if (!/^[0-9a-f]+$/.test(safeText(recipientPubkeyHex, 8192).toLowerCase())) {
           throw new Error("fastpay_recipient_pubkey_required");
         }
@@ -540,7 +589,6 @@ export function createFastPayPayoutDriver({
         const recoveryBase = {
           schema: FASTPAY_ORDER_RECOVERY_SCHEMA_V1,
           committee_epoch: Number(window?.committee_epoch || 0),
-          // Fixed 96-hex SHA3-384 placeholder so buildOrder() prices the real final signing-byte length.
           lock_id: "00".repeat(48),
           valid_from_height: Number(window?.valid_from_height || 0),
           expires_at_height: Number(window?.expires_at_height || 0),
@@ -549,26 +597,19 @@ export function createFastPayPayoutDriver({
         if (!recoveryBase.committee_epoch || !recoveryBase.valid_from_height || !(recoveryBase.expires_at_height >= recoveryBase.valid_from_height) || !(recoveryBase.recovery_closes_at_height > recoveryBase.expires_at_height)) {
           throw new Error("fastpay_recovery_window_invalid");
         }
-        const memos = [{
-          memo_type: artifact.memo.memo_type,
-          memo_format: artifact.memo.memo_format,
-          memo_data: artifact.memo.memo_data,
-        }];
-
-        // Build the chain's OwnedTransferOrderV3 and charge the fee on its real signing-byte length.
-        const buildOrder = (leased, withChange) => {
+        const memos = [{ memo_type: artifact.memo.memo_type, memo_format: artifact.memo.memo_format, memo_data: artifact.memo.memo_data }];
+        const buildOrder = (leasedObj, withChange) => {
           const outputs = [{ owner_pubkey_hex: safeText(recipientPubkeyHex, 8192).toLowerCase(), value: Number(payAtoms), asset: OWNED_NATIVE_ASSET }];
           if (withChange) outputs.push({ owner_pubkey_hex: senderPubkeyHex, value: 0, asset: OWNED_NATIVE_ASSET });
           const draft = {
             domain,
             recovery: { ...recoveryBase },
-            inputs: [{ id: leased.objectId, version: Number(leased.version || 0) }],
+            inputs: [{ id: leasedObj.objectId, version: Number(leasedObj.version || 0) }],
             outputs,
             fee: 0,
-            nonce: Number(leased.nonce || 0) + 1,
+            nonce: Number(leasedObj.nonce || 0) + 1,
             memos,
           };
-          // Every u64 is fixed width, so the length does not depend on the fee or change values.
           const minimum = fastpayMinimumFeeAtoms({
             weightBytes: ownedTransferV3SigningBytes(draft).length,
             inputsConsumed: draft.inputs.length,
@@ -576,74 +617,97 @@ export function createFastPayPayoutDriver({
           });
           return { draft, minimum };
         };
+
         const probe = buildOrder({ objectId: "00".repeat(32), version: 0, nonce: 0 }, true);
         const leased = await store.leaseObject({ payoutId: id, minAtoms: payAtoms + probe.minimum });
-        if (!leased) throw new Error("fastpay_payout_pool_exhausted");
-        const leasedValue = BigInt(leased.valueAtoms);
-        let { draft: order, minimum } = buildOrder(leased, true);
-        let changeAtoms = leasedValue - payAtoms - minimum;
-        if (changeAtoms > 0n) {
-          order.fee = Number(minimum);
-          order.outputs[1].value = Number(changeAtoms);
+        if (leased?.alreadyPersisted && leased.existingPayout) {
+          persisted = leased.existingPayout;
         } else {
-          ({ draft: order, minimum } = buildOrder(leased, false));
-          const fee = leasedValue - payAtoms;
-          if (fee < minimum) {
-            await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
-            throw new Error("fastpay_leased_object_insufficient_for_fee");
+          if (!leased) throw new Error("fastpay_payout_pool_exhausted");
+          const leasedValue = BigInt(leased.valueAtoms);
+          let { draft: order, minimum } = buildOrder(leased, true);
+          let changeAtoms = leasedValue - payAtoms - minimum;
+          if (changeAtoms > 0n) {
+            order.fee = Number(minimum);
+            order.outputs[1].value = Number(changeAtoms);
+          } else {
+            ({ draft: order, minimum } = buildOrder(leased, false));
+            const fee = leasedValue - payAtoms;
+            if (fee < minimum) {
+              await store.releaseObjectLease({ objectId: leased.objectId, objectVersion: leased.version, payoutId: id });
+              throw new Error("fastpay_leased_object_insufficient_for_fee");
+            }
+            order.fee = Number(fee);
+            changeAtoms = 0n;
           }
-          order.fee = Number(fee);
-          changeAtoms = 0n;
-        }
-        if (!order.outputs.every((out) => Number.isSafeInteger(out.value)) || !Number.isSafeInteger(order.fee)) {
-          await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
-          throw new Error("fastpay_order_value_exceeds_safe_integer");
-        }
-        order.recovery.lock_id = fastpayTransferLockIdV1(order);
-        const exactFee = BigInt(order.fee);
-        const finalChangeAtoms = changeAtoms;
+          if (!order.outputs.every((out) => Number.isSafeInteger(out.value)) || !Number.isSafeInteger(order.fee)) {
+            await store.releaseObjectLease({ objectId: leased.objectId, objectVersion: leased.version, payoutId: id });
+            throw new Error("fastpay_order_value_exceeds_safe_integer");
+          }
+          order.recovery.lock_id = fastpayTransferLockIdV1(order);
+          const exactFee = BigInt(order.fee);
+          const finalChangeAtoms = changeAtoms;
 
-        // The owner signature must be real: a hook may sign elsewhere, but nothing is sent without a valid one.
-        const signedOrder = typeof signOwnedTransferOrder === "function"
-          ? await signOwnedTransferOrder(order)
-          : signOwnedTransferOrderV3(order, payoutSigner);
-        if (
-          !verifyOwnedTransferV3Signature(signedOrder) ||
-          signedOrder.owner_pubkey_hex !== senderPubkeyHex ||
-          fastpayTransferOrderDigestV3(signedOrder.order) !== fastpayTransferOrderDigestV3(order)
-        ) {
-          await store.releaseObjectLease({ objectId: leased.objectId, payoutId: id });
-          throw new Error("fastpay_owner_signature_invalid");
+          // The owner signature must be real: a hook may sign elsewhere, but nothing is sent without a valid one.
+          const signedOrder = typeof signOwnedTransferOrder === "function"
+            ? await signOwnedTransferOrder(order)
+            : signOwnedTransferOrderV3(order, payoutSigner);
+          if (
+            !verifyOwnedTransferV3Signature(signedOrder) ||
+            signedOrder.owner_pubkey_hex !== senderPubkeyHex ||
+            fastpayTransferOrderDigestV3(signedOrder.order) !== fastpayTransferOrderDigestV3(order)
+          ) {
+            await store.releaseObjectLease({ objectId: leased.objectId, objectVersion: leased.version, payoutId: id });
+            throw new Error("fastpay_owner_signature_invalid");
+          }
+          const signedOrderBytes = Buffer.from(JSON.stringify(signedOrder), "utf8");
+          const orderHash = fastpayTransferOrderDigestV3(order);
+          const recordToPersist = {
+            payoutId: id,
+            taskId: taskId || id,
+            lane: "fastpay",
+            status: "order_persisted",
+            objectId: leased.objectId,
+            objectVersion: Number(leased.version || 0),
+            changeAtoms: finalChangeAtoms.toString(),
+            nonce: order.nonce,
+            orderHash,
+            lockId: order.recovery.lock_id,
+            order,
+            signedOrder,
+            signedOrderBytesHex: signedOrderBytes.toString("hex"),
+            cid: artifact.cid,
+            cidBinHex: artifact.cidBinHex,
+            memo: artifact.memo,
+            rawEnvelopeHex: artifact.rawEnvelopeBytes.toString("hex"),
+            amountAtoms: payAtoms.toString(),
+            feeAtoms: exactFee.toString(),
+            recipientAccount,
+            senderAccount,
+            senderPubkeyHex,
+            badge: TASK_REWARD_BADGE_LABEL,
+            pointerVersion: "v5",
+          };
+          if (typeof store.commitPreparedPayout === "function") {
+            const committed = await store.commitPreparedPayout(id, recordToPersist, {
+              pinOutbox: {
+                cid: artifact.cid,
+                rawEnvelopeHex: artifact.rawEnvelopeBytes.toString("hex"),
+                taskId: taskId || id,
+                schema: "pf.reward.v1",
+              },
+            });
+            persisted = committed.payout;
+          } else {
+            persisted = await store.savePayout(id, recordToPersist);
+          }
         }
-        const signedOrderBytes = Buffer.from(JSON.stringify(signedOrder), "utf8");
-        const orderHash = fastpayTransferOrderDigestV3(order);
-
-        persisted = await store.savePayout(id, {
-          payoutId: id,
-          taskId: taskId || id,
-          lane: "fastpay",
-          status: "order_persisted",
-          objectId: leased.objectId,
-          objectVersion: Number(leased.version || 0),
-          changeAtoms: finalChangeAtoms.toString(),
-          nonce: order.nonce,
-          orderHash,
-          lockId: order.recovery.lock_id,
-          order,
-          signedOrder,
-          signedOrderBytesHex: signedOrderBytes.toString("hex"),
-          cid: artifact.cid,
-          cidBinHex: artifact.cidBinHex,
-          memo: artifact.memo,
-          rawEnvelopeHex: artifact.rawEnvelopeBytes.toString("hex"),
-          amountAtoms: payAtoms.toString(),
-          feeAtoms: exactFee.toString(),
-          recipientAccount,
-          senderAccount,
-          senderPubkeyHex,
-          badge: TASK_REWARD_BADGE_LABEL,
-          pointerVersion: "v5",
-        });
+        // Kick off async IPFS pinning AFTER the durable outbox & order commit so a crash never loses the pin job.
+        pinPromise = scheduleAsyncPin(
+          Buffer.from(persisted.rawEnvelopeHex || artifact.rawEnvelopeBytes.toString("hex"), "hex"),
+          persisted.cid || artifact.cid,
+          { taskId: persisted.taskId || taskId || id, payoutId: id, schema: "pf.reward.v1" }
+        );
       } catch (error) {
         // Nothing was sent: the reward may retry instead of being parked as submit_unknown.
         if (error && error.submissionAttempted === undefined) error.submissionAttempted = false;
@@ -657,25 +721,17 @@ export function createFastPayPayoutDriver({
       });
     }
 
-    // Step 2: Before (re-)submitting, poll validator/RPC state for the EXACT persisted order_hash
-    // so crash recovery NEVER double-pays an already-certified order.
     if (typeof queryFastPayOrder === "function" && persisted.status !== "order_persisted") {
       const checked = await queryFastPayOrder(persisted.orderHash).catch(() => null);
       const checkedVerdict = await verifyChainResult(checked, persisted, "query");
       if (checkedVerdict.ok) {
         const receipt = buildConfirmedReceipt(persisted, { ...checked, certificateDigest: checkedVerdict.certificateDigest }, "fastpay");
-        await store.completeObjectLease({
-          objectId: persisted.objectId,
-          payoutId: id,
-          changeObject: checked.changeObject || null,
-        });
-        await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
+        await persistConfirmed(id, persisted, receipt, checked.changeObject || null);
         if (awaitPin && pinPromise) await pinPromise;
         return { ...receipt, idempotentReplay: true, recoveredFromChain: true };
       }
     }
 
-    // Step 3: Report the order hash and lock id before sending, then submit the exact persisted order.
     if (typeof onPrepared === "function") {
       try {
         await onPrepared({ orderHash: persisted.orderHash, lockId: persisted.lockId || "" });
@@ -684,7 +740,21 @@ export function createFastPayPayoutDriver({
         throw error;
       }
     }
-    await store.savePayout(id, { ...persisted, status: "submitting" });
+    if (typeof store.claimSubmission === "function") {
+      const claim = await store.claimSubmission(id);
+      if (!claim.claimed) {
+        if (claim.payout?.status === "confirmed") {
+          return { ...claim.payout.receipt, idempotentReplay: true, orderHash: claim.payout.orderHash, lane: claim.payout.lane, badge: TASK_REWARD_BADGE_LABEL, pointerVersion: "v5" };
+        }
+        const err = new Error(claim.reason === "fallback_unknown" ? "fastpay_fallback_outcome_unknown" : "fastpay_payout_in_progress");
+        err.submissionAttempted = claim.reason === "fallback_unknown";
+        err.retryable = claim.reason === "in_progress";
+        throw err;
+      }
+      persisted = claim.payout;
+    } else {
+      await store.savePayout(id, { ...persisted, status: "submitting" });
+    }
     try {
       const submitted = await submitFastPayOrder({
         orderHash: persisted.orderHash,
@@ -695,54 +765,41 @@ export function createFastPayPayoutDriver({
       const submitVerdict = await verifyChainResult(submitted, persisted, "submit");
       if (!submitVerdict.ok) throw unverifiedError(submitVerdict.reason);
       const receipt = buildConfirmedReceipt(persisted, { ...submitted, certificateDigest: submitVerdict.certificateDigest }, "fastpay");
-      await store.completeObjectLease({
-        objectId: persisted.objectId,
-        payoutId: id,
-        changeObject: submitted?.changeObject || null,
-      });
-      await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
+      await persistConfirmed(id, persisted, receipt, submitted?.changeObject || null);
       if (awaitPin && pinPromise) await pinPromise;
       return { ...receipt, idempotentReplay: false };
     } catch (submitError) {
-      // Mark unknown until we check certification status.
-      await store.savePayout(id, {
-        ...persisted,
-        status: "submit_unknown",
-        lastError: submitError?.message || "fastpay_submit_failed",
-      });
-
-      // Check whether the exact order_hash was certified despite transport timeout.
-      const statusCheck = typeof queryFastPayOrder === "function"
-        ? await queryFastPayOrder(persisted.orderHash).catch(() => null)
-        : null;
-
+      await store.savePayout(id, { ...persisted, status: "submit_unknown", lastError: submitError?.message || "fastpay_submit_failed" });
+      const statusCheck = typeof queryFastPayOrder === "function" ? await queryFastPayOrder(persisted.orderHash).catch(() => null) : null;
       const statusVerdict = await verifyChainResult(statusCheck, persisted, "query");
       if (statusVerdict.ok) {
         const receipt = buildConfirmedReceipt(persisted, { ...statusCheck, certificateDigest: statusVerdict.certificateDigest }, "fastpay");
-        await store.completeObjectLease({
-          objectId: persisted.objectId,
-          payoutId: id,
-          changeObject: statusCheck.changeObject || null,
-        });
-        await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
+        await persistConfirmed(id, persisted, receipt, statusCheck.changeObject || null);
         if (awaitPin && pinPromise) await pinPromise;
         return { ...receipt, idempotentReplay: false, recoveredFromChain: true };
       }
-
-      // Pay by consensus only after the FastPay lock is proved cancelled; the
-      // object returns to the pool only at its post-cancel version.
       const cancelled = isFastPayConsensusFallbackEnabled(env) && typeof submitConsensusFallback === "function"
         ? await provenLockCancellation(statusCheck, persisted)
         : null;
       if (cancelled) {
-        await store.releaseObjectLease({
-          objectId: persisted.objectId,
-          payoutId: id,
-          replaceObject: cancelled.recoveredObject,
-        });
-        await store.savePayout(id, { ...persisted, lane: "consensus_pft", status: "fallback_unknown", cancellation: cancelled.kind });
+        const fallbackAttemptId = persisted.fallbackAttemptId || `fp_fb_${id}_${persisted.orderHash.slice(0, 24)}`;
+        if (typeof store.beginConsensusFallback === "function") {
+          persisted = await store.beginConsensusFallback({
+            payoutId: id,
+            record: persisted,
+            objectId: persisted.objectId,
+            objectVersion: persisted.objectVersion,
+            recoveredObject: cancelled.recoveredObject,
+            cancellationKind: cancelled.kind,
+            fallbackAttemptId,
+          });
+        } else {
+          await store.releaseObjectLease({ objectId: persisted.objectId, objectVersion: persisted.objectVersion, payoutId: id, replaceObject: cancelled.recoveredObject });
+          persisted = await store.savePayout(id, { ...persisted, lane: "consensus_pft", status: "fallback_unknown", cancellation: cancelled.kind, fallbackAttemptId });
+        }
         const fallbackRes = await submitConsensusFallback({
           payoutId: id,
+          fallbackAttemptId: persisted.fallbackAttemptId || fallbackAttemptId,
           taskId: persisted.taskId,
           recipientAccount: persisted.recipientAccount,
           amountAtoms: persisted.amountAtoms,
@@ -759,6 +816,7 @@ export function createFastPayPayoutDriver({
           lane: "consensus_pft",
           txHash: fallbackRes.txHash,
           orderHash: persisted.orderHash,
+          fallbackAttemptId: persisted.fallbackAttemptId || fallbackAttemptId,
           certificateDigest: "",
           cid: persisted.cid,
           memo: persisted.memo,
@@ -771,11 +829,10 @@ export function createFastPayPayoutDriver({
           fallbackFromFastPay: true,
           fastpayLockCancellation: cancelled.kind,
         };
-        await store.savePayout(id, { ...persisted, lane: "consensus_pft", status: "confirmed", receipt });
+        await persistConfirmed(id, persisted, receipt, null);
         if (awaitPin && pinPromise) await pinPromise;
         return { ...receipt, idempotentReplay: false };
       }
-
       throw submitError;
     }
   }
