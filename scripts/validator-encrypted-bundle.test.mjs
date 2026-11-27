@@ -65,34 +65,38 @@ async function request(handler, path, method = "GET", session = null) {
     req: { method }, res, session, url: new URL(path, "https://tasknode.postfiat.org") });
   return response;
 }
-test("actual public handler deduplicates reads and verifies the exact bytes; viewer still requires tier", async () => {
-  const bytes = Buffer.from("encrypted fixture"), ix = { ...index(bytes), availableAt: "2026-01-01" };
+test("actual public handler deduplicates reads for static-wallet sites, blocks Finance Hub whole-bundle downloads, and gates viewer", async () => {
+  const bytes = Buffer.from("encrypted fixture"), ix = { ...index(bytes), tier: "tasknode-active-wallet", availableAt: "2026-01-01" };
   let reads = 0, decrypts = 0;
   const loader = createEncryptedBundleLoader({ fetchEncrypted: async () => { reads++; return bytes; } });
   const handler = createValidatorBundleHandler({ readIndex: async () => ix,
     meetsTier: async () => ({ ok: false, reason: "validator_required" }),
     loadEncrypted: (id, v) => loader.load(id, v), loadFiles: () => { decrypts++; throw new Error("must not decrypt"); } });
-  const results = await Promise.all(Array.from({ length: 40 }, () => request(handler, "/api/index-viewer/indices/ga-models/content")));
+  const results = await Promise.all(Array.from({ length: 40 }, () => request(handler, "/api/index-viewer/indices/static-demo/content")));
   assert.ok(results.every((r) => r.status === 200 && hash(r.body) === ix.contentHash));
   assert.equal(reads, 1); assert.equal(decrypts, 0);
+  // Finance Hub indices must never expose whole-bundle downloads.
+  const hubBlocked = await request(handler, "/api/index-viewer/indices/ga-models/content");
+  assert.equal(hubBlocked.status, 403);
+  assert.equal(hubBlocked.body.error, "whole_bundle_download_disabled");
   assert.equal((await request(handler, "/api/research/bundles/ga-models/index.html")).status, 403);
-  assert.equal((await request(handler, "/api/index-viewer/indices/ga-models/content", "POST")).status, 405);
+  assert.equal((await request(handler, "/api/index-viewer/indices/static-demo/content", "POST")).status, 405);
   assert.equal(decrypts, 0);
 });
 test("route preserves missing/future and integrity failures and logs transient failures without secrets", async () => {
-  const path = "/api/index-viewer/indices/ga-models/content";
-  for (const ix of [null, { availableAt: "2999-01-01" }]) {
+  const path = "/api/index-viewer/indices/static-demo/content";
+  for (const ix of [null, { availableAt: "2999-01-01", tier: "tasknode-active-wallet" }]) {
     const handler = createValidatorBundleHandler({ readIndex: async () => ix, loadEncrypted: () => assert.fail("must not load") });
     assert.equal((await request(handler, path)).status, 404);
   }
   const logs = [];
-  const handler = createValidatorBundleHandler({ readIndex: async () => ({ availableAt: "2026-01-01" }),
+  const handler = createValidatorBundleHandler({ readIndex: async () => ({ availableAt: "2026-01-01", tier: "tasknode-active-wallet" }),
     loadEncrypted: async () => { throw new Error("Query read timeout"); }, logFailure: (...args) => logs.push(args) });
   const r = await request(handler, path);
   assert.equal(r.status, 503); assert.equal(r.body.error, "bundle_unavailable");
   assert.equal(logs[0][1].reason, "query_read_timeout");
   const corrupt = createEncryptedBundleLoader({ fetchEncrypted: async () => Buffer.from("wrong") });
-  const bad = createValidatorBundleHandler({ readIndex: async () => ({ ...index(Buffer.from("right")), availableAt: "2026-01-01" }),
+  const bad = createValidatorBundleHandler({ readIndex: async () => ({ ...index(Buffer.from("right")), availableAt: "2026-01-01", tier: "tasknode-active-wallet" }),
     loadEncrypted: (id, ix) => corrupt.load(id, ix) });
   const integrity = await request(bad, path);
   assert.equal(integrity.status, 503); assert.equal(integrity.body.error, "bundle_integrity_failed");

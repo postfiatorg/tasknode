@@ -26,6 +26,8 @@ const registeredRouteHandlerFiles = [
   "../server/system-status.js",
   "../server/telegram-bot.js",
   "../server/pftl-cache-route.js",
+  "../server/finance-hub-publish.js",
+  "../server/finance-hub-routes.js",
 ];
 
 for (const policy of apiRoutePolicies) validateRouteAuthPolicy(policy);

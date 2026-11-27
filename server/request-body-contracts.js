@@ -477,3 +477,35 @@ export const promptDeviceBody = strictBody(10000, { deviceId: text(36,36), publi
 export const promptDeviceApprovalBody = strictBody(10000, { deviceId: text(36,36), envelope: encryptedEnvelope }, { required: ["deviceId","envelope"] });
 export const promptDeviceRevokeBody = strictBody(1000, { deviceId: text(36,36) }, { required: ["deviceId"] });
 export const promptDocumentBody = strictBody(2100000, { initialEvent: promptCreationEvent, documentId: text(36,36), channelHash: text(32,32), encryptedMetadata: encryptedEnvelope }, { required: ["documentId","channelHash","encryptedMetadata","initialEvent"] });
+
+export const researchPublishBody = strictBody(96 * MiB, {
+  schema_version: text(64, 1, { enum: ["finance-hub.publish-payload.v1"] }),
+  index_id: text(32, 1, { enum: ["ga-models", "goodbrief", "finance-hub-public"] }),
+  tier: text(32, 1, { enum: ["finance_hub", "validator", "public_safe"] }),
+  allowed_bases: { type: "array", maxItems: 4, items: text(16, 1, { enum: ["validator", "top30", "grace", "public"] }) },
+  version: integer(1),
+  operation: text(16, 1, { enum: ["publish", "rollback"] }),
+  rollback_target_version: integer(1),
+  rollback_of_manifest_sha256: text(64, 64),
+  issued_at: text(32, 20),
+  expires_at: text(32, 20),
+  nonce: text(128, 24),
+  title: text(160, 1),
+  summary: text(500),
+  manifest_sha256: text(64, 64),
+  total_bytes: integer(1, 64 * MiB),
+  files: { type: "array", maxItems: 5000, items: opaqueObject },
+  render_gate: opaqueObject,
+  signature: opaqueObject,
+}, {
+  required: [
+    "schema_version", "index_id", "tier", "allowed_bases", "version", "operation",
+    "issued_at", "expires_at", "nonce", "title", "manifest_sha256", "total_bytes",
+    "files", "render_gate", "signature",
+  ],
+});
+
+export const financeHubStateBody = strictBody(16 * KiB, {
+  watchlist: { type: "array", maxItems: 100, items: text(16, 1) },
+  goodbriefNotifyEnabled: boolean,
+});

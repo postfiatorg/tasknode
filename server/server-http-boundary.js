@@ -56,6 +56,14 @@ export function securityHeaders() {
       return "";
     }
   })();
+  const financeHubViewerOrigin = (() => {
+    try {
+      const origin = new URL(String(process.env.FINANCE_HUB_VIEWER_ORIGIN || "")).origin;
+      return /^https:\/\//i.test(origin) ? origin : "";
+    } catch {
+      return "";
+    }
+  })();
   return {
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
@@ -68,7 +76,7 @@ export function securityHeaders() {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com wss://relay.primal.net wss://nos.lol wss://relay.damus.io",
-      `frame-src 'self'${pfdocsFrameOrigin ? ` ${pfdocsFrameOrigin}` : ""}`,
+      `frame-src 'self'${pfdocsFrameOrigin ? ` ${pfdocsFrameOrigin}` : ""}${financeHubViewerOrigin ? ` ${financeHubViewerOrigin}` : ""}`,
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -113,6 +121,9 @@ export function runtimeConfig() {
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
     walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
     l1Wallet: { enabled: l1Enabled() },
+    financeHub: {
+      viewerOrigin: process.env.FINANCE_HUB_VIEWER_ORIGIN || "",
+    },
     collaboration: {
       docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
       teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),
