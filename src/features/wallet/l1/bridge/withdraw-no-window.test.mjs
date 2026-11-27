@@ -73,7 +73,7 @@ async function run(source, review) {
 }
 
 function mainSource() {
-  try { return execFileSync("git", ["show", "origin/main:src/features/wallet/l1/bridge/EthereumWithdraw.jsx"], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
+  try { return execFileSync("git", ["show", "b24a7c1dde0e5f6f7d0b8783621f99373b466870:src/features/wallet/l1/bridge/EthereumWithdraw.jsx"], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
   catch { return null; }
 }
 

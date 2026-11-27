@@ -55,8 +55,10 @@ function shape(node) {
   return { type: typeof node.type === "function" ? node.type.name : node.type, props };
 }
 
+// The comparison baseline: the last commit before the proving-window feature (origin/main now contains it).
+const BASELINE = "b24a7c1dde0e5f6f7d0b8783621f99373b466870";
 function mainSource(name) {
-  try { return execFileSync("git", ["show", `origin/main:src/features/wallet/l1/bridge/${name}.jsx`], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
+  try { return execFileSync("git", ["show", `${BASELINE}:src/features/wallet/l1/bridge/${name}.jsx`], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
   catch { return null; }
 }
 const current = (name) => readFile(new URL(`${name}.jsx`, here), "utf8");
