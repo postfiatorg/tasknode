@@ -131,22 +131,59 @@ export const SYSTEM_RESERVED_HANDLES = Object.freeze(new Set([
   "test",
 ]));
 
+function isLowerHexChar(code) {
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 102);
+}
+
+function isLowerAlnumChar(code) {
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+}
+
+function isHandleBodyChar(code) {
+  return isLowerAlnumChar(code) || code === 46 || code === 95 || code === 45;
+}
+
+function hasWhitespace(value) {
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i];
+    if (ch.trim() === "") return true;
+  }
+  return false;
+}
+
 export function isCanonicalL1Account(value) {
-  return typeof value === "string" && /^pf[0-9a-f]{40}$/.test(value);
+  return (
+    typeof value === "string" &&
+    value.length === 42 &&
+    value.startsWith("pf") &&
+    isLowerHexOfLength(value.slice(2), 40)
+  );
 }
 
 export function isLowerHexOfLength(value, length) {
   if (typeof value !== "string" || value.length !== length) return false;
-  return /^[0-9a-f]+$/.test(value);
+  for (let i = 0; i < value.length; i += 1) {
+    if (!isLowerHexChar(value.charCodeAt(i))) return false;
+  }
+  return true;
 }
 
 export function normalizeCanonicalHandle(raw = "") {
-  const cleaned = String(raw || "").trim().replace(/^@+/, "").toLowerCase();
+  let cleaned = String(raw || "").trim().toLowerCase();
+  while (cleaned.startsWith("@")) {
+    cleaned = cleaned.slice(1);
+  }
   if (cleaned.length < IDENTITY_HANDLE_MIN_LEN || cleaned.length > IDENTITY_HANDLE_MAX_LEN) {
     return "";
   }
-  if (!/^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(cleaned)) {
+  if (
+    !isLowerAlnumChar(cleaned.charCodeAt(0)) ||
+    !isLowerAlnumChar(cleaned.charCodeAt(cleaned.length - 1))
+  ) {
     return "";
+  }
+  for (let i = 1; i < cleaned.length - 1; i += 1) {
+    if (!isHandleBodyChar(cleaned.charCodeAt(i))) return "";
   }
   return cleaned;
 }
@@ -171,9 +208,12 @@ export function normalizeIdentityRelays(relays = []) {
   const seen = new Set();
   const out = [];
   for (const raw of relays) {
-    const candidate = String(raw || "").trim().replace(/\/+$/, "");
+    let candidate = String(raw || "").trim();
+    while (candidate.endsWith("/")) {
+      candidate = candidate.slice(0, -1);
+    }
     if (!candidate || Buffer.byteLength(candidate, "utf8") > IDENTITY_MAX_RELAY_URL_BYTES) continue;
-    if (/\s/.test(candidate)) continue;
+    if (hasWhitespace(candidate)) continue;
     try {
       const parsed = new URL(candidate);
       if (parsed.protocol !== "wss:" || !parsed.hostname || parsed.username || parsed.password || parsed.hash) {
