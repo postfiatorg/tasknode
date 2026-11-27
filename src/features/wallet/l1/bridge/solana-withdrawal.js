@@ -168,10 +168,19 @@ export function withdrawalIntent(client, snapshot, amount, recipient) {
 }
 
 // Keep the burn ID as soon as the chain names it, before the receipt wait that can time out.
-export async function submitBurn(client, signed, storageKey) {
+// mine() is the record the caller holds in the slot: the ID replaces only that record or an empty
+// slot, never a record another tab saved meanwhile; onSaved hears when it was saved. guard: see
+// RpcClient.call.
+export async function submitBurn(client, signed, storageKey, { mine, onSaved, guard } = {}) {
   let saved = "";
-  const onTxId = id => { if (isBurnId(id)) { saved = id; localStorage.setItem(storageKey, id); } };
-  try { return await client.submit(signed, { onTxId }); }
+  const onTxId = id => {
+    if (!isBurnId(id)) return;
+    saved = id;
+    const current = mine ? localStorage.getItem(storageKey) : null;
+    if (current && current !== mine() && current !== id) return;
+    localStorage.setItem(storageKey, id); onSaved?.(id);
+  };
+  try { return await client.submit(signed, guard ? { onTxId, guard } : { onTxId }); }
   catch (failure) { throw Object.assign(failure, { txId: saved }); }
 }
 
