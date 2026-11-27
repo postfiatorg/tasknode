@@ -490,8 +490,21 @@ export async function evaluateFinanceHubAccess({
   };
 }
 
+export function financeHubWatermarkSecret(env = process.env) {
+  return String(env.FINANCE_HUB_WATERMARK_SECRET || env.SESSION_SECRET || "");
+}
+
+/** Production refuses to start without a watermark secret; there is no built-in one. */
+export function assertFinanceHubWatermarkConfigured(env = process.env) {
+  const environment = String(env.TASKNODE_ENV || env.NODE_ENV || "development").toLowerCase();
+  if (["prod", "production"].includes(environment) && !financeHubWatermarkSecret(env)) {
+    throw new Error("finance_hub_watermark_secret_missing: set FINANCE_HUB_WATERMARK_SECRET");
+  }
+}
+
 /**
- * Deterministic, unforgeable per-user watermark hook for Finance Hub responses.
+ * Deterministic per-user watermark for Finance Hub responses, keyed by a
+ * deployment secret. Without one, attribution is off (null), never keyed by a public string.
  */
 export function buildFinanceHubWatermark({
   accountId = "",
@@ -499,8 +512,9 @@ export function buildFinanceHubWatermark({
   indexId = "",
   filePath = "",
   issuedAt = new Date(),
-  secret = process.env.FINANCE_HUB_WATERMARK_SECRET || process.env.SESSION_SECRET || "tasknode-finance-hub-wm-v1",
+  secret = financeHubWatermarkSecret(),
 } = {}) {
+  if (!secret) return null;
   const day = (issuedAt instanceof Date ? issuedAt : new Date(issuedAt)).toISOString().slice(0, 10);
   const id = createHmac("sha256", String(secret))
     .update(`pf.fh.wm.v1\n${accountId}\n${basis}\n${day}`)

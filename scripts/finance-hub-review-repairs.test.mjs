@@ -1,11 +1,16 @@
 // Review of PR 447 (8616a0f44): each test reproduces a finding and fails on that head.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 import {
   FINANCE_HUB_TIER,
   GOODBRIEF_SRCDOC_CSP,
+  assertFinanceHubWatermarkConfigured,
+  buildFinanceHubWatermark,
   evaluateFinanceHubAccess,
   evaluateValidatorFinanceHubState,
   prepareGoodbriefSrcDoc,
@@ -16,6 +21,10 @@ import { createFinanceHubRoutesHandler } from "../server/finance-hub-routes.js";
 import { libraryRestrictionsFromFiles } from "../server/finance-hub-library.js";
 import { sha256Hex, signPublishPayload, verifySignedPublishRequest } from "../server/finance-hub-publish.js";
 import { buildGoodbriefSrcDoc } from "../src/features/research/goodbrief-sandbox.js";
+import { computeTop30Snapshot, lookupTop30Entitlement } from "../server/finance-hub-top30.js";
+import { hasFinanceHubAccess } from "../src/features/research/finance-hub-route.js";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function invokeHandler(handler, { method = "GET", pathname, session = null, body = null, headers = {} }) {
   const response = { status: null, headers: {}, body: null };
@@ -365,4 +374,51 @@ test("(h) the Goodbrief policy sits in a code-built head even when the untrusted
     }
     assert.equal(walk(tree).some((node) => node.nodeName === "#comment" && node.data.includes("Content-Security-Policy")), false);
   }
+});
+
+// ============================================================================
+// (i) Small repairs: explicit denial, watermark secret, grace at rank 31-35
+//     (review 447-22, 447-18, 447-13)
+// ============================================================================
+
+test("(i.1) an explicit access denial locks the desk even with a stored validator binding", () => {
+  const binding = { validator: { bindings: [{ network: "l1-devnet" }] } };
+  assert.equal(hasFinanceHubAccess({ ...binding, financeHub: { ok: false, reason: "finance_hub_access_required" } }), false);
+  assert.equal(hasFinanceHubAccess({ ...binding, financeHub: { ok: true, basis: "validator" } }), true);
+  assert.equal(hasFinanceHubAccess({ ...binding, financeHub: null }), true, "legacy fallback only when no decision exists");
+  const appSource = readFileSync(path.join(ROOT, "src", "app", "App.jsx"), "utf8");
+  assert.ok(appSource.includes('const hasFinanceHub = signedIn && (typeof session?.financeHub?.ok === "boolean" ? session.financeHub.ok : session?.validator?.bindings?.length > 0);'));
+});
+
+test("(i.2) the watermark has no built-in secret and production refuses to start without one", () => {
+  const saved = { wm: process.env.FINANCE_HUB_WATERMARK_SECRET, session: process.env.SESSION_SECRET };
+  delete process.env.FINANCE_HUB_WATERMARK_SECRET;
+  delete process.env.SESSION_SECRET;
+  try {
+    const args = { accountId: "public-account-id", basis: "validator", issuedAt: new Date("2026-11-27T10:00:00Z"), indexId: "goodbrief", filePath: "index.html" };
+    assert.equal(buildFinanceHubWatermark(args), null, "no secret means no attribution, never a public key");
+    assert.notEqual(buildFinanceHubWatermark({ ...args, secret: "deployment-secret" })?.watermarkId, buildFinanceHubWatermark({ ...args, secret: "tasknode-finance-hub-wm-v1" })?.watermarkId);
+    assert.throws(() => assertFinanceHubWatermarkConfigured({ NODE_ENV: "production" }), /finance_hub_watermark_secret_missing/);
+    assert.doesNotThrow(() => assertFinanceHubWatermarkConfigured({ NODE_ENV: "production", FINANCE_HUB_WATERMARK_SECRET: "x" }));
+  } finally {
+    if (saved.wm !== undefined) process.env.FINANCE_HUB_WATERMARK_SECRET = saved.wm;
+    if (saved.session !== undefined) process.env.SESSION_SECRET = saved.session;
+  }
+});
+
+test("(i.3) improving from rank 36 to 34 keeps an unexpired Top-30 grace until its fixed end", () => {
+  const now = new Date("2026-11-27T10:00:00Z");
+  const candidates = Array.from({ length: 40 }, (_, i) => ({
+    account_id: i === 33 ? "target" : `other${i}`, network_tasks: 100 - i, personal_tasks: 0, rewards_pft: 0, alignment_score: 0,
+  }));
+  const previousSnapshot = { entries: [{
+    account_id: "target", rank: 36, access_basis: "grace", entitlement_state: "grace_7d",
+    grace_started_at: "2026-11-26T00:00:00Z", grace_ends_at: "2026-12-03T00:00:00Z", grace_cooldown_until: "2026-12-26T00:00:00Z",
+  }] };
+  const { snapshot } = computeTop30Snapshot({ candidates, previousSnapshot, now });
+  const entitlement = lookupTop30Entitlement(snapshot, "target", now);
+  assert.equal(entitlement.ok, true);
+  assert.equal(entitlement.basis, "grace");
+  assert.equal(Date.parse(entitlement.graceEndsAt), Date.parse("2026-12-03T00:00:00Z"));
+  assert.equal(lookupTop30Entitlement(snapshot, "target", new Date("2026-12-04T00:00:00Z")).ok, false);
 });

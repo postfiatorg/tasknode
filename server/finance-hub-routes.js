@@ -136,7 +136,9 @@ export function createFinanceHubRoutesHandler({
   readUserState = readFinanceHubUserState,
   saveUserState = saveFinanceHubUserState,
   now = () => new Date(),
+  watermarkSecret,
 } = {}) {
+  const watermarkFor = (fields) => buildFinanceHubWatermark({ ...fields, ...(watermarkSecret ? { secret: watermarkSecret } : {}) });
   return async function handleFinanceHubRoute({ json, readJson, req, res, session, url }) {
     const pathname = url.pathname;
     if (!pathname.startsWith("/api/finance-hub/")) return false;
@@ -218,7 +220,7 @@ export function createFinanceHubRoutesHandler({
           }
         }
 
-        const watermark = buildFinanceHubWatermark({
+        const watermark = watermarkFor({
           accountId,
           basis: access.basis,
           indexId: sourceIndex || "goodbrief",
@@ -227,7 +229,7 @@ export function createFinanceHubRoutesHandler({
         });
 
         const srcDoc = html
-          ? prepareGoodbriefSrcDoc(html, { watermarkId: watermark.watermarkId, title: goodbriefIndex?.title || "Goodbrief" })
+          ? prepareGoodbriefSrcDoc(html, { watermarkId: watermark?.watermarkId || null, title: goodbriefIndex?.title || "Goodbrief" })
           : null;
 
         json(
@@ -242,11 +244,11 @@ export function createFinanceHubRoutesHandler({
             srcDoc,
             sandbox: GOODBRIEF_SANDBOX_ATTR,
             csp: GOODBRIEF_SRCDOC_CSP,
-            watermarkId: watermark.watermarkId,
+            watermarkId: watermark?.watermarkId || null,
           },
           {
             "cache-control": "private, no-store",
-            [watermark.headerName]: watermark.headerValue,
+            ...(watermark ? { [watermark.headerName]: watermark.headerValue } : {}),
           }
         );
         return true;
@@ -282,7 +284,7 @@ export function createFinanceHubRoutesHandler({
           readUserState(accountId, { now: now() }),
         ]);
 
-        const watermark = buildFinanceHubWatermark({
+        const watermark = watermarkFor({
           accountId,
           basis: gaAccess.basis,
           indexId: "ga-models",
@@ -297,7 +299,7 @@ export function createFinanceHubRoutesHandler({
             ok: true,
             access: gaAccess,
             goodbriefAllowed: Boolean(gbAccess.ok),
-            watermarkId: watermark.watermarkId,
+            watermarkId: watermark?.watermarkId || null,
             userState,
             updatedAt: todayDoc?.updated_at || gaIndex?.publishedAt || null,
             goodbrief: goodbriefSummary || (gbAccess.ok ? todayDoc?.goodbrief || null : null),
@@ -323,7 +325,7 @@ export function createFinanceHubRoutesHandler({
           },
           {
             "cache-control": "private, no-store",
-            [watermark.headerName]: watermark.headerValue,
+            ...(watermark ? { [watermark.headerName]: watermark.headerValue } : {}),
           }
         );
         return true;
@@ -342,7 +344,7 @@ export function createFinanceHubRoutesHandler({
           return true;
         }
         const libraryDoc = await tryLoadBundleJson("ga-models", gaIndex, "hub/library.json", loadFile);
-        const watermark = buildFinanceHubWatermark({
+        const watermark = watermarkFor({
           accountId,
           basis: access.basis,
           indexId: "ga-models",
@@ -355,11 +357,11 @@ export function createFinanceHubRoutesHandler({
           {
             ok: true,
             items: filterLibraryItems(libraryDoc?.items, access.basis),
-            watermarkId: watermark.watermarkId,
+            watermarkId: watermark?.watermarkId || null,
           },
           {
             "cache-control": "private, no-store",
-            [watermark.headerName]: watermark.headerValue,
+            ...(watermark ? { [watermark.headerName]: watermark.headerValue } : {}),
           }
         );
         return true;

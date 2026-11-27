@@ -5,6 +5,7 @@ import { handleValidatorResearchRoute } from "./validator-research-routes.js";
 import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
 import { handleFinanceHubPublishRoute } from "./finance-hub-publish.js";
 import { handleFinanceHubRoute } from "./finance-hub-routes.js";
+import { assertFinanceHubWatermarkConfigured } from "./finance-hub-access.js";
 import { randomUUID } from "node:crypto";
 import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
@@ -152,6 +153,7 @@ const [
 ]);
 
 const port = Number(process.env.PORT || 8080);
+assertFinanceHubWatermarkConfigured();
 const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
 const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
 

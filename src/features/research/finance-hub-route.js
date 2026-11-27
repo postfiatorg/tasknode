@@ -19,8 +19,10 @@ const clean = (value) => {
 
 const SECTION_VIEWS = new Set(["today", "models", "goodbrief", "library"]);
 
+// An explicit server decision is authoritative; stored bindings are a legacy
+// fallback only when no decision was returned.
 export function hasFinanceHubAccess(session) {
-  if (session?.financeHub?.ok === true) return true;
+  if (typeof session?.financeHub?.ok === "boolean") return session.financeHub.ok;
   return Array.isArray(session?.validator?.bindings) && session.validator.bindings.length > 0;
 }
 
