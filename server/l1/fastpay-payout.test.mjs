@@ -13,6 +13,7 @@ import {
   computeRawCidV1,
   decodeAnyPointerMemo,
   decodeEnvelopeRaw,
+  decodeXWingEncryptionHeader,
   decodeLegacyPointerV4,
   decodePointerV5,
   decodeRewardNotice,
@@ -231,6 +232,16 @@ test("Task reward badge payload encrypts with X-Wing, decrypts locally, and bloc
     signerPublicKey: officialSigner.publicKey,
     signerSecretKey: officialSigner.secretKey,
   });
+  const encryptionHeader = decodeXWingEncryptionHeader(decodeEnvelopeRaw(sealed.rawEnvelopeBytes).encryptionHeaderBytes);
+  assert.equal(encryptionHeader.cekCommitment.length, 32);
+  assert.equal(encryptionHeader.recipients[0].recipientAccount, "");
+  assert.notDeepEqual(encryptionHeader.recipients[0].recipientKeyId, recipientKem.keyId);
+  const openedSealed = await decryptPrivateEnvelope({
+    rawEnvelopeBytes: sealed.rawEnvelopeBytes,
+    recipientXWingSecretKey: recipientKem.secretKey,
+    recipientXWingPublicKey: recipientKem.publicKey,
+  });
+  assert.equal(openedSealed.plaintextBytes.toString(), "sealed-body");
   const sealedCheck = classifyRewardBadge({
     rawEnvelopeBytes: sealed.rawEnvelopeBytes,
     txSignerAccount: officialSigner.account,

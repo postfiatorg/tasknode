@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { ml_kem768_x25519 } from "@noble/post-quantum/hybrid.js";
 import sodium from "libsodium-wrappers";
@@ -48,6 +48,8 @@ export const ADDRESS_DERIVATION_DOMAIN = "postfiat.address.v1";
 export const DOMAIN_ENVELOPE_SIGN = "postfiat-l1-v2/message-envelope/v1";
 export const DOMAIN_MESSAGE_AAD = "postfiat-l1-v2/message-aad/v1";
 export const DOMAIN_XWING_WRAP_INFO = "postfiat-l1-v2/xwing-wrap/v1";
+const CEK_COMMIT_PREFIX = Buffer.from("postfiat-l1-v2/cek-commit/v1\0", "ascii");
+const SEALED_TAG_PREFIX = Buffer.from("postfiat-l1-v2/sealed-recipient-tag/v1\0", "ascii");
 export const DOMAIN_MESSAGE_KEY_KDF = "postfiat-l1-v2/message-key/v1";
 export const DOMAIN_MESSAGE_KEY_BIND = "postfiat-l1-v2/message-key-bind/v1";
 
@@ -494,6 +496,7 @@ export function encodeXWingEncryptionHeader(header = {}) {
     pbVarint(4, header.chunkIndex ?? header.chunk_index ?? 0),
     pbString(5, header.kdfInfo || header.kdf_info || DOMAIN_XWING_WRAP_INFO),
     ...sorted.map((wrap) => pbMsg(6, encodeRecipientWrap(wrap))),
+    pbBytes(7, header.cekCommitment || header.cek_commitment),
   ]);
 }
 
@@ -505,6 +508,7 @@ export function decodeXWingEncryptionHeader(buf) {
     chunkIndex: 0,
     kdfInfo: "",
     recipients: [],
+    cekCommitment: Buffer.alloc(0),
   };
   for (const { fieldNum, value } of decodeWireFields(buf)) {
     if (fieldNum === 1) out.cipherSuite = Number(value);
@@ -513,6 +517,7 @@ export function decodeXWingEncryptionHeader(buf) {
     else if (fieldNum === 4) out.chunkIndex = Number(value);
     else if (fieldNum === 5) out.kdfInfo = value.toString("utf8");
     else if (fieldNum === 6) out.recipients.push(decodeRecipientWrap(value));
+    else if (fieldNum === 7) out.cekCommitment = Buffer.from(value);
   }
   return out;
 }
@@ -796,8 +801,10 @@ export async function encryptPrivateEnvelope({
   const wraps = [];
   for (const recipient of recipients) {
     const pub = toBytes(recipient.xwingPublicKey || recipient.publicKey);
-    const keyId = sha256Bytes(pub);
     const { cipherText, sharedSecret } = ml_kem768_x25519.encapsulate(pub);
+    const keyId = header.visibility === VISIBILITY.SEALED
+      ? sha256Bytes(Buffer.concat([SEALED_TAG_PREFIX, sharedSecret, aadContext]))
+      : sha256Bytes(pub);
     const kek = hkdfSha256({
       ikm: Buffer.from(sharedSecret),
       salt: aadContext,
@@ -824,6 +831,7 @@ export async function encryptPrivateEnvelope({
     chunkIndex: 0,
     kdfInfo: DOMAIN_XWING_WRAP_INFO,
     recipients: wraps,
+    cekCommitment: sha256Bytes(Buffer.concat([CEK_COMMIT_PREFIX, cek, aadContext])),
   });
 
   return signEnvelopeMlDsa65({
@@ -850,9 +858,24 @@ export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingS
     throw new Error("envelope_aad_context_mismatch");
   }
   const targetKeyId = sha256Bytes(toBytes(recipientXWingPublicKey));
-  const wrap = encHeader.recipients.find((entry) => Buffer.compare(entry.recipientKeyId, targetKeyId) === 0);
+  const secretKey = toBytes(recipientXWingSecretKey);
+  let wrap = encHeader.recipients.find((entry) => entry.recipientKeyId.equals(targetKeyId));
+  let sharedSecret;
+  if (wrap) {
+    sharedSecret = ml_kem768_x25519.decapsulate(wrap.xwingCiphertext, secretKey);
+  } else if (verified.header.visibility === VISIBILITY.SEALED) {
+    for (const entry of encHeader.recipients) {
+      if (entry.recipientKeyId.length !== 32 || entry.xwingCiphertext.length !== 1120) continue;
+      const candidate = ml_kem768_x25519.decapsulate(entry.xwingCiphertext, secretKey);
+      const tag = sha256Bytes(Buffer.concat([SEALED_TAG_PREFIX, candidate, expectedAad]));
+      if (timingSafeEqual(tag, entry.recipientKeyId)) {
+        wrap = entry;
+        sharedSecret = candidate;
+        break;
+      }
+    }
+  }
   if (!wrap) throw new Error("envelope_recipient_wrap_not_found");
-  const sharedSecret = ml_kem768_x25519.decapsulate(wrap.xwingCiphertext, toBytes(recipientXWingSecretKey));
   const kek = hkdfSha256({
     ikm: Buffer.from(sharedSecret),
     salt: encHeader.aadContext,
@@ -862,6 +885,12 @@ export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingS
   const cek = Buffer.from(
     sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null, wrap.wrappedCek, encHeader.aadContext, wrap.wrapNonce, kek)
   );
+  if (encHeader.cekCommitment.length) {
+    const expected = sha256Bytes(Buffer.concat([CEK_COMMIT_PREFIX, cek, expectedAad]));
+    if (encHeader.cekCommitment.length !== expected.length || !timingSafeEqual(expected, encHeader.cekCommitment)) {
+      throw new Error("envelope_cek_commitment_mismatch");
+    }
+  }
   const plaintextBytes = Buffer.from(
     sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       null,
