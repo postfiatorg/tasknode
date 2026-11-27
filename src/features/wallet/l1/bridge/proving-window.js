@@ -94,22 +94,29 @@ export function windowTextAt(window, { receivedAt, at = monotonicNow(), ...optio
   return provingWindowText(window, { ...options, nowMs: serverNow(window, receivedAt, at), ageMs: age });
 }
 
-// One screen's readiness requests, numbered when they are made. apply(n, carries) is the one
+// One screen's readiness requests, numbered when they are made; Review and Confirm take theirs with
+// begin(), which also supersedes every earlier Review or Confirm. apply(n, carries, open) is the one
 // decision every write of request n's completion goes through: it may write unless an answer of a
-// newer request has already been applied. The order is consulted only once the window is involved:
-// this screen has applied an answer with a window (and stays so after a later answer removes it), or
-// this answer carries one. A screen that never receives a window therefore applies every completion,
-// as it did before the window existed.
+// newer request has already been applied; an applied answer that does not allow a withdrawal
+// (open === false) is remembered. current(n, carries) is the same rule for an operation after each
+// of its later awaits: it may go on unless a newer operation began or an answer newer than its own
+// said closed (a still newer open answer does not bring it back). The order is consulted only once
+// the window is involved: this screen has applied an answer with a window (and stays so after a
+// later answer removes it), or this answer carries one. A screen that never receives a window
+// therefore applies every completion and continues every operation, as before the window existed.
 export function readinessOrder() {
-  let made = 0, applied = 0, seen = false;
+  let made = 0, applied = 0, closed = 0, operation = 0, seen = false;
   return {
     next: () => ++made,
+    begin: () => (operation = ++made),
     get seen() { return seen; },
-    apply(n, carries = false) {
+    apply(n, carries = false, open) {
       if ((seen || carries) && n < applied) return false;
       if (carries) seen = true;
       if (n > applied) applied = n;
+      if (open === false && n > closed) closed = n;
       return true;
     },
+    current(n, carries = false) { return !(seen || carries) || (n >= operation && n >= closed); },
   };
 }

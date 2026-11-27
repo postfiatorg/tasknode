@@ -23,7 +23,8 @@ function WalletBurns({ client, onTrack }) {
   </div>;
 }
 
-const STALE = "The withdrawal's availability changed while it was checked. Review again.";
+// Thrown by a Review or Confirm that a newer answer or operation superseded: it stops without a message.
+const OBSOLETE = Error("superseded");
 
 export default function SolanaWithdraw({ client, storageKey }) {
   const [snapshot, setSnapshot] = useState(undefined), [error, setError] = useState("");
@@ -38,18 +39,20 @@ export default function SolanaWithdraw({ client, storageKey }) {
   // readinessOrder). A failed read with no answer keeps the last window and its clock and only drops "open".
   const order = useRef(null);
   order.current ??= readinessOrder();
-  const request = useCallback(() => {
-    const n = order.current.next();
+  const request = useCallback((operation = false) => {
+    const n = operation ? order.current.begin() : order.current.next();
     let carries = false;
     const may = () => order.current.apply(n, carries);
+    // After every later await of Review and Confirm: still the newest operation, and no newer answer said closed.
+    const still = () => order.current.current(n, carries);
     const onWindow = value => {
       carries = Boolean(value.window);
-      if (may()) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
+      if (order.current.apply(n, carries, value.open)) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
     };
-    // The snapshot of this request, or its failure; a failure of an answer older than one already
-    // applied is reported as a change, not as its own reason.
-    const read = () => withdrawalSnapshot(client, onWindow).catch(failure => { throw may() ? failure : Error(STALE); });
-    return { may, onWindow, read };
+    // The snapshot of this request, or its failure; the failure of an answer older than one already
+    // applied stops the operation without a message.
+    const read = () => withdrawalSnapshot(client, onWindow).catch(failure => { throw may() ? failure : OBSOLETE; });
+    return { n, may, still, onWindow, read, carries: () => carries };
   }, [client]);
   const refresh = useCallback(async () => {
     const { may, onWindow } = request();
@@ -85,16 +88,19 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function prepare(event) {
     event.preventDefault();
     setBusy(true); setReview(null); setError("");
+    const { n, may, still, read, carries } = request(true);
     try {
-      const { may, read } = request();
       const fresh = await read();
-      if (!may()) throw Error(STALE);
+      if (!may() || !still()) throw OBSOLETE;
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
+      if (!still()) throw OBSOLETE;
       const intent = withdrawalIntent(client, fresh, amount, recipient);
-      setReview({ intent, quote: await client.quote(intent) });
-    } catch (failure) { setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
+      const quote = await client.quote(intent);
+      if (!still()) throw OBSOLETE;
+      setReview({ intent, quote, made: n, carries: carries() });
+    } catch (failure) { if (failure !== OBSOLETE && still()) setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
   }
 
   function track(id, register) {
@@ -106,13 +112,14 @@ export default function SolanaWithdraw({ client, storageKey }) {
     if (!review || submitting.current) return;
     submitting.current = true; setBusy(true); setError(""); setReview(null);
     let submitted = false, marked = false;
+    const { may, still, read } = request(true);
     try {
-      const { may, read } = request();
       const fresh = await read();
-      if (!may()) throw Error(STALE);
+      if (!may() || !still()) throw OBSOLETE;
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
+      if (!still()) throw OBSOLETE;
       const current = withdrawalIntent(client, fresh, amount, recipient);
       if (Object.keys(current.operation).some(field => current.operation[field] !== review.intent.operation[field])) {
         throw Error("The reserve changed. Review the updated withdrawal.");
@@ -123,9 +130,11 @@ export default function SolanaWithdraw({ client, storageKey }) {
         if (!prior) localStorage.setItem(storageKey, "submitting");
         return prior;
       });
+      marked = !existing;
+      if (!still()) throw OBSOLETE;
       if (existing) { setBurn(existing); return; }
-      marked = true;
       const signed = await client.sign(review.intent, review.quote);
+      if (!still()) throw OBSOLETE;  // signed, never sent
       submitted = true;
       const result = await submitBurn(client, signed, storageKey);
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");
@@ -136,7 +145,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
         setError(failure.message);
       } else {
         if (marked) { try { localStorage.removeItem(storageKey); } catch { setBurn("submitting"); } }
-        setError(`${failure.message} No PFUSDC was burned.`);
+        if (failure !== OBSOLETE && still()) setError(`${failure.message} No PFUSDC was burned.`);
       }
     } finally { submitting.current = false; setBusy(false); }
   }
@@ -147,6 +156,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
   }
   const tick = useProvingWindowClock(provingWindow?.window, provingWindow?.received_at, burn ? undefined : refresh, provingWindow?.open === true, provingWindow);
   const hours = windowTextAt(provingWindow?.window, { kind: "withdrawal", open: provingWindow?.open === true, unknown: provingWindow?.unknown, receivedAt: provingWindow?.received_at, at: tick });
+  // A review is offered only while its operation is current: a newer closed answer withdraws it.
+  const offered = review && order.current.current(review.made, review.carries) ? review : null;
   return <section aria-label="Solana USDC withdrawal" className="l1-view l1-split is-ticket"><Card className="l1-ticket">
     <CardHead eyebrow="Withdraw to Solana" title="PFUSDC to USDC" />
     {isBurnId(burn) ? <SolanaPayout burn={burn} owner={client.address} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
@@ -163,7 +174,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
         {Array.isArray(snapshot.ready.buckets)
           ? <p className="l1-muted">Every Solana deposit can be withdrawn to Solana.{snapshot.minimum > 1n && <> The smallest withdrawal is <Amount atoms={snapshot.minimum} unit="USDC" />.</>} PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>
           : <p className="l1-muted">Only PFUSDC from the Solana deposit series that is open for payouts counts here. PFUSDC from later Solana deposits is not withdrawable to Solana yet, and PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>}
-        {!review && <form className="l1-stack" onSubmit={prepare}>
+        {!offered && <form className="l1-stack" onSubmit={prepare}>
           <label className="l1-field">PFUSDC amount<input inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={event => setAmount(event.target.value.trim())} /></label>
           {amountError && <span className="is-danger">{amountError}</span>}
           <label className="l1-field">Solana recipient<input className="l1-mono-input" autoComplete="off" spellCheck={false} value={recipient} disabled={busy} onChange={event => setRecipient(event.target.value.trim())} /></label>
@@ -172,19 +183,19 @@ export default function SolanaWithdraw({ client, storageKey }) {
           <button className="l1-btn is-primary" disabled={busy || !amount || !recipient || !!amountError || !!recipientError}>Review withdrawal</button>
           {!busy && (!amount || !recipient) && <span className="l1-muted">Enter an amount and a Solana wallet address to continue.</span>}
         </form>}
-        {review && <div className="l1-stack">
+        {offered && <div className="l1-stack">
           <KV rows={[
-            ["You burn", <Amount atoms={review.intent.operation.amount_atoms} unit="PFUSDC" />],
-            ["You receive on Solana", <Amount atoms={review.intent.operation.amount_atoms} unit="USDC" />],
+            ["You burn", <Amount atoms={offered.intent.operation.amount_atoms} unit="PFUSDC" />],
+            ["You receive on Solana", <Amount atoms={offered.intent.operation.amount_atoms} unit="USDC" />],
             ["Recipient", <span className="l1-mono" style={{ overflowWrap: "anywhere" }}>{recipient}</span>],
-            ["Network fee", <Amount atoms={review.quote.minimum_fee} unit="PFT" />],
+            ["Network fee", <Amount atoms={offered.quote.minimum_fee} unit="PFT" />],
           ]} />
           <p>Your L1 wallet signs one burn. The bridge sends USDC to this address on Solana mainnet.</p>
           <div className="l1-two"><button type="button" className="l1-btn" onClick={() => setReview(null)}>Edit withdrawal</button>
             <button type="button" className="l1-btn is-primary" onClick={confirm}>Confirm and burn</button></div>
         </div>}
         {busy && <p role="status"><Spinner size={14} /> Working…</p>}
-        {!review && !busy && <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />}
+        {!offered && !busy && <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />}
       </>}
     {error && <Notice tone="danger" role="alert">{error}</Notice>}
   </Card></section>;

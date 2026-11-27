@@ -8,6 +8,9 @@ import { monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, window
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
+// Thrown by a Review that a newer answer or operation superseded: it stops without a message.
+const OBSOLETE = Error("superseded");
+
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
 const STAGES = { queued: "Waiting to start", reading: "Reading your burn from the network", catching_up: "Bringing the Ethereum checker up to date", proving: "Building the withdrawal proof", paying: "Sending USDC on Ethereum", paid: "USDC paid", failed: "Stopped" };
 const key = (client) => `l1-withdrawal:${client.accountId}:${client.address}`;
@@ -23,8 +26,8 @@ export default function EthereumWithdraw({ client }) {
   // request's answer has been applied (see readinessOrder).
   const order = useRef(null);
   order.current ??= readinessOrder();
-  const store = useCallback((made, carries, next) => {
-    if (!order.current.apply(made, carries)) return false;
+  const store = useCallback((made, carries, next, open) => {
+    if (!order.current.apply(made, carries, open)) return false;
     setReady(next);
     return true;
   }, []);
@@ -40,13 +43,13 @@ export default function EthereumWithdraw({ client }) {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
       carries = Boolean(value.proving_window);
-      if (!store(made, carries, () => readinessAnswer(value))) return;
+      if (!store(made, carries, () => readinessAnswer(value), Boolean(value.ready))) return;
       if (value.ready) {
         const balances = await client.getBalances();
         if (order.current.apply(made, carries)) setHeld(lineBalance(balances.assets, value.series_asset_id));
       }
     } catch (failure) {
-      store(made, carries || Boolean(failure.payload?.proving_window), previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous));
+      store(made, carries || Boolean(failure.payload?.proving_window), previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous), false);
     }
   }, [client, store]);
   // The window's automatic reads ask once; the scheduler in useProvingWindowClock spaces them.
@@ -78,43 +81,56 @@ export default function EthereumWithdraw({ client }) {
   const tooMuch = atoms && held !== null && atoms > held;
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
+    // Once this screen has applied a window, a fresh readiness answer, also a refusal, replaces the
+    // stored one through the same ordering, and the operation goes on after each await only while it
+    // is current (order.current). A screen that never had a window keeps its earlier readiness.
+    const made = order.current.begin();
+    let carries = false;
+    const still = () => order.current.current(made, carries);
     try {
-      // Once this screen has applied a window, a fresh readiness answer, also a refusal, replaces the
-      // stored one through the same ordering; an answer older than one already applied stops Review.
-      // A screen that never had a window keeps its earlier readiness, as before the window existed.
       let fresh;
-      const made = order.current.next();
-      const stale = Error("The withdrawal's availability changed while it was checked. Review again.");
       try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
       catch (failure) {
-        const carries = Boolean(failure.payload?.proving_window);
-        if ((order.current.seen || carries) && !store(made, carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous))) throw stale;
+        carries = Boolean(failure.payload?.proving_window);
+        if ((order.current.seen || carries) && !store(made, carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous), false)) throw OBSOLETE;
         throw failure;
       }
-      const carries = Boolean(fresh.proving_window);
-      if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh))) throw stale;
+      carries = Boolean(fresh.proving_window);
+      if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh), Boolean(fresh.ready))) throw OBSOLETE;
+      if (!still()) throw OBSOLETE;
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
-      setReview({ intent, quote: await client.quote(intent), atoms, to });
-    } catch (failure) { setError(plainError(failure.message)); } finally { setBusy(false); }
+      const quote = await client.quote(intent);
+      if (!still()) throw OBSOLETE;
+      setReview({ intent, quote, atoms, to, made, carries });
+    } catch (failure) { if (failure !== OBSOLETE && still()) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   async function confirm() {
     if (!review || busy) return;
-    const approved = review; setReview(null); setBusy(true); setError("");
+    // Confirm goes on with the Review's operation: it stops quietly once that is no longer current.
+    const approved = review; setReview(null);
+    const still = () => order.current.current(approved.made, approved.carries);
+    if (!still()) return;
+    setBusy(true); setError("");
+    let sent = false;
     try {
       const signed = await client.sign(approved.intent, approved.quote);
+      if (!still()) return;  // signed, never sent
+      sent = true;
       const result = await client.submit(signed);
       try { localStorage.setItem(key(client), result.txId); } catch { /* tracking still works this session */ }
       setJob(null); setBurn(result.txId); setAmount("");
       await bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: result.txId }) });
       void refresh();
-    } catch (failure) { setError(plainError(failure.message)); } finally { setBusy(false); }
+    } catch (failure) { if (sent || still()) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
   const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, autoRefresh, Boolean(ready?.ready), ready);
   const hours = ready && windowTextAt(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready), unknown: ready.unknown, receivedAt: ready.received_at, at: tick });
+  // A review is offered only while its operation is current: a newer closed answer withdraws it.
+  const offered = review && order.current.current(review.made, review.carries) ? review : null;
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <Card className="l1-ticket">
@@ -130,12 +146,12 @@ export default function EthereumWithdraw({ client }) {
             <span className="l1-field-hint"><span>{recipient && !validTo ? <span className="is-danger">Enter a 0x address with 40 hex characters.</span> : "Ethereum mainnet. The address cannot be changed after you confirm."}</span>{typeof window !== "undefined" && window.ethereum ? <button type="button" className="l1-link" onClick={useMetaMask}>Use my MetaMask address</button> : null}</span></label>
           <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={busy || !ready?.ready || !atoms || !validTo || Boolean(tooMuch)}>Review withdrawal</button>
         </form>}
-        {review && <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+        {offered && <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
           <KV className="is-tight" rows={[
-            ["You burn", <Amount atoms={review.atoms} unit="PFUSDC" />],
-            ["You receive on Ethereum", <Amount atoms={review.atoms} unit="USDC" />],
-            ["To", <Mono value={review.to} />],
-            ["Network fee", <Amount atoms={review.quote.minimum_fee} unit="PFT" />],
+            ["You burn", <Amount atoms={offered.atoms} unit="PFUSDC" />],
+            ["You receive on Ethereum", <Amount atoms={offered.atoms} unit="USDC" />],
+            ["To", <Mono value={offered.to} />],
+            ["Network fee", <Amount atoms={offered.quote.minimum_fee} unit="PFT" />],
           ]} />
           <p className="l1-small l1-muted">Your PFUSDC is burned as soon as you confirm. The USDC is then released by proof from the bridge vault, usually within {ready?.minutes_estimate || 12} minutes. No MetaMask confirmation is needed.</p>
           <div className="l1-two"><button type="button" className="l1-btn" disabled={busy} onClick={() => setReview(null)}>Discard</button><button type="button" className="l1-btn is-primary" disabled={busy} onClick={confirm}>Confirm and burn</button></div>
