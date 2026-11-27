@@ -49,7 +49,6 @@ export async function bindValidator({ accountId, masterPublicKey, signingPublicK
     throw validatorError("validator_proof_network_invalid", 400);
   }
   // With the uptime feed enforced, no validator is bound while the feed is indeterminate.
-  if (l1) await requireFeedForNewBinding();
   const registered = l1
     ? await verifyRegisteredL1Proof({ validatorId, publicKey: mlDsaPublicKey, signature, challenge }, registryOptions)
     : await verifyRegisteredValidatorProof({ masterPublicKey, signingPublicKey, manifest, signature, challenge }, lookup);
@@ -71,6 +70,8 @@ export async function bindValidator({ accountId, masterPublicKey, signingPublicK
           return existing;
         }
       }
+      if (l1) await requireFeedForNewBinding({ queryImpl: client.query.bind(client),
+        binding: {network: L1_NETWORK, chain_id: registered.chainId, validator_id: validatorId, ml_dsa_public_key: mlDsaPublicKey} });
       const result = await client.query(`INSERT INTO validator_bindings(id,account_id,master_public_key,network,signature,challenge,signing_public_key,manifest,chain_id,validator_id,ml_dsa_public_key,registry_evidence)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING ${bindingFields}`,
       [`vb_${randomUUID()}`, accountId, masterPublicKey || null, registered.network, signature, challenge, signingPublicKey || null, manifest || null,

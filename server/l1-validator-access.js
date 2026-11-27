@@ -14,6 +14,7 @@
 // TASKNODE_L1_UPTIME_FEED_KEYSET_JSON switch the reading on;
 // TASKNODE_L1_UPTIME_FEED_ENFORCED=true switches the enforcement on.
 
+import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
 import { L1_NETWORK } from "./l1-validator-identity.js";
 import { FeedRejected, validateKeyset, verifyUptimeFeed } from "./l1-uptime-feed.js";
@@ -23,6 +24,9 @@ const MAX_FEED_BYTES = 16 * 1024 * 1024;
 export function l1UptimeFeedConfig(env = process.env) {
   const url = env.TASKNODE_L1_UPTIME_FEED_URL || "";
   const keysetJson = env.TASKNODE_L1_UPTIME_FEED_KEYSET_JSON || "";
+  if ((!url || !keysetJson) && env.TASKNODE_L1_UPTIME_FEED_ENFORCED === "true") {
+    throw new Error("Enforced validator access requires a feed URL and pinned keyset");
+  }
   if (!url || !keysetJson) return { configured: false, enforced: false };
   if (!url.startsWith("https://")) throw new Error("TASKNODE_L1_UPTIME_FEED_URL must be https");
   return { configured: true, url, keyset: validateKeyset(JSON.parse(keysetJson)),
@@ -63,7 +67,7 @@ export function accessDecisions(rows, bindings, chain) {
     // A row under another key is another validator; it says nothing about this binding.
     if (!row || row.ml_dsa_public_key !== binding.ml_dsa_public_key) return { binding, action: "keep", row: null };
     if (!row.finance_hub_access && !binding.access_suspended_at) return { binding, action: "suspend", row };
-    if (row.finance_hub_access && binding.access_suspended_at) return { binding, action: "restore", row };
+    if (row.finance_hub_access && row.access_state_reason !== "insufficient_observed_days" && binding.access_suspended_at) return { binding, action: "restore", row };
     return { binding, action: "keep", row };
   });
 }
@@ -76,20 +80,32 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
   db = { query, transaction, enabled: databaseEnabled } } = {}) {
   const config = l1UptimeFeedConfig(env);
   if (!config.configured || !db.enabled()) return { status: "not_configured" };
-  const accepted = (await db.query(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
-    [config.keyset.keyset_id])).rows;
-  let result;
-  try {
-    result = verifyUptimeFeed(await fetchUptimeFeed(config.url, fetchImpl), { keyset: config.keyset, now,
-      lastAccepted: Object.fromEntries(accepted.map(row => [row.observer_id, row.last_observed_at])) });
-  } catch (error) {
-    return { status: error instanceof FeedRejected ? "feed_rejected" : "feed_unavailable", reason: error.message };
-  }
-  if (result.indeterminate) return { status: "indeterminate", rejectedObservers: result.rejectedObservers };
-
   const chain = config.keyset.chain;
-  const observedAt = Object.values(result.accepted).sort().at(-1);
   return db.transaction(async client => {
+    // Refresh, admission and settlement take this lock first. Fetch is bounded to 15s.
+    await lockFeed(client.query.bind(client));
+    const pollId = randomUUID();
+    const accepted = (await client.query(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
+      [config.keyset.keyset_id])).rows;
+    const persist = async (status, observers = {}) => client.query(`INSERT INTO l1_feed_decisions
+      (network,chain_id,keyset_id,poll_id,status,accepted) VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+      ON CONFLICT(network,chain_id) DO UPDATE SET keyset_id=excluded.keyset_id,poll_id=excluded.poll_id,
+        status=excluded.status,accepted=excluded.accepted`,
+    [chain.network, chain.chain_id, config.keyset.keyset_id, pollId, status, JSON.stringify(observers)]);
+    let result;
+    try {
+      result = verifyUptimeFeed(await fetchUptimeFeed(config.url, fetchImpl), { keyset: config.keyset, now,
+        lastAccepted: Object.fromEntries(accepted.map(row => [row.observer_id, row.last_observed_at])) });
+    } catch (error) {
+      const status = error instanceof FeedRejected ? "feed_rejected" : "feed_unavailable";
+      await persist(status);
+      return { status, reason: error.message };
+    }
+    if (result.indeterminate) {
+      await persist("indeterminate");
+      return { status: "indeterminate", rejectedObservers: result.rejectedObservers };
+    }
+    await persist("applied", result.accepted);
     for (const [observerId, at] of Object.entries(result.accepted)) {
       await client.query(`INSERT INTO l1_uptime_feed_observers(keyset_id,observer_id,last_observed_at) VALUES($1,$2,$3)
         ON CONFLICT (keyset_id,observer_id) DO UPDATE SET last_observed_at=EXCLUDED.last_observed_at, updated_at=now()`,
@@ -99,8 +115,8 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
       await client.query(`INSERT INTO l1_validator_access(network,chain_id,validator_id,ml_dsa_public_key,access_state,
           access_state_reason,finance_hub_access,research_api_keys_active,reward_eligible,removal_proposal_eligible,
           observed_days,mean_daily_participation_bps,consecutive_passing_days,grace_started_at,grace_expires_at,window_end,
-          source_observer_id,agreeing_observer_ids,feed_observed_at)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19)
+          source_observer_id,agreeing_observer_ids,feed_observed_at,poll_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20)
         ON CONFLICT (network,chain_id,validator_id) DO UPDATE SET ml_dsa_public_key=EXCLUDED.ml_dsa_public_key,
           access_state=EXCLUDED.access_state, access_state_reason=EXCLUDED.access_state_reason,
           finance_hub_access=EXCLUDED.finance_hub_access, research_api_keys_active=EXCLUDED.research_api_keys_active,
@@ -109,31 +125,34 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
           consecutive_passing_days=EXCLUDED.consecutive_passing_days, grace_started_at=EXCLUDED.grace_started_at,
           grace_expires_at=EXCLUDED.grace_expires_at, window_end=EXCLUDED.window_end,
           source_observer_id=EXCLUDED.source_observer_id, agreeing_observer_ids=EXCLUDED.agreeing_observer_ids,
-          feed_observed_at=EXCLUDED.feed_observed_at, updated_at=now()`,
+          poll_id=EXCLUDED.poll_id, feed_observed_at=EXCLUDED.feed_observed_at, updated_at=now()`,
       [chain.network, chain.chain_id, row.validator_id, row.ml_dsa_public_key, row.access_state, row.access_state_reason,
         row.finance_hub_access, row.research_api_keys_active, row.reward_eligible, row.removal_proposal_eligible,
         row.observed_days, row.mean_daily_participation_bps, row.consecutive_passing_days, row.grace_started_at,
-        row.grace_expires_at, result.windowEnd, row.source_observer_id, JSON.stringify(row.agreeing_observer_ids), observedAt]);
+        row.grace_expires_at, result.windowEnd, row.source_observer_id, JSON.stringify(row.agreeing_observer_ids),
+        row.agreeing_observer_ids.map(id => result.accepted[id]).sort().at(-2), pollId]);
     }
     const summary = { status: "applied", enforced: config.enforced, validators: result.validators.length,
       withoutQuorum: result.validatorsWithoutQuorum, suspended: [], restored: [], researchKeysRevoked: 0 };
     if (!config.enforced) return summary;
     const bindings = (await client.query(`SELECT id,account_id,network,chain_id,validator_id,ml_dsa_public_key,access_suspended_at
       FROM validator_bindings WHERE network=$1 AND revoked_at IS NULL FOR UPDATE`, [L1_NETWORK])).rows;
+    const suspendedAccounts = new Set();
     for (const { binding, action } of accessDecisions(result.validators, bindings, chain)) {
       if (action === "suspend") {
         await client.query(`UPDATE validator_bindings SET access_suspended_at=now() WHERE id=$1`, [binding.id]);
         summary.suspended.push(binding.validator_id);
-        // The contract invalidates research API keys on revocation. An account
-        // that still has another binding with access keeps its keys.
-        const revoked = await client.query(`UPDATE research_api_keys SET revoked_at=now()
-          WHERE account_id=$1 AND revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM validator_bindings b
-            WHERE b.account_id=$1 AND b.revoked_at IS NULL AND b.access_suspended_at IS NULL)`, [binding.account_id]);
-        summary.researchKeysRevoked += revoked.rowCount;
+        suspendedAccounts.add(binding.account_id);
       } else if (action === "restore") {
         await client.query(`UPDATE validator_bindings SET access_suspended_at=NULL WHERE id=$1`, [binding.id]);
         summary.restored.push(binding.validator_id);
       }
+    }
+    for (const account of suspendedAccounts) {
+      const revoked = await client.query(`UPDATE research_api_keys SET revoked_at=now()
+        WHERE account_id=$1 AND revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM validator_bindings
+        WHERE account_id=$1 AND revoked_at IS NULL AND access_suspended_at IS NULL)`, [account]);
+      summary.researchKeysRevoked += revoked.rowCount;
     }
     return summary;
   });
@@ -152,15 +171,34 @@ export function feedAllowsNewBindings(observerRows, keyset, now = new Date()) {
   return new Set(fresh.map(row => row.observer_id)).size >= 2;
 }
 
-/** Throws 503 when enforcement is on and the feed is indeterminate. Does nothing otherwise. */
-export async function requireFeedForNewBinding({ env = process.env, now = new Date(), queryImpl = query } = {}) {
+export async function lockFeed(queryImpl) {
+  await queryImpl("SELECT pg_advisory_xact_lock(173814210, 1)");
+}
+
+export async function requireFeedForNewBinding({ env = process.env, now = new Date(), queryImpl = query, binding } = {}) {
   const config = l1UptimeFeedConfig(env);
   if (!config.enforced) return;
-  const rows = (await queryImpl(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
-    [config.keyset.keyset_id])).rows;
-  if (!feedAllowsNewBindings(rows, config.keyset, now)) {
+  await lockFeed(queryImpl);
+  const { chain, keyset_id } = config.keyset;
+  const decision = (await queryImpl(`SELECT poll_id,accepted FROM l1_feed_decisions
+    WHERE network=$1 AND chain_id=$2 AND keyset_id=$3 AND status='applied'`,
+  [chain.network, chain.chain_id, keyset_id])).rows[0];
+  const observers = Object.entries(decision?.accepted || {}).map(([observer_id,last_observed_at]) => ({observer_id,last_observed_at}));
+  if (!feedAllowsNewBindings(observers, config.keyset, now)) {
     throw Object.assign(new Error("l1_uptime_feed_indeterminate"), { status: 503 });
   }
+  if (binding) {
+    const row = await l1AccessRow(binding, queryImpl);
+    if (row?.poll_id !== decision.poll_id || !row.finance_hub_access || row.access_state_reason === "insufficient_observed_days" || !freshFeedRow(row, now)) {
+      throw Object.assign(new Error("l1_validator_access_unavailable"), { status: 403 });
+    }
+  }
+  return decision.poll_id;
+}
+
+function freshFeedRow(row, now) {
+  const age = new Date(now).getTime() - new Date(row.feed_observed_at).getTime();
+  return age >= -60000 && age <= 3600000;
 }
 
 /** The stored row for a binding, for the dashboard and for the credit. */
@@ -176,6 +214,6 @@ export async function l1AccessRow(binding, queryImpl = query) {
  */
 export function creditFromFeedRow(row, now = new Date()) {
   if (!row) return { eligible: false, reason: "no_feed_row" };
-  if (new Date(now).getTime() - new Date(row.feed_observed_at).getTime() > 3600000) return { eligible: false, reason: "feed_stale" };
+  if (!freshFeedRow(row, now)) return { eligible: false, reason: "feed_stale" };
   return { eligible: row.reward_eligible === true, reason: row.reward_eligible ? "eligible" : row.access_state_reason };
 }

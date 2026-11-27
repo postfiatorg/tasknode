@@ -18,6 +18,9 @@ export async function grantValidatorReward(binding, month, evidence, dependencie
     await insertLedgerEntry(client, { kind: "reward_credit", accountId: binding.account_id, amountUsd: 20,
       source: "validator_reward", note: `Validator reward ${month}`, uniqueKey: key, onConflictUnique: true, metadata: evidence });
     return true;
+  }).catch(error => {
+    if (error.code === "PV001") return false;
+    throw error;
   });
 }
 

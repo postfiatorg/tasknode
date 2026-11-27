@@ -84,7 +84,7 @@ result = await refresh(true, new Date(now.getTime() + 2 * 3600000));
 assert.equal(result.status, "indeterminate");
 assert.deepEqual(await access(revoked), shut);
 assert.equal(await hasValidatorBinding(lapsed), true);
-await requireFeedForNewBinding({ env: env(true), now });
+await assert.rejects(requireFeedForNewBinding({ env: env(true), now }), {status: 503});
 await assert.rejects(requireFeedForNewBinding({ env: env(true), now: new Date(now.getTime() + 2 * 3600000) }),
   error => error.status === 503 && error.message === "l1_uptime_feed_indeterminate");
 await requireFeedForNewBinding({ env: env(false), now: new Date(now.getTime() + 2 * 3600000) });
