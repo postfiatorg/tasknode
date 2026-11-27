@@ -46,6 +46,13 @@ resource membership, or other context beyond a generic identity class.
 | `validator_revoke` | `/api/validators//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
 | `research_keys` | `/api/research/keys` | `GET` `POST` | `session` | strict JSON ≤ 4096 bytes | 30 / 600s |
 | `research_key_revoke` | `/api/research/keys//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
+| `research_publish` | `/api/research/publish` | `POST` | `handler` | strict JSON ≤ 100663296 bytes | 30 / 600s |
+| `finance_hub_access` | `/api/finance-hub/access` | `GET` | `optional` | — | 120 / 600s |
+| `finance_hub_today` | `/api/finance-hub/today` | `GET` | `session` | — | 120 / 600s |
+| `finance_hub_goodbrief` | `/api/finance-hub/goodbrief` | `GET` | `session` | — | 120 / 600s |
+| `finance_hub_library` | `/api/finance-hub/library` | `GET` | `session` | — | 120 / 600s |
+| `finance_hub_state` | `/api/finance-hub/state` | `GET` `PUT` | `session` | strict JSON ≤ 16384 bytes | 120 / 600s |
+| `finance_hub_mark_caught_up` | `/api/finance-hub/mark-caught-up` | `POST` | `session` | strict JSON ≤ 1024 bytes | 120 / 600s |
 | `research_v1_create` | `/api/research/v1/jobs` | `POST` | `bearer` | strict JSON ≤ 24000 bytes | 10 / 600s |
 | `research_v1_read` | `/api/research/v1/jobs//…` | `GET` | `bearer` | — | 600 / 600s |
 | `research_ui_create` | `/api/research/ui/jobs` | `POST` | `session` | strict JSON ≤ 24000 bytes | 10 / 600s |
@@ -242,4 +249,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **216 route policies** and **8 authentication modes**.
+Total: **223 route policies** and **8 authentication modes**.

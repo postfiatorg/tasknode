@@ -17,14 +17,28 @@ const clean = (value) => {
   return SEGMENT.test(text) ? text : "";
 };
 
+const SECTION_VIEWS = new Set(["today", "models", "goodbrief", "library"]);
+
 export function hasFinanceHubAccess(session) {
+  if (session?.financeHub?.ok === true) return true;
   return Array.isArray(session?.validator?.bindings) && session.validator.bindings.length > 0;
+}
+
+export function financeHubSectionFromAppHash(hash = "") {
+  const parts = String(hash).replace(/^#\/?/, "").split("?")[0].split("/").filter(Boolean);
+  if ((parts[0] || "").toLowerCase() !== FINANCE_HUB_VIEW) return "today";
+  const second = String(parts[1] || "").toLowerCase();
+  if (!second) return "today";
+  if (SECTION_VIEWS.has(second)) return second;
+  return "models";
 }
 
 // "#finance-hub/RKLB/income_statement" -> { model: "RKLB", tab: "income_statement" }; anything else -> the hub home.
 export function financeHubRouteFromAppHash(hash = "") {
   const parts = String(hash).replace(/^#\/?/, "").split("?")[0].split("/").filter(Boolean);
   if ((parts[0] || "").toLowerCase() !== FINANCE_HUB_VIEW) return { model: "", tab: "" };
+  const rawModel = String(parts[1] || "").toLowerCase();
+  if (SECTION_VIEWS.has(rawModel)) return { model: "", tab: "" };
   const model = clean(parts[1]);
   return { model, tab: model ? clean(parts[2]) : "" };
 }
@@ -45,7 +59,17 @@ export function financeHubViewerHash({ model = "", tab = "" } = {}) {
   return model ? `#m=${model}&tab=${tab || "summary"}` : "#home";
 }
 
-export function financeHubFrameSrc(route, theme) {
+export function financeHubFrameSrc(route, theme, viewerOrigin = "") {
   const resolvedTheme = theme === "dark" ? "dark" : "light";
-  return `${FINANCE_HUB_BUNDLE_PATH}?embed=1&theme=${resolvedTheme}${financeHubViewerHash(route)}`;
+  const prefix = (() => {
+    const raw = String(viewerOrigin || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw);
+      return parsed.protocol === "https:" ? parsed.origin : "";
+    } catch {
+      return "";
+    }
+  })();
+  return `${prefix}${FINANCE_HUB_BUNDLE_PATH}?embed=1&theme=${resolvedTheme}${financeHubViewerHash(route)}`;
 }

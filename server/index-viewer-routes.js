@@ -12,8 +12,14 @@
  * The code is single use and short lived, and the token is scoped to one index
  * and one account, so a leaked token cannot open the rest of the catalog.
  */
-import { hasValidatorBinding } from "./repositories/validator-bindings.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
+import {
+  FINANCE_HUB_TIER,
+  LEGACY_VALIDATOR_TIER,
+  PUBLIC_SAFE_TIER,
+  evaluateFinanceHubAccess,
+  isFinanceHubProtectedIndex,
+} from "./finance-hub-access.js";
 import {
   consumeCode,
   getIndex,
@@ -80,20 +86,40 @@ export function safeReturnTo(rawReturnTo = "", env = process.env) {
   return url;
 }
 
-export async function accountMeetsTier({ accountId = "", tier = TIER_ACTIVE_WALLET } = {}) {
-  if (!accountId) return { ok: false, reason: "not_signed_in", walletAddress: "" };
-  if (tier === "validator") {
-    const ok = await hasValidatorBinding(accountId);
-    return { ok, reason: ok ? "" : "validator_required", walletAddress: "" };
+export async function accountMeetsTier({ accountId = "", tier = TIER_ACTIVE_WALLET, index = null, ...deps } = {}) {
+  if (tier === PUBLIC_SAFE_TIER) {
+    return evaluateFinanceHubAccess({ accountId, tier, index, ...deps });
+  }
+  if (!accountId) {
+    return {
+      ok: false,
+      reason: "not_signed_in",
+      basis: null,
+      rank: null,
+      snapshotAt: null,
+      graceEndsAt: null,
+      walletAddress: "",
+    };
+  }
+  if (tier === FINANCE_HUB_TIER || tier === LEGACY_VALIDATOR_TIER) {
+    return evaluateFinanceHubAccess({ accountId, tier, index, ...deps });
   }
   if (tier !== TIER_ACTIVE_WALLET) {
     // Unknown tiers fail closed rather than silently granting access.
-    return { ok: false, reason: "unsupported_tier", walletAddress: "" };
+    return {
+      ok: false,
+      reason: "unsupported_tier",
+      basis: null,
+      rank: null,
+      snapshotAt: null,
+      graceEndsAt: null,
+      walletAddress: "",
+    };
   }
   const wallet = await getLinkedWallet({ accountId });
   const address = String(wallet?.address || wallet?.walletAddress || "");
-  if (!address) return { ok: false, reason: "wallet_required", walletAddress: "" };
-  return { ok: true, reason: "", walletAddress: address };
+  if (!address) return { ok: false, reason: "wallet_required", basis: null, walletAddress: "" };
+  return { ok: true, reason: "", basis: "wallet", walletAddress: address };
 }
 
 export async function handleIndexViewerRoute({ json, readJson, req, res, session, url } = {}) {
@@ -140,7 +166,7 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
       return true;
     }
 
-    const eligibility = await accountMeetsTier({ accountId, tier: index.tier });
+    const eligibility = await accountMeetsTier({ accountId, tier: index.tier, index });
     if (!eligibility.ok) {
       // Send the visitor through the normal app login, then straight back here.
       const selfUrl = new URL(url.toString());
@@ -190,7 +216,7 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
     }
     // Re-check eligibility at exchange time: a wallet unlinked between the
     // redirect and the exchange must not still mint a token.
-    const eligibility = await accountMeetsTier({ accountId: claimed.accountId, tier: index.tier });
+    const eligibility = await accountMeetsTier({ accountId: claimed.accountId, tier: index.tier, index });
     if (!eligibility.ok) {
       json(res, 403, { ok: false, error: eligibility.reason }, cors);
       return true;
@@ -233,11 +259,15 @@ export async function handleIndexViewerRoute({ json, readJson, req, res, session
       json(res, 404, { ok: false, error: "index_not_found" }, cors);
       return true;
     }
+    if (isFinanceHubProtectedIndex(indexId, index)) {
+      json(res, 403, { ok: false, error: "whole_bundle_unlock_disabled" }, { ...cors, "cache-control": "no-store" });
+      return true;
+    }
     if (new Date(index.availableAt).getTime() > Date.now()) {
       json(res, 403, { ok: false, error: "index_not_yet_available" }, cors);
       return true;
     }
-    const eligibility = await accountMeetsTier({ accountId: grant.accountId, tier: index.tier });
+    const eligibility = await accountMeetsTier({ accountId: grant.accountId, tier: index.tier, index });
     if (!eligibility.ok) {
       json(res, 403, { ok: false, error: eligibility.reason }, cors);
       return true;

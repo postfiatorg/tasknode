@@ -85,7 +85,7 @@ export async function revokeValidatorBinding(accountId, id) {
       WHERE account_id=$1 AND id=$2 AND revoked_at IS NULL RETURNING id`, [accountId, id]);
     // Existing viewer tokens must not survive an unbind/rebind cycle.
     await client.query(`UPDATE index_viewer_tokens SET revoked_at=now() WHERE account_id=$1 AND revoked_at IS NULL
-      AND index_id IN (SELECT index_id FROM index_viewer_indices WHERE tier='validator')`, [accountId]);
+      AND index_id IN (SELECT index_id FROM index_viewer_indices WHERE tier IN ('validator', 'finance_hub'))`, [accountId]);
     await client.query(`UPDATE research_api_keys SET revoked_at=now() WHERE account_id=$1 AND revoked_at IS NULL
       AND NOT EXISTS(SELECT 1 FROM validator_bindings WHERE account_id=$1 AND revoked_at IS NULL)`, [accountId]);
     return result.rowCount > 0;

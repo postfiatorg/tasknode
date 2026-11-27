@@ -185,7 +185,7 @@ export function App() {
     setChatActionMenu, setChatDeleteTarget, setChatResetKey,
   });
   const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
-  const hasFinanceHub = signedIn && session?.validator?.bindings?.length > 0; // validator-only, as the bundle route enforces
+  const hasFinanceHub = signedIn && (session?.financeHub?.ok === true || session?.validator?.bindings?.length > 0);
   const [hiveGroupStatus, setHiveGroupStatus] = useHiveGroupStatus({ accountId: session?.accountId, signedIn, activeChatKind: activeChat?.kind, activeChatId, view });
   const hiveUnreadCount = hiveGroupStatus?.accountId === appState?.session?.accountId ? Number(hiveGroupStatus?.unreadCount || 0) : 0;
   const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
@@ -1395,7 +1395,7 @@ export function App() {
             </Suspense>
           )}
           {activeExtension && <ExtensionSurface context={extensionContext} extension={activeExtension} />}
-          {view === "finance-hub" && <Suspense fallback={<StatusBanner>Loading Finance Hub</StatusBanner>}><FinanceHubView hasAccess={hasFinanceHub} locationHash={locationHash} onLocationChange={setLocationHash} /></Suspense>}
+          {view === "finance-hub" && <Suspense fallback={<StatusBanner>Loading Finance Hub</StatusBanner>}><FinanceHubView access={session?.financeHub || null} hasAccess={hasFinanceHub} locationHash={locationHash} onLocationChange={setLocationHash} /></Suspense>}
           {view === "help" && (
             <Suspense fallback={<StatusBanner>Loading help</StatusBanner>}>
               <HelpView />

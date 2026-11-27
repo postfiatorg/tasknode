@@ -1,4 +1,5 @@
 import { publicValidatorBindingsByAccount } from "./repositories/validator-bindings.js";
+import { FINANCE_HUB_TIER, evaluateFinanceHubAccess } from "./finance-hub-access.js";
 import { decisionsAvailable } from "./corbanu-decisions.js";
 import {
   authProviders,
@@ -487,6 +488,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
     contextDocument,
     researchAccess,
     validatorMembership,
+    financeHubAccess,
   ] = await Promise.all([
     timed("readiness", () => readiness({ creditWaitMs: 0 }), () => ({
       wallet: {
@@ -526,6 +528,13 @@ export async function appState(session = null, { refreshTaskProjection = false }
     ),
     timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "goodalexander", atCost: true })),
     accountId ? timed("validator_membership", () => publicValidatorBindingsByAccount([accountId]), () => new Map()) : new Map(),
+    accountId
+      ? timed(
+          "finance_hub_access",
+          () => evaluateFinanceHubAccess({ accountId, tier: FINANCE_HUB_TIER }),
+          () => ({ ok: false, basis: null, rank: null, snapshotAt: null, graceEndsAt: null })
+        )
+      : { ok: false, basis: null, rank: null, snapshotAt: null, graceEndsAt: null },
   ]);
 
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
@@ -637,7 +646,16 @@ export async function appState(session = null, { refreshTaskProjection = false }
   return {
     generatedAt: new Date().toISOString(),
     session: { ...sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
-      validator: { bindings: validatorMembership.get(accountId) || [] } },
+      validator: { bindings: validatorMembership.get(accountId) || [] },
+      financeHub: {
+        ok: Boolean(financeHubAccess?.ok),
+        basis: financeHubAccess?.basis || null,
+        validatorState: financeHubAccess?.validatorState || null,
+        entitlementState: financeHubAccess?.entitlementState || null,
+        rank: financeHubAccess?.rank ?? null,
+        snapshotAt: financeHubAccess?.snapshotAt || null,
+        graceEndsAt: financeHubAccess?.graceEndsAt || null,
+      } },
     chat: {
       conversationId,
       conversationsPath: "/api/chat/conversations",

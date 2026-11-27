@@ -29,6 +29,13 @@ export const apiRoutePolicies = [
   { id: "validator_revoke", prefix: "/api/validators/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
   { id: "research_keys", path: "/api/research/keys", methods: ["GET", "POST"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(4096, { allowUnknown: false, properties: { name: { type: "string", maxLength: 80 } } }) },
   { id: "research_key_revoke", prefix: "/api/research/keys/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
+  { id: "research_publish", path: "/api/research/publish", methods: ["POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.researchPublishBody },
+  { id: "finance_hub_access", path: "/api/finance-hub/access", methods: ["GET"], auth: "optional", rateLimit: { limit: 120, windowMs: tenMinutes } },
+  { id: "finance_hub_today", path: "/api/finance-hub/today", methods: ["GET"], auth: "session", rateLimit: { limit: 120, windowMs: tenMinutes } },
+  { id: "finance_hub_goodbrief", path: "/api/finance-hub/goodbrief", methods: ["GET"], auth: "session", rateLimit: { limit: 120, windowMs: tenMinutes } },
+  { id: "finance_hub_library", path: "/api/finance-hub/library", methods: ["GET"], auth: "session", rateLimit: { limit: 120, windowMs: tenMinutes } },
+  { id: "finance_hub_state", path: "/api/finance-hub/state", methods: ["GET", "PUT"], auth: "session", rateLimit: { limit: 120, windowMs: tenMinutes }, body: requestBodies.financeHubStateBody },
+  { id: "finance_hub_mark_caught_up", path: "/api/finance-hub/mark-caught-up", methods: ["POST"], auth: "session", rateLimit: { limit: 120, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   ...["v1", "ui"].flatMap((surface) => [
     { id: `research_${surface}_create`, path: `/api/research/${surface}/jobs`, methods: ["POST"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: bodyPolicy(24000, { allowUnknown: false, required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 16000 }, max_cost_usd: { type: "number", minimum: 0.01, maximum: 5 }, request_id: { type: "string", minLength: 1, maxLength: 180 } } }) },
     { id: `research_${surface}_read`, prefix: `/api/research/${surface}/jobs/`, methods: ["GET"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 600, windowMs: tenMinutes } },

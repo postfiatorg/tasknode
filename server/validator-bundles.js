@@ -5,6 +5,14 @@ import { accountMeetsTier } from "./index-viewer-routes.js";
 import { getIndex } from "./repositories/index-viewer.js";
 import { validatorError } from "./validator-identity.js";
 import { BUNDLE_FILE_FORMAT, createBundleFileLoader, fetchBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import {
+  GOODBRIEF_SRCDOC_CSP,
+  PUBLIC_SAFE_TIER,
+  buildFinanceHubWatermark,
+  createFinanceHubAccessGuard,
+  injectHtmlWatermark,
+  isFinanceHubProtectedIndex,
+} from "./finance-hub-access.js";
 
 const MAX_CACHED_BUNDLES = 2;
 
@@ -103,10 +111,41 @@ export function decryptValidatorBundle(bytes, key, contentHash) {
   return bundle.files;
 }
 
+const defaultAccessGuard = createFinanceHubAccessGuard();
+
+function bundleCspFor({ indexId, filePath, env = process.env }) {
+  if (indexId === "goodbrief" && filePath.toLowerCase().endsWith(".html")) {
+    return `${GOODBRIEF_SRCDOC_CSP}; sandbox allow-scripts`;
+  }
+  const extraAncestor = (() => {
+    try {
+      const origin = new URL(String(env.FINANCE_HUB_SHELL_ORIGIN || "")).origin;
+      return /^https:\/\//i.test(origin) ? ` ${origin}` : "";
+    } catch {
+      return "";
+    }
+  })();
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.hyperliquid.xyz",
+    `frame-ancestors 'self'${extraAncestor}`,
+    "base-uri 'self'",
+    "form-action 'none'",
+    "object-src 'none'",
+  ].join("; ");
+}
+
 export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier = accountMeetsTier,
   loadEncrypted = (id, index) => encryptedLoader.load(id, index),
   loadFile = (id, index, filePath) => fileLoader.load(id, index, filePath),
-  loadFiles = (id, index) => bundleLoader.load(id, index), logFailure = console.warn } = {}) {
+  loadFiles = (id, index) => bundleLoader.load(id, index),
+  accessGuard = defaultAccessGuard,
+  watermarkSecret,
+  logFailure = console.warn } = {}) {
   return async function handleValidatorBundleRoute({ json, req, res, session, url }) {
     const parts = url.pathname.split("/").filter(Boolean);
     const content = parts[0] === "api" && parts[1] === "index-viewer" && parts[2] === "indices" && parts[4] === "content" && parts.length === 5;
@@ -117,18 +156,53 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
       const indexId = decodeURIComponent(parts[3] || "");
       const index = await readIndex(indexId);
       if (!index || new Date(index.availableAt).getTime() > Date.now()) throw validatorError("bundle_not_found", 404);
-      if (viewer) {
-        const eligibility = await meetsTier({ accountId: session?.accountId, tier: index.tier });
-        if (!eligibility.ok) throw validatorError(eligibility.reason, 403);
-      }
       if (content) {
+        if (isFinanceHubProtectedIndex(indexId, index)) {
+          throw validatorError("whole_bundle_download_disabled", 403);
+        }
         const bytes = await loadEncrypted(indexId, index);
         res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "public,max-age=300", "x-content-type-options": "nosniff" });
         res.end(bytes);
         return true;
       }
+      const isPublicSafe = index.tier === PUBLIC_SAFE_TIER && indexId === "finance-hub-public";
+      let eligibility = { ok: true, basis: "public" };
+      if (!isPublicSafe) {
+        eligibility = await meetsTier({ accountId: session?.accountId, tier: index.tier, index });
+        if (!eligibility.ok) throw validatorError(eligibility.reason || "finance_hub_access_required", 403);
+      }
       const filePath = parts.slice(4).map(decodeURIComponent).join("/") || "index.html";
       if (!validBundleFilePath(filePath)) throw validatorError("bundle_file_not_found", 404);
+
+      const watermark = !isPublicSafe && session?.accountId
+        ? buildFinanceHubWatermark({
+            accountId: session.accountId,
+            basis: eligibility.basis || "validator",
+            indexId,
+            filePath,
+            ...(watermarkSecret ? { secret: watermarkSecret } : {}),
+          })
+        : null;
+
+      if (!isPublicSafe && session?.accountId && accessGuard) {
+        const guard = accessGuard({
+          accountId: session.accountId,
+          indexId,
+          filePath,
+          basis: eligibility.basis || "validator",
+          watermarkId: watermark?.watermarkId || "",
+        });
+        if (!guard.allowed) {
+          json(
+            res,
+            429,
+            { ok: false, error: "finance_hub_rate_limited", retryAfterSeconds: guard.retryAfterSeconds },
+            { "cache-control": "no-store", "retry-after": String(guard.retryAfterSeconds) }
+          );
+          return true;
+        }
+      }
+
       let bytes;
       if (index.metadata?.fileFormat === BUNDLE_FILE_FORMAT) {
         bytes = await loadFile(indexId, index, filePath);
@@ -137,9 +211,20 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
         if (!Object.hasOwn(files, filePath)) throw validatorError("bundle_file_not_found", 404);
         bytes = files[filePath];
       }
-      const type = mimeTypes[filePath.split(".").at(-1).toLowerCase()] || "application/octet-stream";
-      res.writeHead(200, { "content-type": type, "cache-control": "private,no-store", "x-content-type-options": "nosniff",
-        "referrer-policy": "no-referrer", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://api.hyperliquid.xyz; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'" });
+      const ext = filePath.split(".").at(-1).toLowerCase();
+      const type = mimeTypes[ext] || "application/octet-stream";
+      if (ext === "html" && watermark && indexId !== "goodbrief") {
+        bytes = injectHtmlWatermark(bytes, watermark);
+      }
+      const headers = {
+        "content-type": type,
+        "cache-control": isPublicSafe ? "public,max-age=60" : "private,no-store",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+        "content-security-policy": bundleCspFor({ indexId, filePath }),
+        ...(watermark ? { [watermark.headerName]: watermark.headerValue } : {}),
+      };
+      res.writeHead(200, headers);
       res.end(bytes);
     } catch (error) {
       if (!error.status) logFailure("validator_bundle_load_failed", {
@@ -150,7 +235,6 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
     }
     return true;
   };
-
 }
 
 export const handleValidatorBundleRoute = createValidatorBundleHandler();
