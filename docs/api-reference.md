@@ -241,5 +241,11 @@ resource membership, or other context beyond a generic identity class.
 | `usage_top_up_sync` | `/api/usage/top-up/sync` | `POST` | `handler` | strict JSON ≤ 1024 bytes | — |
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
+| `identity_onchain_status` | `/api/identity/status` | `GET` | `session` | — | 120 / 600s |
+| `identity_check_handle` | `/api/identity/check-handle` | `GET` | `optional` | — | 120 / 600s |
+| `identity_handle_reserve` | `/api/identity/reserve` | `POST` | `session` | strict JSON ≤ 8192 bytes | 20 / 600s |
+| `identity_handle_attest` | `/api/identity/attest` | `POST` | `session` | strict JSON ≤ 8192 bytes | 20 / 600s |
+| `identity_build_tx` | `/api/identity/build-tx` | `POST` | `session` | strict JSON ≤ 32768 bytes | 60 / 600s |
+| `identity_custom_nip05_verify` | `/api/identity/custom-nip05/verify` | `POST` | `session` | strict JSON ≤ 4096 bytes | 20 / 600s |
 
-Total: **216 route policies** and **8 authentication modes**.
+Total: **222 route policies** and **8 authentication modes**.

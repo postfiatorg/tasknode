@@ -26,7 +26,10 @@ import {
   getNostrWellKnownDirectory,
   resolveNostrMessagingIdentity,
   revokeNostrIdentity,
+  taskNodeNostrDomain,
 } from "./repositories/nostr-messages.js";
+import { resolveChainBackedWellKnownDirectory } from "./identity/nip05-responder.js";
+import { identityStore } from "./identity/routes.js";
 import { generateDocsAssistantResponse, generateDocsOdvResponse } from "./docs-odv.js";
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
 import {
@@ -112,8 +115,15 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
     if (req.method !== "GET") return routeResult(json, res, methodError("nostr_well_known")), true;
     if (!featureEnabled("TASKNODE_MESSAGES_ENABLED")) return routeResult(json, res, featureError("messages")), true;
     try {
-      json(res, 200, await getNostrWellKnownDirectory({ name: url.searchParams.get("name") || "" }), {
+      const directory = await resolveChainBackedWellKnownDirectory({
+        name: url.searchParams.get("name") || "",
+        namespace: taskNodeNostrDomain(),
+        getLegacyDirectory: ({ name }) => getNostrWellKnownDirectory({ name }),
+        getOnChainIdentities: ({ namespace, handle }) => identityStore.listOnChainIdentities({ namespace, handle }),
+      });
+      json(res, 200, directory, {
         "access-control-allow-origin": "*",
+        "cache-control": "no-store",
       });
     } catch (error) {
       routeFailure(json, res, error);
