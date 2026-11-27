@@ -80,7 +80,17 @@ export function taskRewardOutcome({ offeredPft = null, task = {}, timeline = [] 
     completion: score.completion ?? null,
     evidenceQuality: score.evidence_quality ?? score.evidenceQuality ?? null,
     paymentCid: safeText(paymentEvent?.cid, 200),
-    paymentTxHash: safeText(paymentEvent?.txHash, 200),
+    paymentTxHash: safeText(paymentEvent?.txHash || paymentPayload.order_hash || paymentPayload.tx_hash, 200),
+    paymentOrderHash: safeText(paymentEvent?.orderHash || paymentPayload.order_hash || paymentPayload.fastpay?.order_hash, 200),
+    paymentLane: safeText(
+      paymentEvent?.lane || paymentPayload.payment_lane || paymentPayload.fastpay?.lane || (paymentPayload.order_hash ? "fastpay" : "legacy_pftl_v4"),
+      60
+    ),
+    pointerVersion: safeText(
+      paymentEvent?.pointerVersion || paymentPayload.pointer_version || (paymentPayload.order_hash ? "v5" : "v4"),
+      16
+    ),
+    badge: safeText(paymentEvent?.badge || paymentPayload.explorer_badge || (paymentPayload.order_hash ? "Task reward" : ""), 60),
     paymentObservedAt: safeText(paymentEvent?.observedAt || paymentEvent?.occurredAt || paymentEvent?.createdAt, 80),
   };
 }
