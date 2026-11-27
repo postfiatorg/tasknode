@@ -110,18 +110,40 @@ const FORBIDDEN_PUBLIC_KEYS = new Set([
   "deep_memory", "agent_brief_members",
 ]);
 
+// Model targets, values and estimates. docs/specs/finance-hub-contracts-v1.md lists the same patterns.
+const MODEL_VIEW_PATTERNS = [
+  { name: "price_target_phrase", re: /\b(?:price\s+(?:target|objective)|target\s+price)\b/i },
+  { name: "target_shorthand", re: /\b(?:PT|TP)\s*(?:of|at|is|:|=)?\s*[$€£¥]?\s?\d|\b(?:PT|TP)\b.{0,20}[$€£¥]\s?\d/i },
+  { name: "target_amount", re: /\btargets?\b.{0,20}[$€£¥]\s?\d/i },
+  { name: "scenario_value", re: /\b(?:bull|bear|base)[\s-]case\b.{0,40}[$€£¥]\s?\d|[$€£¥]\s?\d[\d,.]*\s*\(?(?:bull|bear|base)[\s-]case\b/i },
+  { name: "valuation_term", re: /\b(?:fair|intrinsic)[\s-]+value\b|\bDCF\b|\bdiscounted\s+cash[\s-]?flow/i },
+  { name: "value_per_share", re: /\bvalu(?:e|es|ed|ing|ation)\b.{0,40}[$€£¥]\s?\d[\d,.]*\s*(?:per|a|each)\s+(?:share|token|coin|unit)\b/i },
+  { name: "worth_amount", re: /\bworth\s+(?:\w+\s+){0,3}?(?:[$€£¥]\s?\d|\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent))/i },
+  { name: "upside_downside_pct", re: /\b(?:upside|downside)\b(?!\s+risks?\b)[\s:=(]*(?:\w+\s+){0,3}?[+-]?\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent|bps|basis\s+points)|\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent|bps|basis\s+points)\s+(?:of\s+)?(?:\w+\s+)?(?:upside|downside)\b(?!\s+risks?\b)/i },
+  { name: "implied_value", re: /\bimpl(?:y|ies|ied|ying)\b.{0,30}\b(?:upside|downside|valuation|value|price)\b/i },
+  { name: "premium_to_market", re: /\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent)\s+(?:above|below|over|under|higher\s+than|lower\s+than|premium\s+to|discount\s+to)\s+(?:the\s+|its\s+)?(?:(?:current|market|spot|share|stock|token|trading|closing|prevailing)\s+(?:\w+\s+)?(?:price|level|quote)s?|consensus|street|where\s+(?:it|they)\s+trades?)\b/i },
+  { name: "consensus_comparison", re: /\b(?:versus|vs\.?)\s+(?:the\s+)?(?:consensus|street)\b.{0,20}\d/i },
+  { name: "proprietary_model_reference", re: /\bour\s+(?:model|dcf|estimates?|forecasts?|projections?|valuation|numbers|targets?)\b/i },
+  { name: "first_person_estimate", re: /\bwe\s+(?:\w+\s+){0,2}?(?:valu|forecast|estimat|project|expect|target|model|assum|calculat|deriv)\w*\b.{0,80}\d/i },
+  { name: "model_estimate_amount", re: /\b(?:the|this)\s+model\s+(?:\w+\s+){0,2}?(?:valu|forecast|estimat|project|expect|target|assum|calculat|deriv|impl|yield|point)\w*\b.{0,80}[$€£¥]\s?\d/i },
+];
+
+const HTML_PATTERNS = [
+  { name: "html_angle_bracket", re: /[<>]/ },
+  { name: "html_character_reference", re: /&(?:amp;)*(?:lt|gt|#0*6[02]|#x0*3[ce])/i },
+  { name: "event_handler_attribute", re: /(?:^|[\s"'/])on[a-z]+\s*=/i },
+  { name: "script_uri", re: /javascript:/i },
+];
+
 const FORBIDDEN_PUBLIC_PATTERNS = [
-  { name: "price_target_phrase", re: /\b(?:price\s+target|target\s+price)\b/i },
-  { name: "pt_dollar_shorthand", re: /\bPT\s*(?:of|:|=)?\s*\$\s*\d/i },
-  { name: "upside_downside_pct", re: /\b(?:upside|downside)\s+(?:of\s+)?[+-]?\d+(?:\.\d+)?%/i },
-  { name: "proprietary_model_projection", re: /\bour\s+model\s+(?:projects|estimates|forecasts|targets)\b/i },
+  ...MODEL_VIEW_PATTERNS,
   { name: "gated_index_reference", re: /\b(?:ga-models|agent_brief_members)\b/i },
   { name: "private_key_pem", re: /BEGIN\s+[A-Z ]*PRIVATE KEY/ },
   { name: "openai_or_stripe_key", re: /\bsk-(?:live|test|proj)?-?[A-Za-z0-9]{16,}\b/ },
   { name: "github_pat", re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
   { name: "slack_token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: "aws_access_key", re: /\bAKIA[0-9A-Z]{16}\b/ },
-  { name: "raw_html_or_js_uri", re: /<(?:script|iframe|img|svg|object)\b|onerror\s*=|javascript:/i },
+  ...HTML_PATTERNS,
 ];
 
 function scanForPublicLeaks(value, pointer = "$") {
@@ -446,6 +468,83 @@ test("agent_brief_public.v1 validates leak-safe briefs and blocks internal targe
     const leaked = structuredClone(valid);
     leaked.public_summary = `${valid.public_summary} ${snippet}`;
     assert.ok(scanForPublicLeaks(leaked).length > 0, `leak scanner must catch: ${snippet}`);
+  }
+
+  const leaksIn = (sentence) => scanForPublicLeaks({ ...valid, public_summary: `${valid.public_summary} ${sentence}` });
+  for (const [ruleName, sentence] of [
+    ["valuation_term", "Fair value is $240 per share, 42% above the current price."],
+    ["premium_to_market", "Fair value is $240 per share, 42% above the current price."],
+    ["first_person_estimate", "We value the shares at $240, implying 42% upside."],
+    ["target_amount", "12-month target: $240 (base case), $310 (bull case)."],
+    ["target_shorthand", "PT 240, up from 215 after the print."],
+    ["target_shorthand", "TP $240."],
+    ["upside_downside_pct", "Upside is roughly 42 percent from here."],
+    ["model_estimate_amount", "The model points to FY27 EPS of $14.20 versus consensus $12.90."],
+    ["valuation_term", "Our DCF yields $240 per share."],
+    ["premium_to_market", "We forecast FY27 revenue of $212B, 9% above the Street."],
+    ["price_target_phrase", "The price objective moves to a higher level."],
+    ["scenario_value", "Bull case: $310."],
+    ["valuation_term", "Intrinsic value sits well above where the stock trades."],
+    ["value_per_share", "Equity value works out to $310 per share."],
+    ["worth_amount", "The shares look worth about $240 each."],
+    ["worth_amount", "The token looks worth roughly 40% more than it trades for."],
+    ["upside_downside_pct", "The stock offers 42% upside."],
+    ["implied_value", "Implied upside remains large after the print."],
+    ["premium_to_market", "That is 35% below the current share price."],
+    ["consensus_comparison", "FY27 EPS of $14.20 vs. consensus of $12.90."],
+    ["proprietary_model_reference", "On our numbers the stock looks cheap."],
+    ["html_angle_bracket", '<a href="https://x.example" onmouseover="alert(1)">link</a>'],
+    ["html_angle_bracket", "<style>body{display:none}</style>"],
+    ["html_angle_bracket", "<body onload=alert(1)>"],
+    ["html_angle_bracket", "<details open ontoggle=alert(1)>"],
+    ["html_angle_bracket", '<form action="https://evil.example">'],
+    ["html_angle_bracket", '<meta http-equiv="refresh" content="0;url=https://evil.example">'],
+    ["html_character_reference", "&lt;script&gt;alert(1)&lt;/script&gt;"],
+    ["html_character_reference", "&#60;img src=x&#62;"],
+    ["html_character_reference", "&#x3C;svg&#x3E;"],
+    ["html_character_reference", "&amp;lt;script&amp;gt;"],
+    ["event_handler_attribute", 'x" onfocus="alert(1)'],
+    ["script_uri", "javascript:alert(1)"],
+  ]) {
+    assert.ok(leaksIn(sentence).some((leak) => leak.endsWith(`matched ${ruleName}`)), `${ruleName} must refuse: ${sentence}`);
+  }
+  for (const sentence of [
+    "NVIDIA reported revenue of $35.1 billion for the quarter ended October 27, 2024.",
+    "Data center revenue grew 12% year over year.",
+    "The next earnings call is scheduled for February 26, 2027, at 5:00 PM PT.",
+    "Solana is a proof-of-stake network that processes transactions in parallel.",
+    "Gross margin was 74.6% in the latest reported quarter.",
+    "The company declared a quarterly dividend of $0.01 per share.",
+    "Diluted earnings per share were $0.78, up from $0.67 a year earlier.",
+    "The stock closed at $135.40 on November 20, 2026.",
+    "The company was valued at $80 billion in its last private funding round.",
+    "Roughly 1,300 validators secure the network and it handled about 4,000 TPS in public tests.",
+    "It is worth noting that the company reports in U.S. dollars.",
+    "Downside risks named in the annual report include a 25% tariff and export controls.",
+    "Management targets carbon neutrality across its offices by 2030.",
+    "Options markets show implied volatility near 45% ahead of the report.",
+    "Developers report that the model yields 30% faster inference on CUDA.",
+    "AT&T and Verizon are the two largest U.S. wireless carriers.",
+  ]) {
+    assert.deepEqual(leaksIn(sentence), [], `leak scanner must still allow: ${sentence}`);
+  }
+
+  for (const addAngleBracket of [
+    (brief) => { brief.name = "NVIDIA <b>Corporation</b>"; },
+    (brief) => { brief.public_summary = `${brief.public_summary} <em>`; },
+    (brief) => { brief.public_topics[0].title = "Public cloud <GPU> availability"; },
+    (brief) => { brief.public_topics[0].description = `${brief.public_topics[0].description} <br>`; },
+    (brief) => { brief.public_questions[0].prompt = `${brief.public_questions[0].prompt} <i>`; },
+    (brief) => { brief.public_context_links[0].title = "Public filings <a>"; },
+  ]) {
+    const marked = structuredClone(valid);
+    addAngleBracket(marked);
+    assert.ok(validateSchema(marked, schema).length > 0, "schema must refuse < and > in free text");
+  }
+
+  const hubSpec = readFileSync(path.join(ROOT, "docs", "specs", "finance-hub-contracts-v1.md"), "utf8");
+  for (const rule of [...MODEL_VIEW_PATTERNS, ...HTML_PATTERNS]) {
+    assert.ok(hubSpec.includes(`\`${rule.re.source}\``), `contracts doc must list the ${rule.name} pattern`);
   }
 });
 

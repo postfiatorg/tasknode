@@ -40,7 +40,8 @@
     "name": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 120
+      "maxLength": 120,
+      "pattern": "^[^<>]*$"
     },
     "asset_class": {
       "type": "string",
@@ -58,7 +59,8 @@
     "public_summary": {
       "type": "string",
       "minLength": 20,
-      "maxLength": 2000
+      "maxLength": 2000,
+      "pattern": "^[^<>]*$"
     },
     "area_tags": {
       "type": "array",
@@ -160,12 +162,14 @@
         "title": {
           "type": "string",
           "minLength": 3,
-          "maxLength": 140
+          "maxLength": 140,
+          "pattern": "^[^<>]*$"
         },
         "description": {
           "type": "string",
           "minLength": 10,
-          "maxLength": 600
+          "maxLength": 600,
+          "pattern": "^[^<>]*$"
         },
         "observable_by": {
           "type": "array",
@@ -195,7 +199,8 @@
         "prompt": {
           "type": "string",
           "minLength": 10,
-          "maxLength": 500
+          "maxLength": 500,
+          "pattern": "^[^<>]*$"
         },
         "phase": {
           "type": "string",
@@ -215,7 +220,8 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 120
+          "maxLength": 120,
+          "pattern": "^[^<>]*$"
         },
         "url": {
           "type": "string",
