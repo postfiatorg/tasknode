@@ -55,15 +55,22 @@ export function isL1Address(value = "") {
 // Sui-inspired minimum FastPay fee formula (Train A Contract Section 2.2):
 //   25 + ceil(weight_bytes / 512) * 1 + max(0, outputs - inputs) * 1000 + inputs * 1
 export function fastpayMinimumFeeAtoms({ weightBytes = 512, inputsConsumed = 1, outputsCreated = 2 } = {}) {
-  const w = BigInt(Math.max(1, Math.trunc(Number(weightBytes) || 1)));
-  const inputs = BigInt(Math.max(1, Math.trunc(Number(inputsConsumed) || 1)));
-  const outputs = BigInt(Math.max(0, Math.trunc(Number(outputsCreated) || 0)));
+  const maxU64 = (1n << 64n) - 1n;
+  const counts = [weightBytes, inputsConsumed, outputsCreated];
+  for (const count of counts) {
+    if ((typeof count !== "bigint" && !Number.isSafeInteger(count)) || count < 0 || count > maxU64) {
+      throw new RangeError("FastPay fee counts must be unsigned 64-bit integers");
+    }
+  }
+  const [w, inputs, outputs] = counts.map((count) => BigInt(count));
   const byteQuanta = (w + FASTPAY_FEE_BYTE_QUANTUM - 1n) / FASTPAY_FEE_BYTE_QUANTUM;
   const byteFee = byteQuanta * FASTPAY_FEE_PER_BYTE_QUANTUM_ATOMS;
   const netNewObjects = outputs > inputs ? outputs - inputs : 0n;
   const newObjectFee = netNewObjects * FASTPAY_FEE_PER_NEW_OBJECT_ATOMS;
   const inputFee = inputs * FASTPAY_FEE_PER_INPUT_ATOMS;
-  return FASTPAY_MIN_BASE_FEE_ATOMS + byteFee + newObjectFee + inputFee;
+  const total = FASTPAY_MIN_BASE_FEE_ATOMS + byteFee + newObjectFee + inputFee;
+  if (total > maxU64) throw new RangeError("FastPay minimum fee exceeds u64");
+  return total;
 }
 
 // Byte ports of Train A (postfiatl1v2 1d41d5bf4): fastpay_transfer_lock_preimage_v1
@@ -179,6 +186,7 @@ export function classifyRewardBadge({
   officialPayoutPubkeyHex = "",
   officialPayoutAccount = "",
 } = {}) {
+  if (!txSignerAccount || !officialPayoutPubkeyHex) return { badge: "Private message", verified: false, reason: "missing_reward_anchor_or_key" };
   const verified = verifyEnvelopeRaw(rawEnvelopeBytes, {
     expectedSenderAccount: txSignerAccount || "",
   });
@@ -659,9 +667,7 @@ export function createFastPayPayoutDriver({
         await store.completeObjectLease({
           objectId: persisted.objectId,
           payoutId: id,
-          changeObject: checked.changeObject || (BigInt(persisted.changeAtoms || 0n) > 0n
-            ? { objectId: `${persisted.orderHash.slice(0, 64)}:1`, valueAtoms: persisted.changeAtoms, nonce: persisted.nonce }
-            : null),
+          changeObject: checked.changeObject || null,
         });
         await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
         if (awaitPin && pinPromise) await pinPromise;
@@ -692,9 +698,7 @@ export function createFastPayPayoutDriver({
       await store.completeObjectLease({
         objectId: persisted.objectId,
         payoutId: id,
-        changeObject: submitted?.changeObject || (BigInt(persisted.changeAtoms || 0n) > 0n
-          ? { objectId: `${persisted.orderHash.slice(0, 64)}:1`, valueAtoms: persisted.changeAtoms, nonce: persisted.nonce }
-          : null),
+        changeObject: submitted?.changeObject || null,
       });
       await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
       if (awaitPin && pinPromise) await pinPromise;
@@ -746,7 +750,7 @@ export function createFastPayPayoutDriver({
           cid: persisted.cid,
           originalOrderHash: persisted.orderHash,
         });
-        if (fallbackRes?.validated !== true || !safeText(fallbackRes?.txHash, 128) || fallbackRes?.ok === false) {
+        if (fallbackRes?.validated !== true || !/^[0-9a-f]{96}$/i.test(fallbackRes?.txHash || "") || fallbackRes?.ok === false) {
           throw unverifiedError("consensus_fallback_not_validated");
         }
         const receipt = {
@@ -785,8 +789,8 @@ export function createFastPayPayoutDriver({
 
 // The reward path calls this before it writes a FastPay reward as paid.
 export function assertVerifiedFastPayReceipt(receipt = {}) {
-  const digestOk = /^[0-9a-f]{96}$/.test(safeText(receipt?.certificateDigest, 128));
-  const fallbackOk = receipt?.lane === "consensus_pft" && Boolean(safeText(receipt?.txHash, 128));
+  const digestOk = receipt?.lane === "fastpay" && /^[0-9a-f]{96}$/.test(receipt.certificateDigest || "") && /^[0-9a-f]{96}$/.test(receipt.orderHash || "");
+  const fallbackOk = receipt?.lane === "consensus_pft" && /^[0-9a-f]{96}$/i.test(receipt.txHash || "");
   if (receipt?.ok !== true || receipt?.verified !== true || !(digestOk || fallbackOk)) {
     const error = new Error("fastpay_receipt_not_verified");
     error.submissionAttempted = true;
@@ -834,7 +838,7 @@ export function normalizeUnifiedRewardHistoryRow(row = {}, { officialPayoutPubke
     row.lane === "fastpay" ||
     row.batch_kind === "fastpay" ||
     row.transaction_kind === "owned_transfer_v3" ||
-    Boolean(row.order_hash || row.orderHash);
+    (!row.lane && Boolean(row.order_hash || row.orderHash));
   const pointerVersion = row.pointerVersion || row.pointer_version || decodedPointer?.version || (isFastPay ? "v5" : "v4");
   const orderHash = safeText(row.order_hash || row.orderHash, 128);
   const txHash = safeText(row.tx_id || row.txHash || row.tx_hash || orderHash, 128);
@@ -850,19 +854,13 @@ export function normalizeUnifiedRewardHistoryRow(row = {}, { officialPayoutPubke
       officialPayoutAccount,
     });
   } else if (isFastPay && decodedPointer?.kind === CONTENT_KIND.REWARD) {
-    const fromAccount = safeText(row.from || row.senderAccount, 120).toLowerCase();
-    const pinnedAccount = safeText(officialPayoutAccount, 120).toLowerCase();
-    const verified = Boolean(pinnedAccount && fromAccount === pinnedAccount && decodedPointer.visibility === "private");
-    badge = {
-      badge: verified ? TASK_REWARD_BADGE_LABEL : "Private message",
-      verified,
-    };
+    badge = { badge: "Private message", verified: false };
   }
 
   const amountAtoms = row.amountAtoms ?? row.amount_atoms ?? row.amount ?? row.deliveredDrops ?? "0";
 
   return {
-    id: orderHash || txHash,
+    id: isFastPay ? orderHash || txHash : txHash,
     txHash,
     orderHash: orderHash || null,
     certificateDigest: safeText(row.certificate_digest || row.certificateDigest, 128) || null,

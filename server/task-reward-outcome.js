@@ -80,7 +80,7 @@ export function taskRewardOutcome({ offeredPft = null, task = {}, timeline = [] 
     completion: score.completion ?? null,
     evidenceQuality: score.evidence_quality ?? score.evidenceQuality ?? null,
     paymentCid: safeText(paymentEvent?.cid, 200),
-    paymentTxHash: safeText(paymentEvent?.txHash || paymentPayload.order_hash || paymentPayload.tx_hash, 200),
+    paymentTxHash: safeText(paymentEvent?.txHash || paymentPayload.tx_hash || paymentPayload.order_hash, 200),
     paymentOrderHash: safeText(paymentEvent?.orderHash || paymentPayload.order_hash || paymentPayload.fastpay?.order_hash, 200),
     paymentLane: safeText(
       paymentEvent?.lane || paymentPayload.payment_lane || paymentPayload.fastpay?.lane || (paymentPayload.order_hash ? "fastpay" : "legacy_pftl_v4"),

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { ml_kem768_x25519 } from "@noble/post-quantum/hybrid.js";
 import sodium from "libsodium-wrappers";
@@ -48,6 +48,8 @@ export const ADDRESS_DERIVATION_DOMAIN = "postfiat.address.v1";
 export const DOMAIN_ENVELOPE_SIGN = "postfiat-l1-v2/message-envelope/v1";
 export const DOMAIN_MESSAGE_AAD = "postfiat-l1-v2/message-aad/v1";
 export const DOMAIN_XWING_WRAP_INFO = "postfiat-l1-v2/xwing-wrap/v1";
+const CEK_COMMIT_PREFIX = Buffer.from("postfiat-l1-v2/cek-commit/v1\0", "ascii");
+const SEALED_TAG_PREFIX = Buffer.from("postfiat-l1-v2/sealed-recipient-tag/v1\0", "ascii");
 export const DOMAIN_MESSAGE_KEY_KDF = "postfiat-l1-v2/message-key/v1";
 export const DOMAIN_MESSAGE_KEY_BIND = "postfiat-l1-v2/message-key-bind/v1";
 
@@ -234,6 +236,7 @@ export function encodePointerV5({
 
 export function decodePointerV5(bufOrHex) {
   const raw = toBytes(bufOrHex);
+  if (raw.length > MAX_PAYMENT_MEMO_DATA_BYTES) throw new Error("pointer_v5_exceeds_256_bytes");
   const out = {
     version: "v5",
     cidBin: Buffer.alloc(0),
@@ -262,7 +265,7 @@ export function decodePointerV5(bufOrHex) {
     else if (fieldNum === 9) out.inlinePayload = Buffer.from(value);
     else if (fieldNum === 10) out.schemaName = value.toString("utf8");
   }
-  validatePointerFlags(out.flags);
+  if (!encodePointerV5(out).equals(raw)) throw new Error("noncanonical_pointer_v5");
   out.kindLabel = CONTENT_KIND_BY_VALUE[out.kind] || String(out.kind);
   out.cidBinHex = out.cidBin.toString("hex");
   if (out.cidBin.length === 36) out.cid = cidBinToMultibase(out.cidBin);
@@ -337,14 +340,23 @@ export function decodeAnyPointerMemo(memo = {}) {
   return null;
 }
 
+function chainHashBytes(value) {
+  if (value == null || value === "") return Buffer.alloc(0);
+  if (typeof value === "string" && !/^[0-9a-f]{96}$/i.test(value)) throw new Error("invalid_chain_hash");
+  if (typeof value !== "string" && !(value instanceof Uint8Array)) throw new Error("invalid_chain_hash");
+  const bytes = toBytes(value);
+  if (bytes.length && bytes.length !== 48) throw new Error("invalid_chain_hash");
+  return bytes;
+}
+
 export function encodeFastPayPaymentRef(ref = null) {
   if (!ref) return Buffer.alloc(0);
   return Buffer.concat([
     pbVarint(1, ref.lane || 0),
     pbString(2, ref.chainId || ref.chain_id || ""),
-    pbBytes(3, ref.orderHash || ref.order_hash),
-    pbBytes(4, ref.certificateDigest || ref.certificate_digest),
-    pbBytes(5, ref.txHash || ref.tx_hash),
+    pbBytes(3, chainHashBytes(ref.orderHash || ref.order_hash)),
+    pbBytes(4, chainHashBytes(ref.certificateDigest || ref.certificate_digest)),
+    pbBytes(5, chainHashBytes(ref.txHash || ref.tx_hash)),
     pbString(6, ref.assetId || ref.asset_id || ""),
     pbString(7, ref.payerAccount || ref.payer_account || ""),
     pbString(8, ref.payeeAccount || ref.payee_account || ""),
@@ -371,9 +383,9 @@ export function decodeFastPayPaymentRef(buf) {
   for (const { fieldNum, value } of decodeWireFields(buf)) {
     if (fieldNum === 1) out.lane = Number(value);
     else if (fieldNum === 2) out.chainId = value.toString("utf8");
-    else if (fieldNum === 3) out.orderHash = Buffer.from(value);
-    else if (fieldNum === 4) out.certificateDigest = Buffer.from(value);
-    else if (fieldNum === 5) out.txHash = Buffer.from(value);
+    else if (fieldNum === 3) out.orderHash = chainHashBytes(value);
+    else if (fieldNum === 4) out.certificateDigest = chainHashBytes(value);
+    else if (fieldNum === 5) out.txHash = chainHashBytes(value);
     else if (fieldNum === 6) out.assetId = value.toString("utf8");
     else if (fieldNum === 7) out.payerAccount = value.toString("utf8");
     else if (fieldNum === 8) out.payeeAccount = value.toString("utf8");
@@ -484,6 +496,7 @@ export function encodeXWingEncryptionHeader(header = {}) {
     pbVarint(4, header.chunkIndex ?? header.chunk_index ?? 0),
     pbString(5, header.kdfInfo || header.kdf_info || DOMAIN_XWING_WRAP_INFO),
     ...sorted.map((wrap) => pbMsg(6, encodeRecipientWrap(wrap))),
+    pbBytes(7, header.cekCommitment || header.cek_commitment),
   ]);
 }
 
@@ -495,6 +508,7 @@ export function decodeXWingEncryptionHeader(buf) {
     chunkIndex: 0,
     kdfInfo: "",
     recipients: [],
+    cekCommitment: Buffer.alloc(0),
   };
   for (const { fieldNum, value } of decodeWireFields(buf)) {
     if (fieldNum === 1) out.cipherSuite = Number(value);
@@ -503,6 +517,7 @@ export function decodeXWingEncryptionHeader(buf) {
     else if (fieldNum === 4) out.chunkIndex = Number(value);
     else if (fieldNum === 5) out.kdfInfo = value.toString("utf8");
     else if (fieldNum === 6) out.recipients.push(decodeRecipientWrap(value));
+    else if (fieldNum === 7) out.cekCommitment = Buffer.from(value);
   }
   return out;
 }
@@ -567,6 +582,7 @@ export function encodeEnvelope({
 
 export function decodeEnvelopeRaw(bufOrHex) {
   const raw = toBytes(bufOrHex);
+  if (raw.length > MAX_SINGLE_ENVELOPE_BYTES) throw new Error("envelope_too_large");
   const out = {
     version: 0,
     headerBytes: Buffer.alloc(0),
@@ -584,6 +600,7 @@ export function decodeEnvelopeRaw(bufOrHex) {
     else if (fieldNum === 5) out.signatureAlgorithm = Number(value);
     else if (fieldNum === 6) out.senderPubkey = Buffer.from(value);
     else if (fieldNum === 7) out.signature = Buffer.from(value);
+    else throw new Error("unknown_envelope_field");
   }
   return out;
 }
@@ -691,9 +708,10 @@ export function signEnvelopeMlDsa65({
 // Verifies CID / metadata_hash and ML-DSA-65 signature over exact raw bytes BEFORE decoding.
 export function verifyEnvelopeRaw(
   rawEnvelopeBytes,
-  { expectedCidBin = null, expectedMetadataHashSha3_384 = "", expectedSenderAccount = "", expectedSenderPubkeyHex = "" } = {}
+  { expectedCidBin = null, expectedMetadataHashSha3_384 = "", expectedChainId = "", expectedSenderAccount = "", expectedSenderPubkeyHex = "" } = {}
 ) {
   const raw = toBytes(rawEnvelopeBytes);
+  if (raw.length > MAX_SINGLE_ENVELOPE_BYTES) return { ok: false, reason: "envelope_too_large" };
   const cid = computeRawCidV1(raw);
   const metadataHashSha3_384 = sha3_384Bytes(raw).toString("hex");
   if (expectedCidBin && Buffer.compare(cid.cidBin, toBytes(expectedCidBin)) !== 0) {
@@ -735,7 +753,8 @@ export function verifyEnvelopeRaw(
     return { ok: false, reason: "invalid_ml_dsa_65_signature", derivedAccount, senderPubkeyHex, cid, metadataHashSha3_384 };
   }
   const header = decodeMessageHeader(envelope.headerBytes);
-  if (header.senderAccount && header.senderAccount !== derivedAccount) {
+  if (expectedChainId && expectedChainId !== header.chainId) return { ok: false, reason: "chain_id_mismatch" };
+  if (header.senderAccount !== derivedAccount) {
     return { ok: false, reason: "header_sender_account_mismatch", derivedAccount, senderPubkeyHex, header, cid, metadataHashSha3_384 };
   }
   return {
@@ -782,8 +801,10 @@ export async function encryptPrivateEnvelope({
   const wraps = [];
   for (const recipient of recipients) {
     const pub = toBytes(recipient.xwingPublicKey || recipient.publicKey);
-    const keyId = sha256Bytes(pub);
     const { cipherText, sharedSecret } = ml_kem768_x25519.encapsulate(pub);
+    const keyId = header.visibility === VISIBILITY.SEALED
+      ? sha256Bytes(Buffer.concat([SEALED_TAG_PREFIX, sharedSecret, aadContext]))
+      : sha256Bytes(pub);
     const kek = hkdfSha256({
       ikm: Buffer.from(sharedSecret),
       salt: aadContext,
@@ -810,6 +831,7 @@ export async function encryptPrivateEnvelope({
     chunkIndex: 0,
     kdfInfo: DOMAIN_XWING_WRAP_INFO,
     recipients: wraps,
+    cekCommitment: sha256Bytes(Buffer.concat([CEK_COMMIT_PREFIX, cek, aadContext])),
   });
 
   return signEnvelopeMlDsa65({
@@ -822,8 +844,8 @@ export async function encryptPrivateEnvelope({
   });
 }
 
-export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingSecretKey, recipientXWingPublicKey } = {}) {
-  const verified = verifyEnvelopeRaw(rawEnvelopeBytes);
+export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingSecretKey, recipientXWingPublicKey, expectedChainId, expectedSenderAccount, expectedCidBin } = {}) {
+  const verified = verifyEnvelopeRaw(rawEnvelopeBytes, { expectedChainId, expectedSenderAccount, expectedCidBin });
   if (!verified.ok) throw new Error(`envelope_verification_failed:${verified.reason}`);
   await sodium.ready;
   const encHeader = decodeXWingEncryptionHeader(verified.envelope.encryptionHeaderBytes);
@@ -836,9 +858,24 @@ export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingS
     throw new Error("envelope_aad_context_mismatch");
   }
   const targetKeyId = sha256Bytes(toBytes(recipientXWingPublicKey));
-  const wrap = encHeader.recipients.find((entry) => Buffer.compare(entry.recipientKeyId, targetKeyId) === 0);
+  const secretKey = toBytes(recipientXWingSecretKey);
+  let wrap = encHeader.recipients.find((entry) => entry.recipientKeyId.equals(targetKeyId));
+  let sharedSecret;
+  if (wrap) {
+    sharedSecret = ml_kem768_x25519.decapsulate(wrap.xwingCiphertext, secretKey);
+  } else if (verified.header.visibility === VISIBILITY.SEALED) {
+    for (const entry of encHeader.recipients) {
+      if (entry.recipientKeyId.length !== 32 || entry.xwingCiphertext.length !== 1120) continue;
+      const candidate = ml_kem768_x25519.decapsulate(entry.xwingCiphertext, secretKey);
+      const tag = sha256Bytes(Buffer.concat([SEALED_TAG_PREFIX, candidate, expectedAad]));
+      if (timingSafeEqual(tag, entry.recipientKeyId)) {
+        wrap = entry;
+        sharedSecret = candidate;
+        break;
+      }
+    }
+  }
   if (!wrap) throw new Error("envelope_recipient_wrap_not_found");
-  const sharedSecret = ml_kem768_x25519.decapsulate(wrap.xwingCiphertext, toBytes(recipientXWingSecretKey));
   const kek = hkdfSha256({
     ikm: Buffer.from(sharedSecret),
     salt: encHeader.aadContext,
@@ -848,6 +885,12 @@ export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingS
   const cek = Buffer.from(
     sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null, wrap.wrappedCek, encHeader.aadContext, wrap.wrapNonce, kek)
   );
+  if (encHeader.cekCommitment.length) {
+    const expected = sha256Bytes(Buffer.concat([CEK_COMMIT_PREFIX, cek, expectedAad]));
+    if (encHeader.cekCommitment.length !== expected.length || !timingSafeEqual(expected, encHeader.cekCommitment)) {
+      throw new Error("envelope_cek_commitment_mismatch");
+    }
+  }
   const plaintextBytes = Buffer.from(
     sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       null,

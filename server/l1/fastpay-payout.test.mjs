@@ -12,6 +12,8 @@ import {
   computeMessageAadContext,
   computeRawCidV1,
   decodeAnyPointerMemo,
+  decodeEnvelopeRaw,
+  decodeXWingEncryptionHeader,
   decodeLegacyPointerV4,
   decodePointerV5,
   decodeRewardNotice,
@@ -148,6 +150,11 @@ test("Contract C1 frozen hex vectors match byte-for-byte (V1, V2B, V3, V4, V5, V
 });
 
 test("Train A Sui-inspired FastPay minimum fee schedule matches worked examples", () => {
+  for (const [weightBytes, expected] of [[0, 25n], [511, 26n], [512, 26n], [513, 27n]]) {
+    assert.equal(fastpayMinimumFeeAtoms({ weightBytes, inputsConsumed: 0, outputsCreated: 0 }), expected);
+  }
+  assert.throws(() => fastpayMinimumFeeAtoms({ outputsCreated: 1n << 63n }), RangeError);
+  assert.throws(() => fastpayMinimumFeeAtoms({ inputsConsumed: Number.MAX_SAFE_INTEGER + 1 }), RangeError);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 420, inputsConsumed: 1, outputsCreated: 1 }), 27n);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 600, inputsConsumed: 1, outputsCreated: 2 }), 1_028n);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 8_192, inputsConsumed: 100, outputsCreated: 1 }), 141n);
@@ -225,6 +232,16 @@ test("Task reward badge payload encrypts with X-Wing, decrypts locally, and bloc
     signerPublicKey: officialSigner.publicKey,
     signerSecretKey: officialSigner.secretKey,
   });
+  const encryptionHeader = decodeXWingEncryptionHeader(decodeEnvelopeRaw(sealed.rawEnvelopeBytes).encryptionHeaderBytes);
+  assert.equal(encryptionHeader.cekCommitment.length, 32);
+  assert.equal(encryptionHeader.recipients[0].recipientAccount, "");
+  assert.notDeepEqual(encryptionHeader.recipients[0].recipientKeyId, recipientKem.keyId);
+  const openedSealed = await decryptPrivateEnvelope({
+    rawEnvelopeBytes: sealed.rawEnvelopeBytes,
+    recipientXWingSecretKey: recipientKem.secretKey,
+    recipientXWingPublicKey: recipientKem.publicKey,
+  });
+  assert.equal(openedSealed.plaintextBytes.toString(), "sealed-body");
   const sealedCheck = classifyRewardBadge({
     rawEnvelopeBytes: sealed.rawEnvelopeBytes,
     txSignerAccount: officialSigner.account,
@@ -517,6 +534,12 @@ test("Unified reward history & L1 history projection seamlessly read FastPay v5 
   assert.equal(history[0].orderHash, orderHash);
   assert.equal(history[0].badge, TASK_REWARD_BADGE_LABEL);
   assert.equal(history[0].badgeVerified, true);
+  const [pointerOnly] = readUnifiedRewardHistory({
+    fastpayRows: [projected.rows[0]],
+    officialPayoutAccount: officialSigner.account,
+  });
+  assert.equal(pointerOnly.badgeVerified, false);
+  assert.equal(pointerOnly.badge, "Private message");
   assert.equal(history[0].pointerVersion, "v5");
   assert.equal(history[0].amountPft, 42);
 
@@ -684,7 +707,7 @@ test("finding 2: the fallback is off by default and pays by consensus only after
       verifyFastPayLockCancellation,
       submitConsensusFallback: async (p) => {
         paid.push(p.amountAtoms);
-        return { txHash: "cc".repeat(32), validated: true };
+        return { txHash: "cc".repeat(48), validated: true };
       },
     };
     // First attempt: the submission times out and nothing is known; the order stays persisted.
@@ -902,4 +925,26 @@ test("fee pricing accounts for the 96-byte recovery.lock_id across 512-byte fee 
       `padLen=${padLen} finalLen=${finalLen} mod512=${finalLen % 512} fee=${chainOrder.fee} < min=${expectedMin}`
     );
   }
+});
+
+test("payment reference uses SHA3-384 for each present chain identifier", async () => {
+  const { encodeFastPayPaymentRef, decodeFastPayPaymentRef } = await import("./message-protocol.js");
+  for (const field of ["orderHash", "certificateDigest", "txHash"]) {
+    const bytes = Buffer.alloc(48, 21);
+    assert.deepEqual(decodeFastPayPaymentRef(encodeFastPayPaymentRef({ [field]: bytes }))[field], bytes);
+    assert.throws(() => encodeFastPayPaymentRef({ [field]: Buffer.alloc(32) }), /invalid_chain_hash/);
+  }
+  assert.deepEqual(encodeFastPayPaymentRef({}), Buffer.alloc(0));
+});
+
+test("v5 pointer decoding enforces the same canonical representation as encoding", () => {
+  const canonical = encodePointerV5({ flags: POINTER_FLAG.PUBLIC, target: POINTER_TARGET.INLINE, inlinePayload: Buffer.of(1) });
+  assert.deepEqual(encodePointerV5(decodePointerV5(canonical)), canonical);
+  assert.throws(() => decodePointerV5(Buffer.alloc(257)), /exceeds_256/);
+  assert.throws(() => decodePointerV5(Buffer.concat([canonical, Buffer.of(88, 1)])), /noncanonical/);
+});
+
+test("the outer envelope rejects unknown fields and enforces the raw byte ceiling", () => {
+  assert.throws(() => decodeEnvelopeRaw(Buffer.from("f00101", "hex")), /unknown_envelope_field/);
+  assert.throws(() => decodeEnvelopeRaw(Buffer.alloc(1_048_577)), /envelope_too_large/);
 });

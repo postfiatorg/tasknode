@@ -741,7 +741,7 @@ export async function processVerificationResponse(row, {
       });
       reward = {
         cid: fastpayReceipt.cid,
-        txHash: fastpayReceipt.orderHash || fastpayReceipt.txHash,
+        txHash: fastpayReceipt.lane === "consensus_pft" ? fastpayReceipt.txHash : fastpayReceipt.orderHash,
         orderHash: fastpayReceipt.orderHash,
         certificateDigest: fastpayReceipt.certificateDigest || "",
         lane: fastpayReceipt.lane,
