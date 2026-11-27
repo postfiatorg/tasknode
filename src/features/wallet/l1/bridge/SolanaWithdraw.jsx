@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
+import { answerExpiry, clocks, EXPIRED, expired as hasExpired, monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
-import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+import { changeSlot, checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 // Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
 function WalletBurns({ client, onTrack }) {
@@ -25,6 +25,11 @@ function WalletBurns({ client, onTrack }) {
 
 // Thrown by a Review or Confirm that a newer answer or operation superseded: it stops without a message.
 const OBSOLETE = Error("superseded");
+// Said when a Review or Confirm read twice and each read was superseded by a newer answer.
+const CHANGED = "Withdrawal availability changed while it was checked. Review the withdrawal again.";
+// A pending claim of the shared slot. Once a window is involved it names its operation, so a cleanup
+// can tell its own claim from one another tab made since; without a window it stays as before.
+const claimFor = named => (named ? `submitting:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}` : "submitting");
 
 export default function SolanaWithdraw({ client, storageKey }) {
   const [snapshot, setSnapshot] = useState(undefined), [error, setError] = useState("");
@@ -41,19 +46,35 @@ export default function SolanaWithdraw({ client, storageKey }) {
   order.current ??= readinessOrder();
   const request = useCallback((operation = false) => {
     const n = operation ? order.current.begin() : order.current.next();
-    let carries = false;
+    // expires: when this request's answer stops permitting a withdrawal, counted from when the
+    // request started (see answerExpiry); the window's display keeps its own arrival anchor.
+    const started = clocks();
+    let carries = false, expires = null;
     const may = () => order.current.apply(n, carries);
     // After every later await of Review and Confirm: still the newest operation, and no newer answer said closed.
     const still = () => order.current.current(n, carries);
     const onWindow = value => {
-      carries = Boolean(value.window);
+      carries = Boolean(value.window); expires = answerExpiry(value.window, started);
       if (order.current.apply(n, carries, value.open)) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
     };
     // The snapshot of this request, or its failure; the failure of an answer older than one already
     // applied stops the operation without a message.
     const read = () => withdrawalSnapshot(client, onWindow).catch(failure => { throw may() ? failure : OBSOLETE; });
-    return { n, may, still, onWindow, read, carries: () => carries };
+    return { n, may, still, onWindow, read, carries: () => carries, expires: () => expires };
   }, [client]);
+  // The operation's own snapshot. An answer older than one already applied is not written; when
+  // only a newer open answer superseded the read (no newer closed answer, no newer operation), the
+  // operation reads once more instead of stopping, and says so if that read is superseded too.
+  const operationRead = useCallback(async (use) => {
+    for (let attempt = 0; ; attempt++) {
+      const op = request(true); use(op);
+      let fresh = OBSOLETE;
+      try { fresh = await op.read(); } catch (failure) { if (failure !== OBSOLETE) throw failure; }
+      if (!op.still()) throw OBSOLETE;
+      if (fresh !== OBSOLETE && op.may()) return fresh;
+      if (attempt) throw Error(CHANGED);
+    }
+  }, [request]);
   const refresh = useCallback(async () => {
     const { may, onWindow } = request();
     try { const value = await withdrawalSnapshot(client, onWindow); if (may()) setSnapshot(value); }
@@ -88,10 +109,10 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function prepare(event) {
     event.preventDefault();
     setBusy(true); setReview(null); setError("");
-    const { n, may, still, read, carries } = request(true);
+    let op = null;
+    const still = () => !op || op.still();
     try {
-      const fresh = await read();
-      if (!may() || !still()) throw OBSOLETE;
+      const fresh = await operationRead(next => { op = next; });
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
@@ -99,59 +120,79 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const intent = withdrawalIntent(client, fresh, amount, recipient);
       const quote = await client.quote(intent);
       if (!still()) throw OBSOLETE;
-      setReview({ intent, quote, made: n, carries: carries() });
+      setReview({ intent, quote, made: op.n, carries: op.carries() });
     } catch (failure) { if (failure !== OBSOLETE && still()) setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
   }
 
+  const NOT_SAVED = "Your browser could not save the burn ID. Copy it before leaving to recover the payout.";
   function track(id, register) {
     setCreate(register); setBurn(id);
-    try { localStorage.setItem(storageKey, id); }
-    catch { setError("Your browser could not save the burn ID. Copy it before leaving to recover the payout."); }
+    changeSlot(storageKey, () => id, { manual: true }).catch(() => setError(NOT_SAVED));
+  }
+  // This operation's own burn (mine: the record it holds in the slot). It replaces only that record
+  // or an empty slot; a record another tab saved meanwhile is kept, and this burn ID is shown instead.
+  async function keep(id, mine) {
+    setCreate(true); setBurn(id);
+    try {
+      const current = await changeSlot(storageKey, current => (!current || current === mine || current === id ? id : undefined));
+      if (current && current !== mine && current !== id) setError(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${id}`);
+    } catch { setError(NOT_SAVED); }
   }
   async function confirm() {
     if (!review || submitting.current) return;
     submitting.current = true; setBusy(true); setError(""); setReview(null);
-    let submitted = false, marked = false;
-    const { may, still, read } = request(true);
+    // sent: the burn may have left this browser. mine: the record this operation holds in the slot.
+    let sent = false, expired = false, mine = "", op = null;
+    const still = () => !op || op.still();
     try {
-      const fresh = await read();
-      if (!may() || !still()) throw OBSOLETE;
+      const fresh = await operationRead(next => { op = next; });
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
+      // An answer already expired when it arrives permits nothing.
+      if (hasExpired(op.expires())) { expired = true; throw OBSOLETE; }
       await checkRecipient(recipient);
       if (!still()) throw OBSOLETE;
       const current = withdrawalIntent(client, fresh, amount, recipient);
       if (Object.keys(current.operation).some(field => current.operation[field] !== review.intent.operation[field])) {
         throw Error("The reserve changed. Review the updated withdrawal.");
       }
+      // Once a window is involved, the transport asks this operation once more, after its connection is
+      // established and just before the burn leaves; without one the burn counts as sent from here, as before.
+      const guarded = order.current.seen || op.carries();
       // Claim this account's slot across tabs before signing. Leave a marker until the receipt arrives.
-      const existing = await navigator.locks.request(storageKey, () => {
-        const prior = localStorage.getItem(storageKey);
-        if (!prior) localStorage.setItem(storageKey, "submitting");
-        return prior;
-      });
-      marked = !existing;
+      const claim = claimFor(guarded);
+      const existing = await changeSlot(storageKey, prior => (prior ? undefined : claim));
+      if (!existing) mine = claim;
       if (!still()) throw OBSOLETE;
       if (existing) { setBurn(existing); return; }
       const signed = await client.sign(review.intent, review.quote);
       if (!still()) throw OBSOLETE;  // signed, never sent
-      submitted = true;
-      const result = await submitBurn(client, signed, storageKey);
+      // Checked last before the bytes leave: the operation is current and its answer has not expired.
+      const guard = guarded ? () => (sent = still() && !(expired = hasExpired(op.expires()))) : undefined;
+      sent = !guard;
+      const result = await submitBurn(client, signed, storageKey, { mine: () => mine, onSaved: id => { mine = id; }, guard });
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");
-      track(result.txId, true);
+      await keep(result.txId, mine);
     } catch (failure) {
-      if (submitted && failure.code !== "l1_execution_rejected") {
-        if (isBurnId(failure.txId)) track(failure.txId, true); else setBurn("submitting");
+      if (sent && failure.code !== "l1_execution_rejected") {
+        if (isBurnId(failure.txId)) await keep(failure.txId, mine); else setBurn(mine || "submitting");
         setError(failure.message);
       } else {
-        if (marked) { try { localStorage.removeItem(storageKey); } catch { setBurn("submitting"); } }
-        if (failure !== OBSOLETE && still()) setError(`${failure.message} No PFUSDC was burned.`);
+        // Nothing was burned: stopped before the send, or the chain rejected the burn. Only this
+        // operation's own record is removed.
+        if (mine) { try { await changeSlot(storageKey, current => (current === mine ? null : undefined)); } catch { setBurn(mine); } }
+        // The outcome of a sent burn is always shown; before the send, a stop by a newer answer says nothing.
+        if (expired) setError(EXPIRED);
+        else if (sent || (failure !== OBSOLETE && failure.code !== "l1_not_dispatched" && still())) setError(`${failure.message} No PFUSDC was burned.`);
       }
     } finally { submitting.current = false; setBusy(false); }
   }
-  function reset() {
-    try { localStorage.removeItem(storageKey); }
+  async function reset() {
+    let current;
+    // Clears only the record this screen shows; one another tab saved since is kept and shown.
+    try { current = await changeSlot(storageKey, current => (current && current !== burn ? undefined : null), { manual: true }); }
     catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
+    if (current && current !== burn) { setCreate(false); setBurn(current); return; }
     setBurn(""); setCreate(false); setAmount(""); setRecovery(""); setError(""); setSnapshot(undefined);
   }
   const tick = useProvingWindowClock(provingWindow?.window, provingWindow?.received_at, burn ? undefined : refresh, provingWindow?.open === true, provingWindow);

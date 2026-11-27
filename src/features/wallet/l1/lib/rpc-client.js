@@ -23,10 +23,13 @@ export class RpcClient {
     });
     return this.connecting;
   }
-  async call(method, params = {}, timeoutMs = 60000) {
+  // guard (optional): asked once the connection is established, synchronously and as the last step
+  // before the request leaves; anything but true sends nothing and rejects with l1_not_dispatched.
+  async call(method, params = {}, timeoutMs = 60000, guard) {
     assertNoCustodyMaterial(params, 'L1 RPC');
     await this.connect();
     if (this.closed) throw new Error('L1 client closed');
+    if (guard && guard() !== true) throw Object.assign(new Error('L1 request not sent: its operation was cancelled'), { code: 'l1_not_dispatched' });
     const id = `tn-l1-${++this.counter}`;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('L1 RPC timed out; check receipt before resubmitting')); }, timeoutMs);
