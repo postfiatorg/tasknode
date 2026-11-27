@@ -46,6 +46,11 @@ export default defineConfig({
               test: /node_modules[\\/](?:@scure|@noble)[\\/]/,
               priority: 10,
             },
+            {
+              name: "signing-guard",
+              test: /shared[\\/](?:wallet-challenge-guard|nostr-signing-guard)\.js$/,
+              priority: 10,
+            },
           ],
         },
       },

@@ -107,6 +107,42 @@ export function canResolveTaskAccountingHarvest({ session = null, profile = {}, 
   );
 }
 
+export async function hiveGovernanceFounderAccess(session = null, { env = process.env } = {}) {
+  if (!session?.accountId) {
+    return { ok: false, status: 401, error: "hive_governance_login_required", message: "Sign in before managing governance sessions." };
+  }
+  const profile = await getAccountIdentityProfile({ accountId: session.accountId }) || {};
+  const allowedAccounts = new Set([
+    ...normalizedList(env.TASKNODE_GOVERNANCE_FOUNDER_ACCOUNT_IDS || ""),
+    ...normalizedList(env.TASKNODE_HIVE_BRAIN_OPERATOR_ACCOUNT_IDS || ""),
+  ]);
+  const accountId = String(session.accountId || "").trim().toLowerCase();
+  if (allowedAccounts.has(accountId)) {
+    return { ok: true, profile };
+  }
+  const allowedHandles = new Set([
+    ...normalizedList(env.TASKNODE_GOVERNANCE_FOUNDER_HANDLES || "goodalexander"),
+    ...normalizedList(env.TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES || ""),
+  ]);
+  const handleCandidates = [
+    profile.hiveHandle,
+    profile.handle,
+    profile.publicDisplayName,
+    profile.displayName,
+    session.hiveHandle,
+    session.displayName,
+  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
+  if (handleCandidates.some((handle) => allowedHandles.has(handle))) {
+    return { ok: true, profile };
+  }
+  return {
+    ok: false,
+    status: 403,
+    error: "hive_governance_founder_required",
+    message: "Only the configured founder governance authority can trigger or finalize governance sessions.",
+  };
+}
+
 export async function taskAccountingCheckoutPermissions({ getLinkedWallet, session = null } = {}) {
   const linkedWallet = await linkedWalletForSession({ getLinkedWallet, session });
   const walletAddress = safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120);

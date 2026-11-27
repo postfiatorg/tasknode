@@ -20,7 +20,7 @@ const {
 const { getLinkedWallet, linkWalletToAccount } = await import("../server/repositories/account-wallets.js");
 const { createAccountSession, getSession } = await import("../server/repositories/auth-sessions.js");
 const { walletLinkStart, walletLinkVerify } = await import("../server/product-contracts.js");
-const { generateTaskNodeMnemonic, signWalletChallenge } = await import("../src/wallet-core.js");
+const { deriveWalletSummary, generateTaskNodeMnemonic, signWalletChallenge } = await import("../src/wallet-core.js");
 
 const suffix = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const accountIds = [];
@@ -120,10 +120,10 @@ try {
   //    session to it.
   const prove = async (session, mnemonic) => {
     const start = await walletLinkStart("POST", session.session);
-    const proof = signWalletChallenge(mnemonic, start.body.challenge.message);
+    const proof = signWalletChallenge(mnemonic, start.body.challenge.message, { purpose: "wallet_proof" });
     return walletLinkVerify({ challengeId: start.body.challenge.id, address: proof.address, publicKey: proof.publicKey, signature: proof.signature }, "POST", session.session);
   };
-  const addressOf = (mnemonic) => signWalletChallenge(mnemonic, "address").address;
+  const addressOf = (mnemonic) => deriveWalletSummary(mnemonic).address;
   const orphanMnemonic = generateTaskNodeMnemonic();
   const orphanId = `acct_oauth_orphan_${suffix}`;
   const orphanAt = new Date().toISOString();

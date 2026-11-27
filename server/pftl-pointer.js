@@ -24,6 +24,9 @@ export const CONTENT_KIND = Object.freeze({
   ASSET: 9,
   DOCUMENT: 10,
   SYSTEM: 11,
+  GOVERNANCE: 12,
+  NFT: 13,
+  X402: 14,
   TEST: 99,
 });
 

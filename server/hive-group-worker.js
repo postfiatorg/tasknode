@@ -1,8 +1,8 @@
 import { query, databaseEnabled } from "./db/pool.js";
 import { inferenceConfigured } from "./inference.js";
 import { DETERMINISTIC_BOARD_IDS } from "./board-config.js";
-import { createHiveGroupEvent, hiveMentions } from "../shared/hive-group.js";
-import { ensureHiveGroupChannel, hiveBotPrivateKey, hiveGroupMembers, recordHiveGroupEvent, markHiveGroupDelivered,
+import { createHiveGroupEvent, hiveMentions, HIVE_CHANNEL_KINDS } from "../shared/hive-group.js";
+import { ensureHiveGroupChannel, listHiveGroupChannels, hiveBotPrivateKey, hiveGroupMembers, recordHiveGroupEvent, markHiveGroupDelivered,
   claimHiveGroupBot, finishHiveGroupBot, listHiveGroupMessages, listHiveGroupEscalations } from "./repositories/hive-group.js";
 import { publishHiveEvent, fetchHiveRelayEvents } from "./hive-group-relay.js";
 import { decideHiveGroupParticipation, composeHiveGroupReply } from "./hive-group-provider.js";
@@ -52,7 +52,7 @@ export async function runHiveGroupBotOnce({ channel, members, env = process.env,
       const response = await (deps.reply || composeHiveGroupReply)({ context,decision,env });
       replyModel = response.model;
       event = createHiveGroupEvent({ privateKey:hiveBotPrivateKey(env),rootId:channel.root_event.id,relay:channel.relays[0],content:response.text,
-        replyTo:decision.source_event_id,mentions:hiveMentions(response.text,members).map(mention=>mention.member.pubkey) });
+        replyTo:decision.source_event_id,mentions:hiveMentions(response.text,members).map(mention=>mention.member.pubkey),signingContext:{ source:"server_bot",userInitiated:false } });
     }
     const result = await finishHiveGroupBot({ claim,through,decision,decisionModel:classified.model,replyModel,event,member });
     return { processed:true,...result };
@@ -62,35 +62,57 @@ export async function runHiveGroupBotOnce({ channel, members, env = process.env,
   }
 }
 
+export function relaySyncSinceForChannel(channel, latestDeliveredUnixSec = 0) {
+  const rootCreated = Number(channel?.root_event?.created_at || 0);
+  if (channel?.channel_kind === HIVE_CHANNEL_KINDS.GOVERNANCE) {
+    // Pillar 1: widen governance session relay sync back to session-open time so brief outages never drop messages.
+    const openedSec = channel.opened_at ? Math.floor(Date.parse(channel.opened_at) / 1000) : rootCreated;
+    return Math.max(0, Math.min(rootCreated || openedSec, openedSec || rootCreated));
+  }
+  return Math.max(rootCreated, Number(latestDeliveredUnixSec || 0) - 600);
+}
+
+async function syncSingleHiveChannel({ channel, members, publish, fetchEvents }) {
+  if (!channel.published_at) {
+    await publish(channel.root_event, channel.relays);
+    await publish(channel.metadata_event, channel.relays);
+    await query("UPDATE hive_group_channels SET published_at=now() WHERE id=$1", [channel.id]);
+  }
+  const pending = await query("SELECT * FROM hive_group_messages WHERE channel_id=$1 AND delivery_state='pending' AND next_publish_at<=now() ORDER BY created_at LIMIT 20", [channel.id]);
+  await Promise.all(pending.rows.map(row => deliverHiveGroupMessage(row, channel, { publish })));
+  const recent = Number((await query("SELECT COALESCE(max((event_json->>'created_at')::bigint),0) AS latest FROM hive_group_messages WHERE channel_id=$1 AND delivery_state='delivered'", [channel.id])).rows[0].latest);
+  const since = relaySyncSinceForChannel(channel, recent);
+  const received = await fetchEvents({ rootId: channel.root_event.id, relays: channel.relays, since });
+  for (const { event, relay } of received) {
+    const member = members.find(entry => entry.pubkey === event?.pubkey);
+    if (!member) continue;
+    try { await recordHiveGroupEvent({ event, channel, member, relay, actor: member.bot ? "board" : "member" }); }
+    catch (error) { if (!error.status) throw error; }
+  }
+  return received.length;
+}
+
 export async function runHiveGroupWorkerOnce({ env = process.env, deps = {}, waitForBot = true } = {}) {
   const channel = await ensureHiveGroupChannel(env);
   const publish = deps.publish || publishHiveEvent;
-  if (!channel.published_at) {
-    await publish(channel.root_event,channel.relays);
-    await publish(channel.metadata_event,channel.relays);
-    await query("UPDATE hive_group_channels SET published_at=now() WHERE id=$1", [channel.id]);
-  }
+  const fetchEvents = deps.fetchEvents || fetchHiveRelayEvents;
   const members = await hiveGroupMembers();
-  const pending = await query("SELECT * FROM hive_group_messages WHERE channel_id=$1 AND delivery_state='pending' AND next_publish_at<=now() ORDER BY created_at LIMIT 20", [channel.id]);
-  await Promise.all(pending.rows.map(row=>deliverHiveGroupMessage(row,channel,{publish})));
-  const recent = Number((await query("SELECT COALESCE(max((event_json->>'created_at')::bigint),0) AS latest FROM hive_group_messages WHERE channel_id=$1 AND delivery_state='delivered'",[channel.id])).rows[0].latest);
-  const received = await (deps.fetchEvents || fetchHiveRelayEvents)({ rootId:channel.root_event.id,relays:channel.relays,since:Math.max(channel.root_event.created_at,recent-600) });
-  for (const { event,relay } of received) {
-    const member = members.find(member=>member.pubkey===event?.pubkey);
-    if (!member) continue;
-    try { await recordHiveGroupEvent({ event,channel,member,relay,actor:member.bot ? "board" : "member" }); }
-    catch (error) { if (!error.status) throw error; }
+  let imported = await syncSingleHiveChannel({ channel, members, publish, fetchEvents });
+  const extraChannels = (await listHiveGroupChannels({ includeArchived: false }))
+    .filter((item) => item.id !== channel.id && item.status === "active");
+  for (const extra of extraChannels) {
+    imported += await syncSingleHiveChannel({ channel: extra, members, publish, fetchEvents });
   }
-  let bot = { processed:false };
+  let bot = { processed: false };
   if (inferenceConfigured(env) || deps.decide) {
-    if (waitForBot) bot = await runHiveGroupBotOnce({channel,members,env,deps});
+    if (waitForBot) bot = await runHiveGroupBotOnce({ channel, members, env, deps });
     else if (!botRunning) {
-      botRunning = runHiveGroupBotOnce({channel,members,env,deps})
-        .catch(() => console.error("hive_group_bot_failed", { code:"participation_failed" }))
+      botRunning = runHiveGroupBotOnce({ channel, members, env, deps })
+        .catch(() => console.error("hive_group_bot_failed", { code: "participation_failed" }))
         .finally(() => { botRunning = null; });
     }
   }
-  return { ok:true,imported:received.length,bot };
+  return { ok: true, imported, bot };
 }
 
 export function startHiveGroupWorker() {

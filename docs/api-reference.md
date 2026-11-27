@@ -177,10 +177,13 @@ resource membership, or other context beyond a generic identity class.
 | `hive_reports` | `/api/hive/reports/…` | `GET` | `session` | — | — |
 | `hive_bm_feed` | `/api/hive/bm-feed` | `GET` | `none` | — | — |
 | `hive_context` | `/api/hive/context` | `GET` `POST` | `handler` | strict JSON ≤ 8388608 bytes | — |
+| `hive_group_channels` | `/api/hive/group/channels` | `GET` | `optional` | — | — |
 | `hive_group` | `/api/hive/group` | `GET` | `optional` | — | — |
 | `hive_group_status` | `/api/hive/group/status` | `GET` | `session` | — | — |
 | `hive_group_messages` | `/api/hive/group/messages` | `POST` | `session` | strict JSON ≤ 65536 bytes | 60 / 60s |
 | `hive_group_read` | `/api/hive/group/read` | `POST` | `session` | strict JSON ≤ 4096 bytes | — |
+| `hive_governance_sessions` | `/api/hive/governance/sessions` | `GET` `POST` | `handler` | POST: strict JSON ≤ 524288 bytes | 30 / 600s |
+| `hive_governance_session_actions` | `/api/hive/governance/sessions//…` | `GET` `POST` | `handler` | POST: strict JSON ≤ 524288 bytes | 60 / 600s |
 | `hive_chat` | `/api/hive/chat` | `GET` `POST` `PATCH` | `session` | POST: strict JSON ≤ 8388608 bytes<br>PATCH: strict JSON ≤ 1024 bytes | — |
 | `profile_daily_airdrop` | `/api/profile/daily-airdrop` | `GET` | `session` | — | — |
 | `profile_expert_evaluate` | `/api/profile/expert/evaluate` | `POST` | `session` | strict JSON ≤ 8192 bytes | 3 / 600s |
@@ -242,4 +245,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **216 route policies** and **8 authentication modes**.
+Total: **219 route policies** and **8 authentication modes**.

@@ -1,10 +1,50 @@
-import { finalizeEvent, getEventHash, verifyEvent } from "nostr-tools/pure";
-import { isHexLength, isAsciiLetter, isAsciiDigit } from "./text-protocol.js";
+import { getEventHash, verifyEvent } from "nostr-tools/pure";
+import {
+  isAsciiDigit,
+  isAsciiLetter,
+  isHexLength,
+  replaceCharacterRuns,
+  trimCharacters,
+} from "./text-protocol.js";
+import { signGuardedNostrEvent } from "./nostr-signing-guard.js";
 
 export const HIVE_GROUP_ID = "tasknode-hive-v1";
 export const HIVE_BOARD_HANDLE = "hive-board";
 export const HIVE_MESSAGE_MAX = 8000;
+export const HIVE_CHANNEL_KINDS = Object.freeze({
+  GENERAL: "general",
+  GOVERNANCE: "governance",
+});
+const isLowerAlnum = (char) => (char >= "a" && char <= "z") || isAsciiDigit(char);
+const isChannelChar = (char) => isLowerAlnum(char) || "._-".includes(char);
 const handleCharacter = (char) => isAsciiLetter(char) || isAsciiDigit(char) || "._-".includes(char);
+
+export function isValidHiveChannelId(channelId = "") {
+  const value = String(channelId || "").trim();
+  if (value.length < 2 || value.length > 64) return false;
+  if (!isLowerAlnum(value[0])) return false;
+  for (const char of value) {
+    if (!isChannelChar(char)) return false;
+  }
+  return true;
+}
+
+export function normalizeHiveChannelId(channelId = "") {
+  const normalized = String(channelId || "").trim().toLowerCase();
+  if (!normalized) return HIVE_GROUP_ID;
+  if (!isValidHiveChannelId(normalized)) {
+    throw Object.assign(new Error("hive_group_channel_invalid"), { status: 400 });
+  }
+  return normalized;
+}
+
+export function governanceChannelId(sessionId = "") {
+  const lowered = String(sessionId || "").trim().toLowerCase();
+  const replaced = replaceCharacterRuns(lowered, (char) => !isChannelChar(char), "-");
+  const cleaned = trimCharacters(replaced, "-._").slice(0, 56);
+  if (!cleaned) throw Object.assign(new Error("governance_session_id_invalid"), { status: 400 });
+  return `gov-${cleaned}`;
+}
 
 // Mechanical mention syntax only; decisions about conversation intent are model-based.
 export function hiveMentions(content, members = []) {
@@ -22,7 +62,16 @@ export function hiveMentions(content, members = []) {
   return matches;
 }
 
-export function createHiveGroupEvent({ privateKey, rootId, relay = "", content, replyTo = "", mentions = [], now = Date.now() }) {
+export function createHiveGroupEvent({
+  privateKey,
+  rootId,
+  relay = "",
+  content,
+  replyTo = "",
+  mentions = [],
+  now = Date.now(),
+  signingContext = {},
+}) {
   if (typeof content !== "string" || !content.trim() || content.length > HIVE_MESSAGE_MAX || !isHexLength(rootId, 64)) throw new Error("hive_group_message_invalid");
   if (replyTo && !isHexLength(replyTo, 64)) throw new Error("hive_group_reply_invalid");
   const tags = [["e", rootId, relay, "root"]];
@@ -31,7 +80,22 @@ export function createHiveGroupEvent({ privateKey, rootId, relay = "", content, 
     if (!isHexLength(pubkey, 64)) throw new Error("hive_group_mention_invalid");
     tags.push(["p", pubkey]);
   }
-  return finalizeEvent({ kind: 1, created_at: Math.floor(now / 1000), content: content.trim(), tags }, privateKey);
+  const { event } = signGuardedNostrEvent({
+    eventTemplate: {
+      kind: 1,
+      created_at: Math.floor(now / 1000),
+      content: content.trim(),
+      tags,
+    },
+    privateKey,
+    now,
+    context: {
+      source: "hive_ui",
+      userInitiated: true,
+      ...signingContext,
+    },
+  });
+  return event;
 }
 
 export function validateHiveGroupEvent(event, { rootId, authorPubkey = "", now = Date.now() } = {}) {

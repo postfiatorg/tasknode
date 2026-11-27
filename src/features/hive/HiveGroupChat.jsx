@@ -156,7 +156,8 @@ function HiveGroupRoom({ accountId, walletSecret, onWalletUnlock, onOpenMessages
       const previous = pendingEvent.current;
       const reusable = previous && previous.content === content.trim() && previous.pubkey === self.pubkey && previous.tags.some(tag => tag[0] === "e" && tag[1] === rootId && tag[3] === "root");
       const signed = (reusable ? previous : null) || createHiveGroupEvent({ privateKey: identity.privateKey, rootId,
-        relay: data.channel.relays[0], content, replyTo: replyTo?.id || "", mentions: hiveMentions(content, members).map(item => item.member.pubkey) });
+        relay: data.channel.relays[0], content, replyTo: replyTo?.id || "", mentions: hiveMentions(content, members).map(item => item.member.pubkey),
+        signingContext: { source: "hive_ui", userInitiated: true, origin: globalThis.location?.origin || "" } });
       pendingEvent.current = signed;
       try { sessionStorage.setItem(`hive.pending.${accountId}`, JSON.stringify(signed)); } catch { /* Same-id retry remains available in memory. */ }
       const result = await post("/api/hive/group/messages", { event: signed });
