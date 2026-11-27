@@ -70,13 +70,13 @@ Every gated request checks `accountMeetsTier("finance_hub")` returning `{ ok, ba
 ### Endpoint & Authentication Contract
 - **Endpoint:** `POST /api/research/publish`
 - **Content-Type:** `application/json`
-- **Quota & Size Limits:** `total_bytes <= 67,108,864` (64 MiB), `files.length <= 5,000`, safe relative POSIX paths only (no leading `/`, no `..`, no `\`, no NUL bytes, no hidden dotfiles).
+- **Quota & Size Limits:** `total_bytes <= 67,108,864` (64 MiB), `files.length <= 5,000`, safe relative POSIX paths only (no leading `/`, no `..`, no `\`, no NUL bytes, no hidden dotfiles: no path part may be empty or start with `.`).
 - **2-Key Rotation Per Index:** Task Node stores up to two active verification keys (`primary` and `next`) per `index_id`, addressed by `signature.key_id`. A key scoped to `goodbrief` MUST NOT be accepted for `ga-models` or `finance-hub-public`.
 
 ### Canonical Signing Input (`canonical-json-v1`)
-1. Construct the **signing envelope** from the request payload by removing `signature` and removing `files[i].content_base64` (file contents are already cryptographically bound by each entry's `files[i].sha256` and the top-level `manifest_sha256`).
-2. Compute `manifest_sha256 = sha256(canonical_json(files_sorted_by_path_without_content_base64))` as lowercase hex.
-3. Compute `payload_sha256 = sha256(canonical_json(signing_envelope))` as lowercase hex where `canonical_json` recursively sorts all object keys lexicographically (UTF-16 code unit order) with no whitespace and omits `undefined`.
+1. Construct the **signing envelope** from the request payload by removing `signature`, removing `files[i].content_base64` (file contents are already cryptographically bound by each entry's `files[i].sha256` and the top-level `manifest_sha256`), and sorting `files` by `path` in byte order (defined below). A request MAY list `files` in any order; the signed form is always the sorted one.
+2. Compute `manifest_sha256 = sha256(canonical_json(signing_envelope.files))` as lowercase hex and set `signing_envelope.manifest_sha256` to it.
+3. Compute `payload_sha256 = sha256(canonical_json(signing_envelope))` as lowercase hex.
 4. Compute the signing message bytes:
    ```text
    postfiat.finance-hub.publish.v1\n<index_id>\n<version>\n<nonce>\n<payload_sha256>
@@ -85,12 +85,32 @@ Every gated request checks `accountMeetsTier("finance_hub")` returning `{ ok, ba
    - `ed25519`: standard Ed25519 signature over the UTF-8 message bytes, encoded as base64url (or standard base64) in `signature.value`.
    - `hmac-sha256`: HMAC-SHA256 over the UTF-8 message bytes using the per-index shared key identified by `signature.key_id`, encoded as lowercase hex (64 chars) or base64, verified strictly with constant-time comparison (`timingSafeEqual`).
 
+`canonical_json(value)` is the UTF-8 byte sequence (no byte order mark, no trailing newline) built by exactly these rules:
+- **Byte order:** two strings are compared by their UTF-8 encodings as unsigned bytes, from the first byte on; when one is a prefix of the other, the shorter one comes first. A locale or language collation (`localeCompare`, ICU) MUST NOT be used. The `files` list (step 1) and the keys of every object use this order.
+- **Objects and arrays:** an object is `{`, its members in byte order of their keys, each written `<key>:<value>` and separated by `,`, then `}`; a member without a value (JavaScript `undefined`) is left out. An array is `[`, its elements in the given order separated by `,`, then `]`. No whitespace is written outside strings.
+- **Strings:** written between two `"`. `"` becomes `\"` and `\` becomes `\\`; U+0008, U+0009, U+000A, U+000C and U+000D become `\b`, `\t`, `\n`, `\f` and `\r`; every other code point below U+0020 becomes `\u00XX` with two lowercase hex digits. Every other code point, including `/`, U+007F and every non-ASCII character, is written as itself in UTF-8, never as a `\u` escape and never normalized. A string with an unpaired surrogate MUST be rejected.
+- **Numbers:** integers from `0` to `9007199254740991` (`2^53 - 1`) only, written in base 10 with no sign, leading zero, fraction or exponent. Any other number MUST be rejected; the schema caps `version` and `rollback_target_version` at this maximum. `<version>` in step 4 is written the same way.
+- **Literals:** `true`, `false` and `null`.
+- **Known-answer vector:** `scripts/fixtures/finance-hub-publish-signing-vector.json` holds one payload with a non-ASCII path (outside the v1 path pattern on purpose, to pin the byte order), title and summary, its two canonical byte sequences as hex, its `manifest_sha256`, its `payload_sha256` and its signing message. Every signer and verifier, in any language, MUST reproduce these values; the verification suite recomputes them.
+
 ### Replay Protection & Monotonic Rollback Rules
 1. **Strict Monotonic Version:** For a given `index_id`, `version` MUST be strictly greater than the highest previously accepted version (`version > current_version`). Equal or lower versions MUST be rejected (`409 version_not_monotonic`).
 2. **Timestamp Freshness:** `issued_at` MUST be within `±300` seconds of server UTC time; `expires_at` MUST satisfy `issued_at < expires_at <= issued_at + 600s` and `now <= expires_at`.
 3. **Single-Use Nonce:** `nonce` (`24..128` URL-safe characters) MUST be persisted in a replay-protection table keyed by `(index_id, nonce)` for at least `900` seconds (`max_clock_skew + max_ttl`). Any duplicate nonce MUST be rejected (`409 nonce_replayed`).
 4. **Signed Monotonic Rollback:** Rollbacks NEVER decrement `version`. Instead, `operation = "rollback"` publishes a **new monotonically higher `version`** with `rollback_target_version < version` and `rollback_of_manifest_sha256` matching a retained historical manifest hash for that `index_id`. Historical bundle files remain content-addressed so rollbacks restore atomically without weakening replay protection.
 5. **Render Gate & Shrink Guard:** `render_gate.passed = true` and `render_gate.shrink_guard_passed = true` are mandatory on every publish; `render_gate.file_count` MUST equal `files.length`.
+
+### Verifier Rejection Rules
+A verifier MUST reject a request, and store nothing from it, when any of the following holds:
+1. **Schema:** the payload does not validate against `publish_payload.v1.schema.json`.
+2. **Key:** no stored key exists for `(index_id, signature.key_id)`, or `signature.algorithm` differs from the algorithm stored with that key. The algorithm is a property of the stored key and is never taken from the request.
+3. **Digests:** the recomputed `manifest_sha256` differs from the payload's `manifest_sha256`, or the recomputed `payload_sha256` differs from `signature.payload_sha256`.
+4. **Signature:** the signature over the signing message bytes does not verify.
+5. **File List:** two `files` entries have the same `path`, or the sum of `files[i].size_bytes` differs from `total_bytes`.
+6. **File Content:** for an entry that carries `content_base64`, the base64-decoded bytes are not exactly `size_bytes` long, or their SHA-256 differs from `files[i].sha256`.
+7. **Replay, Rollback & Render Gate:** any rule of the section above fails.
+
+The nonce is stored only after the signature has verified, and the nonce and the new `version` are written in one transaction.
 
 ---
 

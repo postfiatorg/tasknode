@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA_DIR = path.join(ROOT, "schemas", "finance-hub");
@@ -13,13 +14,19 @@ const sha256Hex = (value) => createHash("sha256").update(value).digest("hex");
 const computeLeaderboardScore = ({ networkTasks = 0, personalTasks = 0, rewards = 0, alignment = 0 } = {}) =>
   Number((networkTasks * 3 + personalTasks * 1 + rewards / 25000 + alignment * 1).toFixed(6));
 
+const compareUtf8Bytes = (a, b) => Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+
+// canonical-json-v1 as defined in docs/specs/finance-hub-contracts-v1.md, "Canonical Signing Input".
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().filter((k) => value[k] !== undefined)
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(",")}}`;
+    return `{${Object.keys(value).filter((k) => value[k] !== undefined).sort(compareUtf8Bytes)
+      .map((k) => `${canonicalJson(k)}:${canonicalJson(value[k])}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  if (typeof value === "string" && value.isWellFormed()) return JSON.stringify(value);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return String(value);
+  if (typeof value === "boolean" || value === null) return String(value);
+  throw new TypeError("canonical-json-v1 cannot encode this value");
 }
 
 function resolveRef(rootSchema, ref) {
@@ -48,10 +55,10 @@ function validateSchema(value, schema, rootSchema = schema, pointer = "$") {
       return [`${pointer}: expected type ${allowed.join("|")}, got ${actual}`];
     }
   }
-  if (Object.hasOwn(schema, "const") && canonicalJson(value) !== canonicalJson(schema.const)) {
+  if (Object.hasOwn(schema, "const") && !isDeepStrictEqual(value, schema.const)) {
     errors.push(`${pointer}: expected const ${JSON.stringify(schema.const)}, got ${JSON.stringify(value)}`);
   }
-  if (Array.isArray(schema.enum) && !schema.enum.some((entry) => canonicalJson(value) === canonicalJson(entry))) {
+  if (Array.isArray(schema.enum) && !schema.enum.some((entry) => isDeepStrictEqual(value, entry))) {
     errors.push(`${pointer}: value ${JSON.stringify(value)} not in enum`);
   }
   if (typeof value === "string") {
@@ -71,13 +78,8 @@ function validateSchema(value, schema, rootSchema = schema, pointer = "$") {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${pointer}: too few items`);
     if (schema.maxItems !== undefined && value.length > schema.maxItems) errors.push(`${pointer}: too many items`);
-    if (schema.uniqueItems) {
-      const seen = new Set();
-      for (const item of value) {
-        const key = canonicalJson(item);
-        if (seen.has(key)) errors.push(`${pointer}: duplicate item`);
-        seen.add(key);
-      }
+    if (schema.uniqueItems && value.some((item, i) => value.findIndex((other) => isDeepStrictEqual(other, item)) !== i)) {
+      errors.push(`${pointer}: duplicate item`);
     }
     if (schema.items) value.forEach((item, i) => errors.push(...validateSchema(item, schema.items, rootSchema, `${pointer}[${i}]`)));
   }
@@ -146,13 +148,15 @@ function scanForPublicLeaks(value, pointer = "$") {
 function buildPublishSigningMessage(payload) {
   const normalizedFiles = [...payload.files]
     .map(({ content_base64: _ignored, ...rest }) => rest)
-    .sort((a, b) => a.path.localeCompare(b.path));
-  const manifestSha256 = sha256Hex(canonicalJson(normalizedFiles));
+    .sort((a, b) => compareUtf8Bytes(a.path, b.path));
+  const canonicalFiles = canonicalJson(normalizedFiles);
+  const manifestSha256 = sha256Hex(canonicalFiles);
   const envelopeWithoutSig = { ...payload, manifest_sha256: manifestSha256, files: normalizedFiles };
   delete envelopeWithoutSig.signature;
-  const payloadSha256 = sha256Hex(canonicalJson(envelopeWithoutSig));
+  const canonicalEnvelope = canonicalJson(envelopeWithoutSig);
+  const payloadSha256 = sha256Hex(canonicalEnvelope);
   const message = ["postfiat.finance-hub.publish.v1", payload.index_id, String(payload.version), payload.nonce, payloadSha256].join("\n");
-  return { manifestSha256, payloadSha256, message };
+  return { canonicalFiles, canonicalEnvelope, manifestSha256, payloadSha256, message };
 }
 
 function signPublishPayload(unsignedPayload, { algorithm, keyId, privateKey, hmacSecret }) {
@@ -196,6 +200,15 @@ function verifyPublishPayload(payload, { keyRing, currentVersion, seenNonces, no
     const expected = Buffer.from(createHmac("sha256", keyEntry.hmacSecret).update(message, "utf8").digest("hex"), "utf8");
     const actual = Buffer.from(payload.signature.value, "utf8");
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return { ok: false, error: "signature_invalid" };
+  }
+
+  if (new Set(payload.files.map((file) => file.path)).size !== payload.files.length) return { ok: false, error: "duplicate_file_path" };
+  if (payload.files.reduce((sum, file) => sum + file.size_bytes, 0) !== payload.total_bytes) return { ok: false, error: "total_bytes_mismatch" };
+  for (const file of payload.files) {
+    if (file.content_base64 === undefined) continue;
+    const content = Buffer.from(file.content_base64, "base64");
+    if (content.length !== file.size_bytes) return { ok: false, error: "file_size_mismatch" };
+    if (sha256Hex(content) !== file.sha256) return { ok: false, error: "file_hash_mismatch" };
   }
 
   seenNonces.add(nonceKey);
@@ -500,11 +513,68 @@ test("publish_payload.v1 verifies Ed25519 & HMAC signatures, replay protection, 
   traversalAttempt.files[0].path = "../etc/passwd";
   assert.ok(validateSchema(traversalAttempt, schema).length > 0);
 
+  for (const refusedPath of ["hub/.htaccess", ".env", "a//b.json", "a/./b.json", "models/"]) {
+    const attempt = structuredClone(gaSigned);
+    attempt.files[0].path = refusedPath;
+    assert.ok(validateSchema(attempt, schema).length > 0, `schema must refuse path ${refusedPath}`);
+  }
+  for (const allowedPath of ["hub/coverage_manifest.json", "models/NVDA/outputs.v2.json", "assets/_shared/app-main.js"]) {
+    const attempt = structuredClone(gaSigned);
+    attempt.files[0].path = allowedPath;
+    assert.deepEqual(validateSchema(attempt, schema), [], `schema must allow path ${allowedPath}`);
+  }
+
+  const unsafeVersion = { ...structuredClone(gaSigned), version: Number.MAX_SAFE_INTEGER + 1 };
+  assert.ok(validateSchema(unsafeVersion, schema).length > 0);
+
   const expiredSigned = signPublishPayload({
     ...baseUnsigned, version: 44, nonce: "nonce_ga_models_expired_v44_123456",
     issued_at: "2026-11-27T01:00:00Z", expires_at: "2026-11-27T01:05:00Z",
   }, { algorithm: "ed25519", keyId: "ga-models-ed25519-k1", privateKey: edKeys.privateKey });
   assert.equal(verifyPublishPayload(expiredSigned, { keyRing, currentVersion: 43, seenNonces, nowMs }).error, "issued_at_out_of_window");
+
+  const gaSigner = { algorithm: "ed25519", keyId: "ga-models-ed25519-k1", privateKey: edKeys.privateKey };
+  const contentSigned = signPublishPayload({ ...baseUnsigned, version: 45, nonce: "nonce_ga_models_content_v45_123456" }, gaSigner);
+  const swappedContent = structuredClone(contentSigned);
+  swappedContent.files[0].content_base64 = Buffer.alloc(indexHtml.length, "x").toString("base64");
+  assert.equal(verifyPublishPayload(swappedContent, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "file_hash_mismatch");
+  const resizedContent = structuredClone(contentSigned);
+  resizedContent.files[0].content_base64 = Buffer.from("<script>alert(1)</script>", "utf8").toString("base64");
+  assert.equal(verifyPublishPayload(resizedContent, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "file_size_mismatch");
+
+  const wrongTotalSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_total_v45_12345678", total_bytes: indexHtml.length + 1,
+  }, gaSigner);
+  assert.equal(verifyPublishPayload(wrongTotalSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "total_bytes_mismatch");
+
+  const duplicatePathSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_duplicate_v45_1234", total_bytes: indexHtml.length * 2,
+    files: [baseUnsigned.files[0], baseUnsigned.files[0]], render_gate: { ...baseUnsigned.render_gate, file_count: 2 },
+  }, gaSigner);
+  assert.equal(verifyPublishPayload(duplicatePathSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "duplicate_file_path");
+
+  const wrongAlgorithmSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_algorithm_v45_1234",
+  }, { algorithm: "hmac-sha256", keyId: "ga-models-ed25519-k1", hmacSecret });
+  assert.equal(verifyPublishPayload(wrongAlgorithmSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "unknown_or_mismatched_key");
+});
+
+test("canonical-json-v1 reproduces the known-answer vector and refuses values it cannot encode", () => {
+  const vector = JSON.parse(readFileSync(path.join(ROOT, "scripts", "fixtures", "finance-hub-publish-signing-vector.json"), "utf8"));
+  const signing = buildPublishSigningMessage(vector.payload);
+  assert.equal(signing.manifestSha256, vector.manifest_sha256);
+  assert.equal(signing.payloadSha256, vector.payload_sha256);
+  assert.equal(signing.message, vector.signing_message);
+  assert.equal(Buffer.from(signing.canonicalFiles, "utf8").toString("hex"), vector.canonical_files_hex);
+  assert.equal(Buffer.from(signing.canonicalEnvelope, "utf8").toString("hex"), vector.canonical_envelope_hex);
+
+  const reordered = { ...vector.payload, files: [...vector.payload.files].reverse() };
+  assert.equal(buildPublishSigningMessage(reordered).payloadSha256, vector.payload_sha256);
+
+  assert.equal(canonicalJson({ b: null, a: [true, 0] }), '{"a":[true,0],"b":null}');
+  for (const unencodable of [1.5, -1, Number.MAX_SAFE_INTEGER + 1, "\ud800", undefined]) {
+    assert.throws(() => canonicalJson([unencodable]), TypeError);
+  }
 });
 
 test("top30_snapshot.v1 enforces leaderboard formula, tie-breaks, non-validator seats, rank-35 hysteresis, and 7d grace", () => {
