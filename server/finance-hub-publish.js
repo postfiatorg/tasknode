@@ -484,7 +484,7 @@ export function createPostgresPublishStore() {
                 manifestSha256,
                 viewerUrl: `/api/research/bundles/${payload.index_id}/index.html`,
               },
-            });
+            }, { client });
 
             if (payload.operation === "publish" && decodedFiles) {
               for (const file of decodedFiles) {
