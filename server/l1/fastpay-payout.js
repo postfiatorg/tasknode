@@ -37,9 +37,9 @@ export function isFastPayPayoutsEnabled(env = process.env) {
   return truthyEnv(env?.TASKNODE_FASTPAY_PAYOUTS_ENABLED);
 }
 
+// Off unless switched on: paying by another lane is safe only after a proved cancel.
 export function isFastPayConsensusFallbackEnabled(env = process.env) {
-  if (env?.TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED === undefined) return true;
-  return truthyEnv(env.TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED);
+  return truthyEnv(env?.TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED);
 }
 
 export function isL1Address(value = "") {
@@ -211,6 +211,7 @@ export class InMemoryFastPayPayoutStore {
       this.pool.set(obj.objectId, {
         objectId: obj.objectId,
         valueAtoms: BigInt(obj.valueAtoms),
+        version: Number(obj.version || 0),
         nonce: Number(obj.nonce || 0),
         leasedBy: null,
       });
@@ -250,6 +251,7 @@ export class InMemoryFastPayPayoutStore {
       this.pool.set(changeObject.objectId, {
         objectId: changeObject.objectId,
         valueAtoms: BigInt(changeObject.valueAtoms),
+        version: Number(changeObject.version || 0),
         nonce: Number(changeObject.nonce || 0),
         leasedBy: null,
       });
@@ -264,6 +266,7 @@ export class InMemoryFastPayPayoutStore {
         this.pool.set(replaceObject.objectId, {
           objectId: replaceObject.objectId,
           valueAtoms: BigInt(replaceObject.valueAtoms),
+          version: Number(replaceObject.version || 0),
           nonce: Number(replaceObject.nonce || 0),
           leasedBy: null,
         });
@@ -277,8 +280,8 @@ export class InMemoryFastPayPayoutStore {
 // Crash-safe FastPay payout driver (Pillar 2 Section 3):
 // 1. Persists (payout_id, object_id, order_hash, signed_order_bytes) BEFORE validator submission.
 // 2. Retries ALWAYS query / resubmit the EXACT persisted order_hash (zero equivocation, zero double-pay).
-// 3. Falls back to consensus payment_v2 ONLY after confirming FastPay order was never certified and
-//    cleanly recovering/releasing the leased object.
+// 3. Falls back to consensus payment_v2 only when switched on and only after the FastPay lock is
+//    proved cancelled; the leased object returns to the pool at its post-cancel version.
 // 4. Async IPFS pinning runs in parallel so IPFS I/O never stalls FastPay finality.
 export function createFastPayPayoutDriver({
   chainId = "postfiat-wan-devnet-2",
@@ -287,6 +290,7 @@ export function createFastPayPayoutDriver({
   submitFastPayOrder,
   queryFastPayOrder,
   verifyFastPayCertificate = null,
+  verifyFastPayLockCancellation = null,
   submitConsensusFallback = null,
   pinEnvelope = null,
   env = process.env,
@@ -327,6 +331,26 @@ export function createFastPayPayoutDriver({
     return { ok: true, certificateDigest: digest };
   }
 
+  // The lock is cancelled only on a cancelled fence or a recovery certificate for
+  // this lock id that the injected verifier accepts, returning the leased object
+  // at a later version. One "never certified" answer proves nothing.
+  async function provenLockCancellation(res, persisted) {
+    const cancellation = res?.cancellation;
+    const lockId = safeText(persisted.lockId, 128).toLowerCase();
+    if (!cancellation || !/^[0-9a-f]{96}$/.test(lockId)) return null;
+    if (!["cancelled_fence", "recovery_certificate"].includes(cancellation.kind)) return null;
+    if (safeText(cancellation.lockId || cancellation.lock_id, 128).toLowerCase() !== lockId) return null;
+    const recovered = cancellation.recoveredObject || cancellation.recovered_object;
+    if (!recovered || recovered.objectId !== persisted.objectId) return null;
+    if (!(Number(recovered.version) > Number(persisted.objectVersion || 0))) return null;
+    if (typeof verifyFastPayLockCancellation !== "function") return null;
+    const verdict = await Promise.resolve()
+      .then(() => verifyFastPayLockCancellation({ lockId, orderHash: persisted.orderHash, cancellation }))
+      .catch(() => false);
+    if (verdict !== true && verdict?.ok !== true) return null;
+    return { kind: cancellation.kind, recoveredObject: { ...recovered, version: Number(recovered.version) } };
+  }
+
   function unverifiedError(reason) {
     const error = new Error(`fastpay_unverified_result:${reason}`);
     error.submissionAttempted = true;
@@ -362,6 +386,11 @@ export function createFastPayPayoutDriver({
 
     // Step 0: Idempotent check on durable store.
     const existing = await store.getPayout(id);
+    if (existing?.status === "fallback_unknown") {
+      const error = new Error("fastpay_fallback_outcome_unknown");
+      error.submissionAttempted = true;
+      throw error;
+    }
     if (existing?.status === "confirmed") {
       return {
         ...existing.receipt,
@@ -457,6 +486,7 @@ export function createFastPayPayoutDriver({
         lane: "fastpay",
         status: "order_persisted",
         objectId: leased.objectId,
+        objectVersion: Number(leased.version || 0),
         changeAtoms: finalChangeAtoms.toString(),
         nonce: order.nonce,
         orderHash,
@@ -549,18 +579,18 @@ export function createFastPayPayoutDriver({
         return { ...receipt, idempotentReplay: false, recoveredFromChain: true };
       }
 
-      // Only fall back to consensus payment_v2 when explicitly confirmed never_certified!
-      if (
-        statusCheck?.certified === false &&
-        statusCheck?.reason === "never_certified" &&
-        isFastPayConsensusFallbackEnabled(env) &&
-        typeof submitConsensusFallback === "function"
-      ) {
+      // Pay by consensus only after the FastPay lock is proved cancelled; the
+      // object returns to the pool only at its post-cancel version.
+      const cancelled = isFastPayConsensusFallbackEnabled(env) && typeof submitConsensusFallback === "function"
+        ? await provenLockCancellation(statusCheck, persisted)
+        : null;
+      if (cancelled) {
         await store.releaseObjectLease({
           objectId: persisted.objectId,
           payoutId: id,
-          replaceObject: statusCheck.recoveredObject || null,
+          replaceObject: cancelled.recoveredObject,
         });
+        await store.savePayout(id, { ...persisted, lane: "consensus_pft", status: "fallback_unknown", cancellation: cancelled.kind });
         const fallbackRes = await submitConsensusFallback({
           payoutId: id,
           taskId: persisted.taskId,
@@ -570,8 +600,12 @@ export function createFastPayPayoutDriver({
           cid: persisted.cid,
           originalOrderHash: persisted.orderHash,
         });
+        if (fallbackRes?.validated !== true || !safeText(fallbackRes?.txHash, 128) || fallbackRes?.ok === false) {
+          throw unverifiedError("consensus_fallback_not_validated");
+        }
         const receipt = {
           ok: true,
+          verified: true,
           lane: "consensus_pft",
           txHash: fallbackRes.txHash,
           orderHash: persisted.orderHash,
@@ -585,6 +619,7 @@ export function createFastPayPayoutDriver({
           recipientAccount: persisted.recipientAccount,
           senderAccount: persisted.senderAccount,
           fallbackFromFastPay: true,
+          fastpayLockCancellation: cancelled.kind,
         };
         await store.savePayout(id, { ...persisted, lane: "consensus_pft", status: "confirmed", receipt });
         if (awaitPin && pinPromise) await pinPromise;

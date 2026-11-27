@@ -362,45 +362,37 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
   assert.equal(submitCountA, 1);
   assert.equal(fallbackCountA, 0);
 
-  // Scenario B: FastPay confirmed never_certified -> releases object & falls back cleanly to payment_v2, idempotent on retry
+  // Scenario B: one "never certified" answer is not a proof the lock is cancelled (review finding 2):
+  // nothing is paid by consensus and the leased object stays out of the pool.
   const storeB = new InMemoryFastPayPayoutStore([{ objectId: "obj_b", valueAtoms: 200_000_000n, nonce: 2 }]);
   let fallbackCountB = 0;
   const driverB = createFastPayPayoutDriver({
     store: storeB,
     payoutSigner,
-    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true" },
+    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true", TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "true" },
     submitFastPayOrder: async () => {
       throw new Error("fastpay_quorum_unreachable");
     },
     queryFastPayOrder: async () => ({ confirmed: false, certified: false, reason: "never_certified" }),
     submitConsensusFallback: async ({ cid }) => {
       fallbackCountB += 1;
-      return { txHash: "b".repeat(96), feeAtoms: "25", cid };
+      return { txHash: "b".repeat(96), feeAtoms: "25", cid, validated: true };
     },
   });
 
-  const fallbackRes = await driverB.executePayout({
-    payoutId: "task-fallback-001",
-    recipientAccount: recipient.account,
-    recipientXWingPublicKey: recipientKem.publicKey,
-    amountAtoms: 10_000_000n,
-  });
-  assert.equal(fallbackRes.lane, "consensus_pft");
-  assert.equal(fallbackRes.fallbackFromFastPay, true);
-  assert.equal(fallbackRes.badge, TASK_REWARD_BADGE_LABEL);
-  assert.equal(fallbackCountB, 1);
-  // Leased object was released cleanly!
-  assert.equal(storeB.pool.get("obj_b").leasedBy, null);
-
-  // Retrying after consensus fallback is idempotent (zero double-pay!)
-  const replayB = await driverB.executePayout({
-    payoutId: "task-fallback-001",
-    recipientAccount: recipient.account,
-    recipientXWingPublicKey: recipientKem.publicKey,
-    amountAtoms: 10_000_000n,
-  });
-  assert.equal(replayB.idempotentReplay, true);
-  assert.equal(fallbackCountB, 1);
+  await assert.rejects(
+    () =>
+      driverB.executePayout({
+        payoutId: "task-fallback-001",
+        recipientAccount: recipient.account,
+        recipientXWingPublicKey: recipientKem.publicKey,
+        amountAtoms: 10_000_000n,
+      }),
+    /fastpay_quorum_unreachable/
+  );
+  assert.equal(fallbackCountB, 0);
+  assert.equal(storeB.getPayout("task-fallback-001").status, "submit_unknown");
+  assert.equal(storeB.pool.get("obj_b").leasedBy, "task-fallback-001");
 });
 
 test("Unified reward history & L1 history projection seamlessly read FastPay v5 and legacy v4 rewards", async () => {
@@ -634,4 +626,94 @@ test("finding 3: a refusal, an answer without a certificate, or a bare confirmed
   assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "" }), /fastpay_receipt_not_verified/);
   assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "c".repeat(96) }), /fastpay_receipt_not_verified/);
   assert.doesNotThrow(() => fp.assertVerifiedFastPayReceipt(good.result));
+});
+
+// Review of PR 450, finding 2: the consensus fallback is off by default and pays only after a proved cancel.
+test("finding 2: the fallback is off by default and pays by consensus only after the FastPay lock is proved cancelled", async () => {
+  const fp = await import("./fastpay-payout.js");
+  assert.equal(fp.isFastPayConsensusFallbackEnabled({}), false);
+  assert.equal(fp.isFastPayConsensusFallbackEnabled({ TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "1" }), true);
+
+  const signer = generateMlDsa65Keypair(seed32("f2-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f2-recipient"));
+  const kem = generateXWingKeypair(seed32("f2-kem"));
+  const OBJ = "aa".repeat(32);
+  const base = {
+    payoutId: "task_f2",
+    taskId: "task_f2",
+    recipientAccount: recip.account,
+    recipientPubkeyHex: recip.publicKeyHex,
+    recipientXWingPublicKey: kem.publicKey,
+    amountAtoms: "12000000",
+  };
+  const timeout = async () => {
+    throw new Error("timeout");
+  };
+
+  async function scenario({ env, answer, verifyFastPayLockCancellation = async () => true }) {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: OBJ, valueAtoms: 100_000_000n, version: 3, nonce: 0 }]);
+    const paid = [];
+    const hooks = {
+      store,
+      payoutSigner: signer,
+      env,
+      submitFastPayOrder: timeout,
+      verifyFastPayCertificate: async () => false,
+      verifyFastPayLockCancellation,
+      submitConsensusFallback: async (p) => {
+        paid.push(p.amountAtoms);
+        return { txHash: "cc".repeat(32), validated: true };
+      },
+    };
+    // First attempt: the submission times out and nothing is known; the order stays persisted.
+    await assert.rejects(() => fp.createFastPayPayoutDriver({ ...hooks, queryFastPayOrder: async () => null }).executePayout(base));
+    const record = store.getPayout("task_f2");
+    const lockId = record.lockId || "ab".repeat(48);
+    if (!record.lockId) store.savePayout("task_f2", { ...record, lockId, objectVersion: 3 });
+    const driver = fp.createFastPayPayoutDriver({ ...hooks, queryFastPayOrder: async () => answer(lockId) });
+    let result = null;
+    let error = null;
+    try {
+      result = await driver.executePayout(base);
+    } catch (caught) {
+      error = caught;
+    }
+    return { store, paid, result, error, lockId };
+  }
+
+  const on = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1", TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "1" };
+  const neverCertified = () => ({ certified: false, reason: "never_certified" });
+
+  // S2 of the review: one "never certified" answer is not a proof; nothing is paid and the object stays leased.
+  const s2 = await scenario({ env: on, answer: neverCertified });
+  assert.equal(s2.paid.length, 0);
+  assert.ok(s2.error);
+  assert.equal(s2.store.getPayout("task_f2").status, "submit_unknown");
+  assert.equal(s2.store.leaseObject({ payoutId: "task_next", minAtoms: 1n }), null);
+
+  // With the fallback switch unset, even a proved cancel pays nothing by another lane.
+  const cancelled = (lockId, version = 4, kind = "cancelled_fence") => ({
+    certified: false,
+    reason: "never_certified",
+    cancellation: { kind, lockId, recoveredObject: { objectId: OBJ, version, valueAtoms: "100000000" } },
+  });
+  const defaultOff = await scenario({ env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" }, answer: (l) => cancelled(l) });
+  assert.equal(defaultOff.paid.length, 0);
+
+  // A cancel for another lock, at the same version, or not accepted by the verifier is not a proof.
+  assert.equal((await scenario({ env: on, answer: () => cancelled("cd".repeat(48)) })).paid.length, 0);
+  assert.equal((await scenario({ env: on, answer: (l) => cancelled(l, 3) })).paid.length, 0);
+  assert.equal((await scenario({ env: on, answer: (l) => cancelled(l), verifyFastPayLockCancellation: async () => false })).paid.length, 0);
+
+  // A proved cancel (fence or recovery certificate): one payment, and the object returns at its post-cancel version.
+  for (const kind of ["cancelled_fence", "recovery_certificate"]) {
+    const proved = await scenario({ env: on, answer: (l) => cancelled(l, 4, kind) });
+    assert.equal(proved.error, null);
+    assert.deepEqual(proved.paid, ["12000000"]);
+    assert.equal(proved.result.lane, "consensus_pft");
+    assert.equal(proved.result.verified, true);
+    const back = proved.store.pool.get(OBJ);
+    assert.equal(back.leasedBy, null);
+    assert.equal(back.version, 4);
+  }
 });
