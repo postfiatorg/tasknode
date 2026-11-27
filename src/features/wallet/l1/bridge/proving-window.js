@@ -72,6 +72,15 @@ export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
   return nowMs < open ? open - nowMs : close - nowMs;
 }
 
+// The monotonic time at which an answer that arrived at `at` stops permitting a withdrawal: the
+// window's next boundary or the freshness limit, whichever is first; never without a window.
+export function answerExpiry(window, at) {
+  const boundary = msUntilBoundary(window);
+  return boundary === null || !Number.isFinite(at) ? Infinity : at + Math.min(boundary, STALE_MS);
+}
+// Said when a burn's readiness answer expired before the burn left; nothing was sent.
+export const EXPIRED = "The withdrawal's availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again.";
+
 // kind: "deposit" or "withdrawal"; open: the route reports ready; unknown: the last read failed;
 // nowMs: the server's time now; ageMs: how old the answer is. Empty when no window is set.
 export function provingWindowText(window, { kind, open, unknown = false, timeZone, nowMs, ageMs = 0 } = {}) {

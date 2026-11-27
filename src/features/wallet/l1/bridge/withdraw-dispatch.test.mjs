@@ -267,6 +267,31 @@ test("EthereumWithdraw: Confirm after the closing reads readiness again instead 
   });
 });
 
+// R451-01: the answer a burn rests on expires (the closing at 19:00, or ten minutes old) while it
+// is signed or while its connection is re-established, and the closing refresh is still pending.
+const EXPIRED = /availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again/;
+for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
+  for (const [during, clock, wait] of [["signing", hours(18, 59, 30), 40_000], ["a six-second connection wait", hours(18, 59, 58), 6_000], ["signing past the ten-minute limit", hours(17, 30), 600_000]]) {
+    test(`${name}: an answer that expires during ${during} sends nothing and asks for a fresh Review`, async () => {
+      await tab(name, { answer: { ...READY, proving_window: clock } }, async (t) => {
+        await reviewed(t);
+        t.ctl.hold = "sign"; const work = t.confirm(); await settle();
+        const sign = t.ctl.release;
+        if (during.includes("connection")) { t.ctl.connect = later(); sign(); await settle(); }
+        t.ctl.answer = { ...CLOSED, proving_window: hours(19, 0, 1) }; t.ctl.hold = "readiness";
+        await t.time.advance(wait); await settle();
+        assert.equal(t.mempool(), 0);
+        if (t.ctl.connect) { const connect = t.ctl.connect; t.ctl.connect = null; connect.finish(); } else sign();
+        await work; await settle();
+        assert.equal(t.mempool(), 0, "nothing is sent");
+        assert.equal(t.slot.has("fixture") || t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false, "nothing is marked submitted");
+        assert.match(t.text(), EXPIRED);
+        assert.doesNotMatch(t.text(), /Check your burn|Starting withdrawal|tracking/);
+      });
+    });
+  }
+}
+
 // Without a window in any answer, a whole Review and Confirm makes the same requests, sends the
 // same bytes, writes the same storage and shows the same thing as b24a7c1.
 for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {

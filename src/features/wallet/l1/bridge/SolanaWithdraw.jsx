@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
+import { answerExpiry, EXPIRED, monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
@@ -46,18 +46,19 @@ export default function SolanaWithdraw({ client, storageKey }) {
   order.current ??= readinessOrder();
   const request = useCallback((operation = false) => {
     const n = operation ? order.current.begin() : order.current.next();
-    let carries = false;
+    // expires: when this request's answer stops permitting a withdrawal (see answerExpiry).
+    let carries = false, expires = Infinity;
     const may = () => order.current.apply(n, carries);
     // After every later await of Review and Confirm: still the newest operation, and no newer answer said closed.
     const still = () => order.current.current(n, carries);
     const onWindow = value => {
-      carries = Boolean(value.window);
+      carries = Boolean(value.window); expires = answerExpiry(value.window, monotonicNow());
       if (order.current.apply(n, carries, value.open)) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
     };
     // The snapshot of this request, or its failure; the failure of an answer older than one already
     // applied stops the operation without a message.
     const read = () => withdrawalSnapshot(client, onWindow).catch(failure => { throw may() ? failure : OBSOLETE; });
-    return { n, may, still, onWindow, read, carries: () => carries };
+    return { n, may, still, onWindow, read, carries: () => carries, expires: () => expires };
   }, [client]);
   // The operation's own snapshot. An answer older than one already applied is not written; when
   // only a newer open answer superseded the read (no newer closed answer, no newer operation), the
@@ -140,7 +141,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     if (!review || submitting.current) return;
     submitting.current = true; setBusy(true); setError(""); setReview(null);
     // sent: the burn may have left this browser. mine: the record this operation holds in the slot.
-    let sent = false, mine = "", op = null;
+    let sent = false, expired = false, mine = "", op = null;
     const still = () => !op || op.still();
     try {
       const fresh = await operationRead(next => { op = next; });
@@ -167,7 +168,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
       if (existing) { setBurn(existing); return; }
       const signed = await client.sign(review.intent, review.quote);
       if (!still()) throw OBSOLETE;  // signed, never sent
-      const guard = guarded ? () => (sent = still()) : undefined;
+      // Checked last before the bytes leave: the operation is current and its answer has not expired.
+      const guard = guarded ? () => (sent = still() && !(expired = monotonicNow() >= op.expires())) : undefined;
       sent = !guard;
       const result = await submitBurn(client, signed, storageKey, { mine: () => mine, onSaved: id => { mine = id; }, guard });
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");
@@ -181,7 +183,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
         // operation's own record is removed.
         if (mine) { try { if (localStorage.getItem(storageKey) === mine) localStorage.removeItem(storageKey); } catch { setBurn(mine); } }
         // The outcome of a sent burn is always shown; before the send, a stop by a newer answer says nothing.
-        if (sent || (failure !== OBSOLETE && failure.code !== "l1_not_dispatched" && still())) setError(`${failure.message} No PFUSDC was burned.`);
+        if (expired) setError(EXPIRED);
+        else if (sent || (failure !== OBSOLETE && failure.code !== "l1_not_dispatched" && still())) setError(`${failure.message} No PFUSDC was burned.`);
       }
     } finally { submitting.current = false; setBusy(false); }
   }

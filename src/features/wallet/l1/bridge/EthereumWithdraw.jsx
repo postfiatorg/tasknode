@@ -4,7 +4,7 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { monotonicNow, msUntilBoundary, readinessAnswer, readinessOrder, readinessRefusal, STALE_MS, windowTextAt } from "./proving-window.js";
+import { answerExpiry, EXPIRED, monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
@@ -12,14 +12,6 @@ import { plainError } from "../format.js";
 const OBSOLETE = Error("superseded");
 // Said when a Review or Confirm read twice and each read was superseded by a newer answer.
 const CHANGED = "Withdrawal availability changed while it was checked. Review the withdrawal again.";
-// Whether a Review's answer, advanced by the time since it arrived, has passed the window's next
-// boundary or gone stale: Confirm then reads readiness again instead of trusting it.
-function outdated(approved) {
-  const boundary = msUntilBoundary(approved.window);
-  if (boundary === null || !Number.isFinite(approved.at)) return false;
-  const age = monotonicNow() - approved.at;
-  return age >= boundary || age >= STALE_MS;
-}
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
 const STAGES = { queued: "Waiting to start", reading: "Reading your burn from the network", catching_up: "Bringing the Ethereum checker up to date", proving: "Building the withdrawal proof", paying: "Sending USDC on Ethereum", paid: "USDC paid", failed: "Stopped" };
@@ -135,10 +127,11 @@ export default function EthereumWithdraw({ client }) {
     // Once a window is involved, the transport asks this operation once more, after its connection is
     // established and just before the burn leaves; without one the burn counts as sent from here, as before.
     const guarded = order.current.seen || op.carries;
-    let sent = false;
+    // expires: when the answer this burn rests on stops permitting it (see answerExpiry).
+    let sent = false, expired = false, expires = answerExpiry(approved.window, approved.at);
     try {
       // The Review's answer is not trusted past the window's next boundary or once stale: read again.
-      if (guarded && outdated(approved)) {
+      if (guarded && monotonicNow() >= expires) {
         const fresh = await operationRead(op);
         if (!still()) return;
         if (fresh === OBSOLETE) throw new Error(CHANGED);
@@ -148,17 +141,19 @@ export default function EthereumWithdraw({ client }) {
             || operation.destination_ref !== `${fresh.destination_prefix}${approved.to}` || approved.atoms > BigInt(fresh.bucket_outstanding_atoms)) {
           throw new Error("The reserve changed. Review the withdrawal again.");
         }
+        expires = answerExpiry(fresh.proving_window, op.at);
       }
       const signed = await client.sign(approved.intent, approved.quote);
       if (!still()) return;  // signed, never sent
-      const guard = guarded ? () => (sent = still()) : undefined;
+      // Checked last before the bytes leave: the operation is current and its answer has not expired.
+      const guard = guarded ? () => (sent = still() && !(expired = monotonicNow() >= expires)) : undefined;
       sent = !guard;
       const result = await (guard ? client.submit(signed, { guard }) : client.submit(signed));
       try { localStorage.setItem(key(client), result.txId); } catch { /* tracking still works this session */ }
       setJob(null); setBurn(result.txId); setAmount("");
       await bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: result.txId }) });
       void refresh();
-    } catch (failure) { if (sent || (failure.code !== "l1_not_dispatched" && still())) setError(plainError(failure.message)); } finally { setBusy(false); }
+    } catch (failure) { if (expired) setError(EXPIRED); else if (sent || (failure.code !== "l1_not_dispatched" && still())) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
