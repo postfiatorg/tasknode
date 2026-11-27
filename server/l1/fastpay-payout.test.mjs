@@ -517,6 +517,12 @@ test("Unified reward history & L1 history projection seamlessly read FastPay v5 
   assert.equal(history[0].orderHash, orderHash);
   assert.equal(history[0].badge, TASK_REWARD_BADGE_LABEL);
   assert.equal(history[0].badgeVerified, true);
+  const [pointerOnly] = readUnifiedRewardHistory({
+    fastpayRows: [projected.rows[0]],
+    officialPayoutAccount: officialSigner.account,
+  });
+  assert.equal(pointerOnly.badgeVerified, false);
+  assert.equal(pointerOnly.badge, "Private message");
   assert.equal(history[0].pointerVersion, "v5");
   assert.equal(history[0].amountPft, 42);
 

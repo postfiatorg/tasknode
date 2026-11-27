@@ -179,6 +179,7 @@ export function classifyRewardBadge({
   officialPayoutPubkeyHex = "",
   officialPayoutAccount = "",
 } = {}) {
+  if (!txSignerAccount || !officialPayoutPubkeyHex) return { badge: "Private message", verified: false, reason: "missing_reward_anchor_or_key" };
   const verified = verifyEnvelopeRaw(rawEnvelopeBytes, {
     expectedSenderAccount: txSignerAccount || "",
   });
@@ -785,8 +786,8 @@ export function createFastPayPayoutDriver({
 
 // The reward path calls this before it writes a FastPay reward as paid.
 export function assertVerifiedFastPayReceipt(receipt = {}) {
-  const digestOk = /^[0-9a-f]{96}$/.test(safeText(receipt?.certificateDigest, 128));
-  const fallbackOk = receipt?.lane === "consensus_pft" && Boolean(safeText(receipt?.txHash, 128));
+  const digestOk = receipt?.lane === "fastpay" && /^[0-9a-f]{96}$/.test(receipt.certificateDigest || "") && /^[0-9a-f]{96}$/.test(receipt.orderHash || "");
+  const fallbackOk = receipt?.lane === "consensus_pft" && /^[0-9a-f]{96}$/i.test(receipt.txHash || "");
   if (receipt?.ok !== true || receipt?.verified !== true || !(digestOk || fallbackOk)) {
     const error = new Error("fastpay_receipt_not_verified");
     error.submissionAttempted = true;
@@ -834,7 +835,7 @@ export function normalizeUnifiedRewardHistoryRow(row = {}, { officialPayoutPubke
     row.lane === "fastpay" ||
     row.batch_kind === "fastpay" ||
     row.transaction_kind === "owned_transfer_v3" ||
-    Boolean(row.order_hash || row.orderHash);
+    (!row.lane && Boolean(row.order_hash || row.orderHash));
   const pointerVersion = row.pointerVersion || row.pointer_version || decodedPointer?.version || (isFastPay ? "v5" : "v4");
   const orderHash = safeText(row.order_hash || row.orderHash, 128);
   const txHash = safeText(row.tx_id || row.txHash || row.tx_hash || orderHash, 128);
@@ -850,19 +851,13 @@ export function normalizeUnifiedRewardHistoryRow(row = {}, { officialPayoutPubke
       officialPayoutAccount,
     });
   } else if (isFastPay && decodedPointer?.kind === CONTENT_KIND.REWARD) {
-    const fromAccount = safeText(row.from || row.senderAccount, 120).toLowerCase();
-    const pinnedAccount = safeText(officialPayoutAccount, 120).toLowerCase();
-    const verified = Boolean(pinnedAccount && fromAccount === pinnedAccount && decodedPointer.visibility === "private");
-    badge = {
-      badge: verified ? TASK_REWARD_BADGE_LABEL : "Private message",
-      verified,
-    };
+    badge = { badge: "Private message", verified: false };
   }
 
   const amountAtoms = row.amountAtoms ?? row.amount_atoms ?? row.amount ?? row.deliveredDrops ?? "0";
 
   return {
-    id: orderHash || txHash,
+    id: isFastPay ? orderHash || txHash : txHash,
     txHash,
     orderHash: orderHash || null,
     certificateDigest: safeText(row.certificate_digest || row.certificateDigest, 128) || null,
