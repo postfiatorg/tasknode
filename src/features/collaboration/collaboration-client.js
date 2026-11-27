@@ -1,28 +1,15 @@
 import { requestJson } from "../../api.js";
 import * as walletCore from "../../wallet-core.js";
 import { validateWalletChallengeMessage } from "../../../shared/wallet-challenge-guard.js";
+import {
+  collaborationChallengePayload,
+  stableCollaborationJson,
+} from "../../../shared/collaboration-challenge.js";
 
 function requireMnemonic(walletSecret) {
   const mnemonic = String(walletSecret?.mnemonic || "").trim();
   if (!mnemonic) throw new Error("Unlock your wallet to authorize this action.");
   return mnemonic;
-}
-
-function safeText(value = "", max = 4000) {
-  return String(value || "").trim().slice(0, max);
-}
-
-function safeObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function stableValue(value) {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.keys(value).sort().reduce((output, key) => {
-    if (value[key] !== undefined) output[key] = stableValue(value[key]);
-    return output;
-  }, {});
 }
 
 async function sha256Hex(value = "") {
@@ -32,14 +19,10 @@ async function sha256Hex(value = "") {
 }
 
 export async function computeCollaborationPayloadDigest({ action = "", resourceId = "", payload = {} } = {}) {
-  const canonical = {
-    action: safeText(action, 80),
-    resourceId: safeText(resourceId, 240),
-    payload: stableValue(safeObject(payload)),
-  };
+  const canonical = collaborationChallengePayload({ action, resourceId, payload });
   return {
     canonical,
-    digest: await sha256Hex(JSON.stringify(canonical)),
+    digest: await sha256Hex(stableCollaborationJson(canonical)),
   };
 }
 
@@ -90,20 +73,23 @@ export async function signedCollaborationProof({
   const mnemonic = requireMnemonic(walletSecret);
   const wallet = walletCore.deriveWalletSummary(mnemonic);
   const expectedAccountId = String(accountId || walletSecret?.accountId || "").trim();
+  const requestBody = JSON.stringify({ action, resourceId, payload });
   const challengeResult = await requestImpl("/api/collaboration/challenge", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, resourceId, payload }),
+    body: requestBody,
   });
   if (!challengeResult.ok || !challengeResult.body?.challenge?.message) {
     throw new Error(challengeResult.body?.error || "Could not create wallet authorization.");
   }
   const message = challengeResult.body.challenge.message;
+  // The server hashes the request as it parsed it from JSON, so check the challenge against the same values.
+  const sent = JSON.parse(requestBody);
   await verifyCollaborationChallengeMessage({
     message,
-    action,
-    resourceId,
-    payload,
+    action: sent.action,
+    resourceId: sent.resourceId,
+    payload: sent.payload,
     accountId: expectedAccountId,
     walletAddress: wallet.address,
     now,
