@@ -7,9 +7,12 @@ import {
   timingSafeEqual,
   verify as cryptoVerify,
 } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { databaseEnabled, transaction } from "./db/pool.js";
 import { upsertIndex } from "./repositories/index-viewer.js";
-import { BUNDLE_FILE_FORMAT, encryptBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import { BUNDLE_FILE_FORMAT, decryptBundleFile, encryptBundleFile, fetchBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import { LIBRARY_MANIFEST_PATH, TODAY_MANIFEST_PATH, libraryRestrictionsFromFiles } from "./finance-hub-library.js";
+import { publicArtifactErrors } from "./finance-hub-public-schema.js";
 
 export const PUBLISH_SCHEMA_VERSION = "finance-hub.publish-payload.v1";
 export const PUBLISH_SIGNING_INPUT_VERSION = "canonical-json-v1";
@@ -382,6 +385,7 @@ export async function verifySignedPublishRequest(payload, {
   }
 
   let computedTotal = 0;
+  let decodedTotal = 0;
   const decodedFiles = [];
   for (const file of payload.files) {
     if (typeof file.content_base64 !== "string") {
@@ -399,9 +403,26 @@ export async function verifySignedPublishRequest(payload, {
       return { ok: false, status: 413, error: "bundle_exceeds_64_mib" };
     }
 
-    // Strict server-side leak scan on every file published to `finance-hub-public`.
+    // The hash binds the transmitted bytes; everything after works on the content
+    // as it will be stored and served (decoded, without a Content-Encoding).
+    let content = bytes;
+    if (file.encoding === "gzip") {
+      try {
+        content = gunzipSync(bytes, { maxOutputLength: Math.max(1, PUBLISH_MAX_TOTAL_BYTES - decodedTotal) });
+      } catch (error) {
+        return error?.code === "ERR_BUFFER_TOO_LARGE"
+          ? { ok: false, status: 413, error: "bundle_exceeds_64_mib" }
+          : { ok: false, status: 400, error: "file_encoding_invalid", details: [file.path] };
+      }
+    }
+    decodedTotal += content.length;
+    if (decodedTotal > PUBLISH_MAX_TOTAL_BYTES) {
+      return { ok: false, status: 413, error: "bundle_exceeds_64_mib" };
+    }
+
+    // Strict server-side schema check and leak scan on every file published to `finance-hub-public`.
     if (payload.index_id === "finance-hub-public") {
-      const text = bytes.toString("utf8");
+      const text = content.toString("utf8");
       let scanTarget = text;
       if (file.path.endsWith(".json") || file.content_type.includes("json")) {
         try {
@@ -414,16 +435,34 @@ export async function verifySignedPublishRequest(payload, {
       if (leaks.length) {
         return { ok: false, status: 403, error: "public_leak_detected", details: leaks.slice(0, 10) };
       }
+      const schemaErrors = typeof scanTarget === "string" ? [] : publicArtifactErrors(file.path, scanTarget);
+      if (schemaErrors.length) {
+        return { ok: false, status: 400, error: "public_schema_invalid", details: [file.path, ...schemaErrors.slice(0, 10)] };
+      }
     }
 
-    decodedFiles.push({ path: file.path, bytes, sha256: file.sha256, contentType: file.content_type });
+    decodedFiles.push({ path: file.path, bytes: content, sha256: file.sha256, contentType: file.content_type });
   }
 
   if (computedTotal !== payload.total_bytes) {
     return { ok: false, status: 400, error: "total_bytes_mismatch" };
   }
+  try {
+    libraryRestrictionsFromFiles(decodedFiles, payload.index_id);
+  } catch {
+    return { ok: false, status: 400, error: "library_manifest_invalid" };
+  }
 
   return { ok: true, status: 200, manifestSha256, payloadSha256, decodedFiles, historicalManifest: null };
+}
+
+async function readRetainedManifests(client, indexId, bundle) {
+  const files = [];
+  for (const filePath of [LIBRARY_MANIFEST_PATH, TODAY_MANIFEST_PATH]) {
+    const record = await fetchBundleFile((text, params) => client.query(text, params), indexId, bundle, filePath);
+    if (record) files.push({ path: filePath, bytes: decryptBundleFile(record, indexId, bundle, filePath) });
+  }
+  return files;
 }
 
 export function createPostgresPublishStore() {
@@ -465,6 +504,10 @@ export function createPostgresPublishStore() {
             const bundleHash = payload.operation === "rollback"
               ? historicalManifest.bundle_hash
               : sha256Hex(`${payload.index_id}:${payload.version}:${manifestSha256}`);
+            // A rollback restores the historical bundle's own Library restrictions.
+            const restrictionFiles = payload.operation === "rollback"
+              ? await readRetainedManifests(client, payload.index_id, { contentHash: bundleHash, contentKey })
+              : decodedFiles || [];
 
             await upsertIndex({
               indexId: payload.index_id,
@@ -479,12 +522,13 @@ export function createPostgresPublishStore() {
                 fileFormat: BUNDLE_FILE_FORMAT,
                 wholeBundleDisabled: payload.index_id !== "finance-hub-public",
                 allowedBases: payload.allowed_bases,
+                libraryRestrictions: libraryRestrictionsFromFiles(restrictionFiles, payload.index_id),
                 version: payload.version,
                 operation: payload.operation,
                 manifestSha256,
                 viewerUrl: `/api/research/bundles/${payload.index_id}/index.html`,
               },
-            });
+            }, { client });
 
             if (payload.operation === "publish" && decodedFiles) {
               for (const file of decodedFiles) {

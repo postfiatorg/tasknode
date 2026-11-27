@@ -532,7 +532,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       ? timed(
           "finance_hub_access",
           () => evaluateFinanceHubAccess({ accountId, tier: FINANCE_HUB_TIER }),
-          () => ({ ok: false, basis: null, rank: null, snapshotAt: null, graceEndsAt: null })
+          () => null // no decision; the content routes still decide per request
         )
       : { ok: false, basis: null, rank: null, snapshotAt: null, graceEndsAt: null },
   ]);
@@ -647,15 +647,16 @@ export async function appState(session = null, { refreshTaskProjection = false }
     generatedAt: new Date().toISOString(),
     session: { ...sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
       validator: { bindings: validatorMembership.get(accountId) || [] },
-      financeHub: {
-        ok: Boolean(financeHubAccess?.ok),
-        basis: financeHubAccess?.basis || null,
-        validatorState: financeHubAccess?.validatorState || null,
-        entitlementState: financeHubAccess?.entitlementState || null,
-        rank: financeHubAccess?.rank ?? null,
-        snapshotAt: financeHubAccess?.snapshotAt || null,
-        graceEndsAt: financeHubAccess?.graceEndsAt || null,
-      } },
+      // null when the decision timed out or failed: the client then falls back to bindings.
+      financeHub: financeHubAccess ? {
+        ok: Boolean(financeHubAccess.ok),
+        basis: financeHubAccess.basis || null,
+        validatorState: financeHubAccess.validatorState || null,
+        entitlementState: financeHubAccess.entitlementState || null,
+        rank: financeHubAccess.rank ?? null,
+        snapshotAt: financeHubAccess.snapshotAt || null,
+        graceEndsAt: financeHubAccess.graceEndsAt || null,
+      } : null },
     chat: {
       conversationId,
       conversationsPath: "/api/chat/conversations",

@@ -79,9 +79,11 @@ export async function upsertIndex({
   contentHash = "",
   availableAt = null,
   metadata = {},
-} = {}) {
+} = {}, { client = null } = {}) {
   if (!indexId || !contentKey) throw new Error("index_id_and_content_key_required");
-  const result = await query(
+  // A caller's transaction client keeps the pointer in that caller's commit.
+  const run = client ? (text, params) => client.query(text, params) : query;
+  const result = await run(
     `INSERT INTO index_viewer_indices
        (index_id, title, summary, tier, content_key, content_url, content_hash,
         available_at, published_at, metadata_json, updated_at)

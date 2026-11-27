@@ -6,6 +6,7 @@ import { gzipSync } from "node:zlib";
 import { closePool, transactionCommand, query } from "../server/db/pool.js";
 import { upsertIndex } from "../server/repositories/index-viewer.js";
 import { BUNDLE_FILE_FORMAT, encryptBundleFile } from "../server/validator-bundle-files.js";
+import { libraryRestrictionsFromFiles } from "../server/finance-hub-library.js";
 
 const args = process.argv.slice(2);
 const value = (name) => args.includes(name) ? args[args.indexOf(name) + 1] : "";
@@ -50,6 +51,7 @@ if (args.includes("--help")) {
       await upsertIndex({ indexId, title: value("--title") || indexId, summary: value("--summary"), tier: "validator",
         contentKey, contentHash, contentUrl: `/api/index-viewer/indices/${indexId}/content`,
         metadata: { format: "tasknode-encrypted-static-v1", fileFormat: BUNDLE_FILE_FORMAT,
+          libraryRestrictions: libraryRestrictionsFromFiles(Object.entries(files).map(([name, base64]) => ({ path: name, bytes: Buffer.from(base64, "base64") })), indexId),
           viewerUrl: `/api/research/bundles/${indexId}/index.html` } });
       await query(`INSERT INTO index_viewer_bundles(index_id,encrypted_bytes) VALUES($1,$2)
         ON CONFLICT(index_id) DO UPDATE SET encrypted_bytes=EXCLUDED.encrypted_bytes,updated_at=now()`, [indexId, bytes]);

@@ -180,6 +180,7 @@ export function computeTop30Snapshot({
     const previousRank = Number.isInteger(prev?.rank) ? prev.rank : null;
     const wasTop30Entitled = prev?.access_basis === "top30";
     const wasInGrace = prev?.entitlement_state === "grace_7d" && prev?.access_basis === "grace";
+    const graceContinues = wasInGrace && Boolean(prev.grace_ends_at) && Date.parse(prev.grace_ends_at) > nowMs;
     const existingCooldown = cooldowns.get(row.account_id) || null;
     const activeCooldown = existingCooldown && Date.parse(existingCooldown) > nowMs ? existingCooldown : null;
 
@@ -213,12 +214,14 @@ export function computeTop30Snapshot({
           grace_ends_at: null,
           grace_cooldown_until: activeCooldown,
         });
+        continue;
       }
-      continue;
+      // Improving into 31-35 earns no seat, but an unexpired grace runs to its fixed end.
+      if (!graceContinues) continue;
     }
 
-    // Rank >= 36: check continuing grace window first, then new grace entry subject to 30d cooldown.
-    if (wasInGrace && prev.grace_ends_at && Date.parse(prev.grace_ends_at) > nowMs) {
+    // Rank >= 31 and not seated: check continuing grace window first, then new grace entry subject to 30d cooldown.
+    if (graceContinues) {
       graceCount += 1;
       const graceStartedAt = toUtcIso(prev.grace_started_at);
       const graceEndsAt = toUtcIso(prev.grace_ends_at);

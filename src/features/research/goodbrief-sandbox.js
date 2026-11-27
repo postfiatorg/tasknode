@@ -1,9 +1,8 @@
 // Pure Goodbrief sandbox isolation and Today desk sorting/filtering helpers.
 // Keep zero browser-only globals so Node unit tests verify every security invariant directly.
+import { buildGoodbriefSrcDoc as buildTrustedGoodbriefSrcDoc } from "../../../shared/goodbrief-srcdoc.js";
 
-export const GOODBRIEF_SANDBOX_ATTR = "allow-scripts";
-export const GOODBRIEF_SRCDOC_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'";
+export { GOODBRIEF_SANDBOX_ATTR, GOODBRIEF_SRCDOC_CSP } from "../../../shared/goodbrief-srcdoc.js";
 
 export function escapePlainText(value = "") {
   return String(value ?? "")
@@ -14,38 +13,9 @@ export function escapePlainText(value = "") {
     .replace(/'/g, "&#39;");
 }
 
-function escapeAttr(value = "") {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/**
- * Ensures Goodbrief HTML rendered inside `<iframe sandbox="allow-scripts" srcdoc=...>`
- * always starts with the locked zero-exfiltration CSP and strips any tags capable
- * of external requests, redirects, or nested frames.
- */
+/** Builds the sandboxed Goodbrief document; the head and its policy come from this code. */
 export function buildGoodbriefSrcDoc(rawHtml = "", { watermarkId = "", title = "Goodbrief" } = {}) {
-  let html = String(rawHtml || "");
-  html = html
-    .replace(/<base\b[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy["']?[^>]*>/gi, "")
-    .replace(/<script\b[^>]*\bsrc\s*=[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<link\b[^>]*\bhref\s*=\s*["']?https?:[^>]*>/gi, "")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed\b[^>]*>/gi, "");
-
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(GOODBRIEF_SRCDOC_CSP)}">`;
-  const wmMeta = watermarkId ? `<meta name="pf-fh-wm" content="${escapeAttr(watermarkId)}">` : "";
-
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>${cspMeta}${wmMeta}`);
-  }
-  return `<!doctype html><html><head><meta charset="utf-8">${cspMeta}${wmMeta}<title>${escapeAttr(title)}</title></head><body>${html}</body></html>`;
+  return buildTrustedGoodbriefSrcDoc(rawHtml, { watermarkId, title });
 }
 
 export function isNewSinceBaseline(updatedAt, visitBaselineAt) {

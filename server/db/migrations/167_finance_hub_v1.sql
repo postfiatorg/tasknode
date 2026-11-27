@@ -1,7 +1,8 @@
 -- Pillar 9 Finance Hub: daily Top-30 snapshots, anti-bounce grace cooldowns,
 -- operator suspensions, signed Publish API replay nonces + monotonic manifest
--- history, per-account Today desk state (watchlist + visit baseline), and
--- per-account access audit log.
+-- history, per-account Today desk state (watchlist + visit baseline),
+-- per-account access audit log, and the last recorded Pillar 3 access state
+-- per validator binding (preserved only until its own expiry on a stale feed).
 
 CREATE TABLE IF NOT EXISTS finance_hub_top30_snapshots (
   snapshot_id text PRIMARY KEY,
@@ -91,3 +92,10 @@ CREATE TABLE IF NOT EXISTS finance_hub_access_audit (
 );
 CREATE INDEX IF NOT EXISTS finance_hub_access_audit_account_idx
   ON finance_hub_access_audit (account_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS finance_hub_validator_access (
+  binding_id text PRIMARY KEY REFERENCES validator_bindings(id) ON DELETE CASCADE,
+  access_state text NOT NULL CHECK (access_state IN ('active', 'lapsed', 'revoked')),
+  recorded_at timestamptz NOT NULL,
+  expires_at timestamptz
+);

@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://postfiat.org/schemas/finance-hub/agent_brief_public.v1.schema.json",
+  "title": "Finance Hub Public Agent Brief v1",
+  "description": "Leak-safe company or crypto protocol research brief exported to the separate public-safe index for non-Finance-Hub Pillar 10 contributors. Strictly excludes all internal price targets, upside percentages, proprietary model estimates, member open questions, pooled member claims, and private Task Node data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "index_scope",
+    "model_id",
+    "ticker",
+    "name",
+    "asset_class",
+    "generated_at",
+    "publication_version",
+    "public_summary",
+    "area_tags",
+    "public_topics",
+    "public_questions",
+    "redaction_attestation"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "finance-hub.agent-brief-public.v1"
+    },
+    "index_scope": {
+      "type": "string",
+      "const": "public_safe"
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "ticker": {
+      "type": "string",
+      "pattern": "^[A-Z0-9][A-Z0-9._-]{0,15}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "asset_class": {
+      "type": "string",
+      "enum": ["crypto_protocol", "perp_megacap_equity"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "publication_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "public_summary": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 2000
+    },
+    "area_tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+      }
+    },
+    "public_topics": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/public_topic"
+      }
+    },
+    "public_questions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/public_question"
+      }
+    },
+    "public_context_links": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/public_link"
+      }
+    },
+    "redaction_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contains_price_targets",
+        "contains_internal_estimates",
+        "contains_member_claims",
+        "contains_private_memory",
+        "leak_scan_passed",
+        "scanner_version"
+      ],
+      "properties": {
+        "contains_price_targets": {
+          "type": "boolean",
+          "const": false
+        },
+        "contains_internal_estimates": {
+          "type": "boolean",
+          "const": false
+        },
+        "contains_member_claims": {
+          "type": "boolean",
+          "const": false
+        },
+        "contains_private_memory": {
+          "type": "boolean",
+          "const": false
+        },
+        "leak_scan_passed": {
+          "type": "boolean",
+          "const": true
+        },
+        "scanner_version": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "info_type": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "builder",
+        "customer",
+        "trader",
+        "public_data_analyst"
+      ]
+    },
+    "public_topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topic_id",
+        "title",
+        "description",
+        "observable_by"
+      ],
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 600
+        },
+        "observable_by": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/info_type"
+          }
+        }
+      }
+    },
+    "public_question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_id",
+        "prompt",
+        "phase",
+        "mnpi_safe_verified"
+      ],
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 500
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["triangulation", "public_probe"]
+        },
+        "mnpi_safe_verified": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "public_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^\\s]{4,500}$"
+        }
+      }
+    }
+  }
+}

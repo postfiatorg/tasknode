@@ -330,9 +330,12 @@ test("(a.2) Pillar 3 stale validator feed (>1h) preserves existing validator acc
     validators: [],
   });
 
+  // Existing access is the last state recorded by a fresh decision, never binding age.
   const existingBound = await evaluateValidatorFinanceHubState({
-    bindings: [{ network: "l1-devnet", validator_id: "val-1", bound_at: "2026-11-01T00:00:00Z" }],
+    bindings: [{ id: "bind-1", network: "l1-devnet", validator_id: "val-1", bound_at: "2026-11-01T00:00:00Z" }],
     loadL1Registry: staleRegistry,
+    readRecordedState: async () => ({ access_state: "active", recorded_at: "2026-11-26T00:00:00Z", expires_at: "2026-12-10T00:00:00Z" }),
+    recordState: async () => assert.fail("a stale feed must not record a new state"),
     now,
   });
   assert.equal(existingBound.ok, true);
@@ -341,8 +344,10 @@ test("(a.2) Pillar 3 stale validator feed (>1h) preserves existing validator acc
   assert.equal(existingBound.feedStale, true);
 
   const brandNewBound = await evaluateValidatorFinanceHubState({
-    bindings: [{ network: "l1-devnet", validator_id: "val-new", bound_at: "2026-11-27T01:55:00Z" }],
+    bindings: [{ id: "bind-new", network: "l1-devnet", validator_id: "val-new", bound_at: "2026-11-27T01:55:00Z" }],
     loadL1Registry: staleRegistry,
+    readRecordedState: async () => null,
+    recordState: async () => {},
     now,
   });
   assert.equal(brandNewBound.ok, false);

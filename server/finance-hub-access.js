@@ -4,15 +4,14 @@ import { listValidatorBindings } from "./repositories/validator-bindings.js";
 import { activeBlacklistEntry } from "./value-accountability.js";
 import { fetchL1Registry, l1RewardEligibility, registeredL1Validator } from "./l1-validator-identity.js";
 import { loadLatestTop30Snapshot, lookupTop30Entitlement } from "./finance-hub-top30.js";
+import { buildGoodbriefSrcDoc } from "../shared/goodbrief-srcdoc.js";
 
 export const FINANCE_HUB_TIER = "finance_hub";
 export const LEGACY_VALIDATOR_TIER = "validator";
 export const PUBLIC_SAFE_TIER = "public_safe";
 export const FINANCE_HUB_PROTECTED_INDICES = new Set(["ga-models", "goodbrief"]);
 
-export const GOODBRIEF_SANDBOX_ATTR = "allow-scripts";
-export const GOODBRIEF_SRCDOC_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'";
+export { GOODBRIEF_SANDBOX_ATTR, GOODBRIEF_SRCDOC_CSP } from "../shared/goodbrief-srcdoc.js";
 
 const VALIDATOR_GRACE_MS = 14 * 86_400_000;
 const VALIDATOR_RAMP_IN_MS = 30 * 86_400_000;
@@ -27,8 +26,9 @@ export function isFinanceHubProtectedIndex(indexId = "", index = null) {
 
 export function allowedBasesForIndex(index = null, tier = "") {
   const raw = index?.metadata?.allowedBases ?? index?.metadata?.allowed_bases;
-  if (Array.isArray(raw) && raw.length) {
-    return raw.map((item) => String(item || "").trim()).filter(Boolean);
+  // Only an absent policy falls back to the tier; a present empty or malformed one admits nobody.
+  if (raw !== undefined && raw !== null) {
+    return Array.isArray(raw) ? raw.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean) : [];
   }
   const effectiveTier = String(index?.tier || tier || "");
   if (effectiveTier === PUBLIC_SAFE_TIER) return ["public"];
@@ -54,17 +54,70 @@ export async function activeFinanceHubSuspension(accountId = "", queryImpl = que
   return result.rows[0] || null;
 }
 
+const VALIDATOR_ACCESS_FIELDS = "access_state, recorded_at, expires_at";
+
+/** Last authorized state recorded for a binding by a fresh Pillar 3 decision (null when none). */
+export async function readRecordedValidatorAccess(binding = {}, queryImpl = query) {
+  const bindingId = String(binding?.id || "");
+  if (!bindingId || (!databaseEnabled() && queryImpl === query)) return null;
+  const result = await queryImpl(
+    `SELECT ${VALIDATOR_ACCESS_FIELDS} FROM finance_hub_validator_access WHERE binding_id = $1`,
+    [bindingId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function recordValidatorAccess(binding = {}, state = {}, queryImpl = query) {
+  const bindingId = String(binding?.id || "");
+  if (!bindingId || (!databaseEnabled() && queryImpl === query)) return;
+  await queryImpl(
+    `INSERT INTO finance_hub_validator_access (binding_id, access_state, recorded_at, expires_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (binding_id) DO UPDATE
+       SET access_state = EXCLUDED.access_state, recorded_at = EXCLUDED.recorded_at, expires_at = EXCLUDED.expires_at`,
+    [bindingId, state.access_state, state.recorded_at, state.expires_at ?? null]
+  );
+}
+
+function registryRowForBinding(registry, binding) {
+  try {
+    return registeredL1Validator(registry, {
+      validatorId: binding.validator_id,
+      publicKey: binding.ml_dsa_public_key,
+      chainId: binding.chain_id,
+    });
+  } catch (error) {
+    // Pillar 3: falling out of the registry enters `lapsed` (14-day grace), so an
+    // inactive row with the binding's current key may still carry a lapse grace.
+    if (error?.message !== "l1_validator_inactive") return null;
+    const row = registry.validators.find((item) => item.validator_id === binding.validator_id);
+    return row?.ml_dsa_public_key === binding.ml_dsa_public_key ? row : null;
+  }
+}
+
+function isoOrNull(value) {
+  const ms = Date.parse(value || "");
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 /**
- * Evaluates Pillar 3 active-liveness state for an account's validator bindings:
- * - Active L1 validator with >= 95% / 30d uptime (or within initial 30d ramp-in): `active` -> basis `validator`
- * - Lapsed validator within 14-day grace window: `lapsed` -> basis `grace` + `graceEndsAt`
- * - Stale Pillar 3 feed (> 3600s) or unreachable feed: preserves existing access
- *   (bound before feed went stale) and blocks only brand-new grants!
+ * Evaluates Pillar 3 active-liveness state for an account's validator bindings.
+ * Every grant comes from a fresh registry decision or from a state recorded by one:
+ * - Fresh active/pending (or eligible, or within a 30-day ramp-in from a recorded
+ *   `bound_at`): basis `validator`; records `active`, preservable for 14 days.
+ * - Fresh lapse: basis `grace` until a fixed end taken from the feed (`grace_ends_at`
+ *   or `lapsed_at` + 14 days), else the recorded grace, else 14 days after the last
+ *   recorded active state. A lapse with no recorded start is refused.
+ * - Stale (> 3600s) or unreachable feed: only an unexpired recorded `active` or
+ *   `lapsed` state is preserved; a recorded `revoked`, no record, or a failed
+ *   lookup is refused. Binding age never creates access.
  * - Legacy devnet/testnet bindings remain valid until `FINANCE_HUB_LEGACY_VALIDATOR_SUNSET=true`.
  */
 export async function evaluateValidatorFinanceHubState({
   bindings = [],
   loadL1Registry = fetchL1Registry,
+  readRecordedState = readRecordedValidatorAccess,
+  recordState = recordValidatorAccess,
   now = new Date(),
   env = process.env,
 } = {}) {
@@ -73,9 +126,16 @@ export async function evaluateValidatorFinanceHubState({
   }
   const nowDate = now instanceof Date ? now : new Date(now);
   const nowMs = nowDate.getTime();
+  const nowIso = nowDate.toISOString();
   const legacySunset = env.FINANCE_HUB_LEGACY_VALIDATOR_SUNSET === "true";
 
   let bestGrace = null;
+  const offerGrace = (graceEndsAt, feedStale) => {
+    if (!graceEndsAt || Date.parse(graceEndsAt) <= nowMs) return;
+    if (!bestGrace || Date.parse(graceEndsAt) > Date.parse(bestGrace.graceEndsAt)) {
+      bestGrace = { ok: true, basis: "grace", validatorState: "lapsed", graceEndsAt, feedStale };
+    }
+  };
   let registryPromise = null;
   const getRegistry = () => {
     if (!registryPromise) {
@@ -86,6 +146,14 @@ export async function evaluateValidatorFinanceHubState({
     }
     return registryPromise;
   };
+  const readRecorded = (binding) => Promise.resolve()
+    .then(() => readRecordedState(binding))
+    .then((state) => ({ ok: true, state: state || null }))
+    .catch(() => ({ ok: false, state: null }));
+  const record = (binding, state) => Promise.resolve()
+    .then(() => recordState(binding, state))
+    .then(() => true)
+    .catch(() => false);
 
   for (const binding of bindings) {
     if (binding?.revoked_at) continue;
@@ -103,93 +171,75 @@ export async function evaluateValidatorFinanceHubState({
     if (explicitState === "active" || explicitState === "pending") {
       return { ok: true, basis: "validator", validatorState: explicitState, graceEndsAt: null, feedStale: false };
     }
-    if (explicitState === "lapsed" && binding.grace_ends_at && Date.parse(binding.grace_ends_at) > nowMs) {
-      const endsAt = new Date(binding.grace_ends_at).toISOString();
-      if (!bestGrace || Date.parse(endsAt) > Date.parse(bestGrace.graceEndsAt)) {
-        bestGrace = { ok: true, basis: "grace", validatorState: "lapsed", graceEndsAt: endsAt, feedStale: false };
-      }
+    if (explicitState === "lapsed") {
+      offerGrace(isoOrNull(binding.grace_ends_at), false);
       continue;
     }
     if (explicitState === "revoked") continue;
 
-    // Live registry check for l1-devnet bindings.
     const loaded = await getRegistry();
-    const boundAtMs = Date.parse(binding.bound_at || binding.boundAt || "");
-    const existingGrantAgeMs = Number.isFinite(boundAtMs) ? nowMs - boundAtMs : STALE_FEED_WINDOW_MS + 1;
-
-    if (!loaded.ok) {
-      // Pillar 3 & Pillar 9 invariant: a stale (>1h) or unreachable feed preserves
-      // existing access and blocks only brand-new grants.
-      if (existingGrantAgeMs > STALE_FEED_WINDOW_MS) {
-        return { ok: true, basis: "validator", validatorState: "stale_feed_preserved", graceEndsAt: null, feedStale: true };
-      }
-      continue;
-    }
-
-    const registry = loaded.registry;
+    const registry = loaded.ok ? loaded.registry : null;
     const feedAgeMs = nowMs - Date.parse(registry?.generated_at || "");
-    const feedStale = !Number.isFinite(feedAgeMs) || feedAgeMs > STALE_FEED_WINDOW_MS;
-    if (feedStale) {
-      if (existingGrantAgeMs > STALE_FEED_WINDOW_MS) {
+    if (!loaded.ok || !Number.isFinite(feedAgeMs) || feedAgeMs > STALE_FEED_WINDOW_MS) {
+      // A stale or unreachable feed preserves only the last recorded authorized state.
+      const recorded = await readRecorded(binding);
+      const expiresAt = isoOrNull(recorded.state?.expires_at);
+      if (!expiresAt || Date.parse(expiresAt) <= nowMs) continue;
+      if (recorded.state.access_state === "active") {
         return { ok: true, basis: "validator", validatorState: "stale_feed_preserved", graceEndsAt: null, feedStale: true };
       }
+      if (recorded.state.access_state === "lapsed") offerGrace(expiresAt, true);
       continue;
     }
 
-    let row;
-    try {
-      row = registeredL1Validator(registry, {
-        validatorId: binding.validator_id,
-        publicKey: binding.ml_dsa_public_key,
-        chainId: binding.chain_id,
-      });
-    } catch {
-      continue;
-    }
-
+    const row = registryRowForBinding(registry, binding);
     const rowState = String(row?.access_state || "").toLowerCase();
-    if (rowState === "active" || rowState === "pending") {
-      return { ok: true, basis: "validator", validatorState: rowState, graceEndsAt: null, feedStale: false };
-    }
-    if (rowState === "lapsed") {
-      const endsAt = row.grace_ends_at
-        ? new Date(row.grace_ends_at).toISOString()
-        : new Date(nowMs + VALIDATOR_GRACE_MS).toISOString();
-      if (Date.parse(endsAt) > nowMs) {
-        bestGrace = { ok: true, basis: "grace", validatorState: "lapsed", graceEndsAt: endsAt, feedStale: false };
-      }
+    const revoke = () => record(binding, { access_state: "revoked", recorded_at: nowIso, expires_at: null });
+    if (!row || rowState === "revoked") {
+      await revoke();
       continue;
     }
-    if (rowState === "revoked") continue;
 
-    // Derive eligibility from Pillar 3 uptime/participation + 30-day Day-0 ramp-in.
-    const eligibility = l1RewardEligibility(row, nowDate, env);
-    if (eligibility.eligible || !eligibility.available) {
-      // Active validator or within initial 30-day ramp-in (insufficient observed days).
-      const withinRampIn = !Number.isFinite(boundAtMs) || (nowMs - boundAtMs) <= VALIDATOR_RAMP_IN_MS;
-      if (eligibility.eligible || withinRampIn || !eligibility.available) {
-        return {
-          ok: true,
-          basis: "validator",
-          validatorState: eligibility.eligible ? "active" : "pending",
-          graceEndsAt: null,
-          feedStale: false,
-        };
+    let authorized = false;
+    if (row.active === true && (rowState === "active" || rowState === "pending")) {
+      authorized = rowState;
+    } else if (row.active === true && rowState !== "lapsed") {
+      // Derive eligibility from Pillar 3 uptime/participation + 30-day Day-0 ramp-in
+      // counted from a recorded binding time.
+      const eligibility = l1RewardEligibility(row, nowDate, env);
+      const boundAtMs = Date.parse(binding.bound_at || binding.boundAt || "");
+      const withinRampIn = Number.isFinite(boundAtMs) && boundAtMs <= nowMs && nowMs - boundAtMs <= VALIDATOR_RAMP_IN_MS;
+      if (eligibility.eligible) authorized = "active";
+      else if (!eligibility.available && withinRampIn) authorized = "pending";
+    }
+    if (authorized) {
+      await record(binding, {
+        access_state: "active",
+        recorded_at: nowIso,
+        expires_at: new Date(nowMs + VALIDATOR_GRACE_MS).toISOString(),
+      });
+      return { ok: true, basis: "validator", validatorState: authorized, graceEndsAt: null, feedStale: false };
+    }
+
+    // Lapsed (out of the registry, below threshold, or past ramp-in without history):
+    // grace runs from a fixed, recorded start and is never re-issued per request.
+    const lapsedAtMs = Date.parse(row.lapsed_at || "");
+    let graceEndsAt = isoOrNull(row.grace_ends_at)
+      || (Number.isFinite(lapsedAtMs) ? new Date(lapsedAtMs + VALIDATOR_GRACE_MS).toISOString() : null);
+    if (!graceEndsAt) {
+      const recorded = await readRecorded(binding);
+      const recordedAtMs = Date.parse(recorded.state?.recorded_at || "");
+      if (recorded.state?.access_state === "lapsed") graceEndsAt = isoOrNull(recorded.state.expires_at);
+      else if (recorded.state?.access_state === "active" && Number.isFinite(recordedAtMs)) {
+        graceEndsAt = new Date(recordedAtMs + VALIDATOR_GRACE_MS).toISOString();
       }
     }
-
-    // Lapsed below 95% threshold: grant 14-day grace if within window.
-    const lapsedAtMs = Date.parse(row.lapsed_at || binding.lapsed_at || "");
-    const graceEndsMs = Number.isFinite(lapsedAtMs) ? lapsedAtMs + VALIDATOR_GRACE_MS : nowMs + VALIDATOR_GRACE_MS;
-    if (graceEndsMs > nowMs) {
-      bestGrace = {
-        ok: true,
-        basis: "grace",
-        validatorState: "lapsed",
-        graceEndsAt: new Date(graceEndsMs).toISOString(),
-        feedStale: false,
-      };
+    if (!graceEndsAt || Date.parse(graceEndsAt) <= nowMs) {
+      await revoke();
+      continue;
     }
+    await record(binding, { access_state: "lapsed", recorded_at: nowIso, expires_at: graceEndsAt });
+    offerGrace(graceEndsAt, false);
   }
 
   if (bestGrace) return bestGrace;
@@ -211,6 +261,8 @@ export async function evaluateFinanceHubAccess({
   getSuspension = activeFinanceHubSuspension,
   getValidatorBindings = listValidatorBindings,
   loadL1Registry = fetchL1Registry,
+  readValidatorAccess = readRecordedValidatorAccess,
+  recordValidatorAccessState = recordValidatorAccess,
   getTop30Snapshot = loadLatestTop30Snapshot,
 } = {}) {
   const allowedBases = allowedBasesForIndex(index, tier);
@@ -271,11 +323,26 @@ export async function evaluateFinanceHubAccess({
     };
   }
 
-  // Fail closed on blacklist or Finance Hub operator suspension.
+  // Fail closed on blacklist or Finance Hub operator suspension; a lookup that
+  // fails is "unavailable", never "no restriction".
+  const unavailable = Symbol("unavailable");
   const [blacklisted, suspended] = await Promise.all([
-    Promise.resolve(getBlacklist({ accountId: normalizedId })).catch(() => null),
-    Promise.resolve(getSuspension(normalizedId)).catch(() => null),
+    Promise.resolve().then(() => getBlacklist({ accountId: normalizedId })).catch(() => unavailable),
+    Promise.resolve().then(() => getSuspension(normalizedId)).catch(() => unavailable),
   ]);
+  if (blacklisted === unavailable || suspended === unavailable) {
+    return {
+      ok: false,
+      reason: "access_check_unavailable",
+      basis: null,
+      validatorState: null,
+      entitlementState: "unavailable",
+      rank: null,
+      snapshotAt: null,
+      graceEndsAt: null,
+      walletAddress: "",
+    };
+  }
   if (blacklisted) {
     return {
       ok: false,
@@ -308,6 +375,8 @@ export async function evaluateFinanceHubAccess({
   const validatorResult = await evaluateValidatorFinanceHubState({
     bindings,
     loadL1Registry,
+    readRecordedState: readValidatorAccess,
+    recordState: recordValidatorAccessState,
     now,
     env,
   });
@@ -421,8 +490,21 @@ export async function evaluateFinanceHubAccess({
   };
 }
 
+export function financeHubWatermarkSecret(env = process.env) {
+  return String(env.FINANCE_HUB_WATERMARK_SECRET || env.SESSION_SECRET || "");
+}
+
+/** Production refuses to start without a watermark secret; there is no built-in one. */
+export function assertFinanceHubWatermarkConfigured(env = process.env) {
+  const environment = String(env.TASKNODE_ENV || env.NODE_ENV || "development").toLowerCase();
+  if (["prod", "production"].includes(environment) && !financeHubWatermarkSecret(env)) {
+    throw new Error("finance_hub_watermark_secret_missing: set FINANCE_HUB_WATERMARK_SECRET");
+  }
+}
+
 /**
- * Deterministic, unforgeable per-user watermark hook for Finance Hub responses.
+ * Deterministic per-user watermark for Finance Hub responses, keyed by a
+ * deployment secret. Without one, attribution is off (null), never keyed by a public string.
  */
 export function buildFinanceHubWatermark({
   accountId = "",
@@ -430,8 +512,9 @@ export function buildFinanceHubWatermark({
   indexId = "",
   filePath = "",
   issuedAt = new Date(),
-  secret = process.env.FINANCE_HUB_WATERMARK_SECRET || process.env.SESSION_SECRET || "tasknode-finance-hub-wm-v1",
+  secret = financeHubWatermarkSecret(),
 } = {}) {
+  if (!secret) return null;
   const day = (issuedAt instanceof Date ? issuedAt : new Date(issuedAt)).toISOString().slice(0, 10);
   const id = createHmac("sha256", String(secret))
     .update(`pf.fh.wm.v1\n${accountId}\n${basis}\n${day}`)
@@ -471,37 +554,14 @@ function escapeAttr(value = "") {
 
 /**
  * Prepares Goodbrief HTML for rendering inside `<iframe sandbox="allow-scripts">`
- * via `srcdoc` with zero network exfiltration (`connect-src 'none'`) and zero
- * origin access (no `allow-same-origin`).
+ * via `srcdoc`: a code-built head carries the zero-exfiltration policy, the
+ * untrusted markup goes into the body, and a visible watermark footer follows it.
  */
 export function prepareGoodbriefSrcDoc(rawHtml = "", { watermarkId = "", title = "Goodbrief" } = {}) {
-  let html = String(rawHtml || "");
-  // Strip dangerous tags that could redirect, nest frames, or attempt external fetches.
-  html = html
-    .replace(/<base\b[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy["']?[^>]*>/gi, "")
-    .replace(/<script\b[^>]*\bsrc\s*=[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<link\b[^>]*\bhref\s*=\s*["']?https?:[^>]*>/gi, "")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed\b[^>]*>/gi, "");
-
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(GOODBRIEF_SRCDOC_CSP)}">`;
-  const wmMeta = watermarkId ? `<meta name="pf-fh-wm" content="${escapeAttr(watermarkId)}">` : "";
-  const wmFooter = watermarkId
+  const footer = watermarkId
     ? `<div data-pf-fh-wm="${escapeAttr(watermarkId)}" style="margin-top:24px;padding-top:10px;border-top:1px solid rgba(128,128,128,.2);font:11px/1.4 monospace;opacity:.45;user-select:none;">Post Fiat Finance Hub · ${escapeAttr(watermarkId)}</div>`
     : "";
-
-  if (/<head[^>]*>/i.test(html)) {
-    html = html.replace(/<head([^>]*)>/i, `<head$1>${cspMeta}${wmMeta}`);
-    if (wmFooter) {
-      html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${wmFooter}</body>`) : `${html}${wmFooter}`;
-    }
-    return html;
-  }
-
-  return `<!doctype html><html><head><meta charset="utf-8">${cspMeta}${wmMeta}<title>${escapeAttr(title)}</title></head><body>${html}${wmFooter}</body></html>`;
+  return buildGoodbriefSrcDoc(rawHtml, { watermarkId, title, footer });
 }
 
 /**

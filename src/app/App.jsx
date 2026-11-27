@@ -185,7 +185,7 @@ export function App() {
     setChatActionMenu, setChatDeleteTarget, setChatResetKey,
   });
   const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
-  const hasFinanceHub = signedIn && (session?.financeHub?.ok === true || session?.validator?.bindings?.length > 0);
+  const hasFinanceHub = signedIn && (typeof session?.financeHub?.ok === "boolean" ? session.financeHub.ok : session?.validator?.bindings?.length > 0);
   const [hiveGroupStatus, setHiveGroupStatus] = useHiveGroupStatus({ accountId: session?.accountId, signedIn, activeChatKind: activeChat?.kind, activeChatId, view });
   const hiveUnreadCount = hiveGroupStatus?.accountId === appState?.session?.accountId ? Number(hiveGroupStatus?.unreadCount || 0) : 0;
   const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
