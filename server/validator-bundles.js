@@ -5,6 +5,7 @@ import { accountMeetsTier } from "./index-viewer-routes.js";
 import { getIndex } from "./repositories/index-viewer.js";
 import { validatorError } from "./validator-identity.js";
 import { BUNDLE_FILE_FORMAT, createBundleFileLoader, fetchBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import { LIBRARY_MANIFEST_PATH, TODAY_MANIFEST_PATH, fileRestriction, filterLibraryManifest } from "./finance-hub-library.js";
 import {
   GOODBRIEF_SRCDOC_CSP,
   PUBLIC_SAFE_TIER,
@@ -203,6 +204,9 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
         }
       }
 
+      // Library item restrictions (trusted publication metadata) are checked before the file is read.
+      const restriction = isPublicSafe ? null : fileRestriction(index, filePath);
+      if (restriction && !restriction.includes(eligibility.basis)) throw validatorError("library_item_basis_not_allowed", 403);
       let bytes;
       if (index.metadata?.fileFormat === BUNDLE_FILE_FORMAT) {
         bytes = await loadFile(indexId, index, filePath);
@@ -210,6 +214,16 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
         const files = await loadFiles(indexId, index);
         if (!Object.hasOwn(files, filePath)) throw validatorError("bundle_file_not_found", 404);
         bytes = files[filePath];
+      }
+      // The Library manifests themselves are served as the reader may see them.
+      if (!isPublicSafe && (filePath === LIBRARY_MANIFEST_PATH || filePath === TODAY_MANIFEST_PATH)) {
+        let doc;
+        try {
+          doc = JSON.parse(Buffer.from(bytes).toString("utf8"));
+        } catch {
+          throw validatorError("finance_hub_library_unreadable", 503);
+        }
+        bytes = Buffer.from(JSON.stringify(filterLibraryManifest(filePath, doc, eligibility.basis)), "utf8");
       }
       const ext = filePath.split(".").at(-1).toLowerCase();
       const type = mimeTypes[ext] || "application/octet-stream";

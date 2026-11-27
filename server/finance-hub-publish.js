@@ -9,7 +9,8 @@ import {
 } from "node:crypto";
 import { databaseEnabled, transaction } from "./db/pool.js";
 import { upsertIndex } from "./repositories/index-viewer.js";
-import { BUNDLE_FILE_FORMAT, encryptBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import { BUNDLE_FILE_FORMAT, decryptBundleFile, encryptBundleFile, fetchBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
+import { LIBRARY_MANIFEST_PATH, TODAY_MANIFEST_PATH, libraryRestrictionsFromFiles } from "./finance-hub-library.js";
 
 export const PUBLISH_SCHEMA_VERSION = "finance-hub.publish-payload.v1";
 export const PUBLISH_SIGNING_INPUT_VERSION = "canonical-json-v1";
@@ -422,8 +423,22 @@ export async function verifySignedPublishRequest(payload, {
   if (computedTotal !== payload.total_bytes) {
     return { ok: false, status: 400, error: "total_bytes_mismatch" };
   }
+  try {
+    libraryRestrictionsFromFiles(decodedFiles, payload.index_id);
+  } catch {
+    return { ok: false, status: 400, error: "library_manifest_invalid" };
+  }
 
   return { ok: true, status: 200, manifestSha256, payloadSha256, decodedFiles, historicalManifest: null };
+}
+
+async function readRetainedManifests(client, indexId, bundle) {
+  const files = [];
+  for (const filePath of [LIBRARY_MANIFEST_PATH, TODAY_MANIFEST_PATH]) {
+    const record = await fetchBundleFile((text, params) => client.query(text, params), indexId, bundle, filePath);
+    if (record) files.push({ path: filePath, bytes: decryptBundleFile(record, indexId, bundle, filePath) });
+  }
+  return files;
 }
 
 export function createPostgresPublishStore() {
@@ -465,6 +480,10 @@ export function createPostgresPublishStore() {
             const bundleHash = payload.operation === "rollback"
               ? historicalManifest.bundle_hash
               : sha256Hex(`${payload.index_id}:${payload.version}:${manifestSha256}`);
+            // A rollback restores the historical bundle's own Library restrictions.
+            const restrictionFiles = payload.operation === "rollback"
+              ? await readRetainedManifests(client, payload.index_id, { contentHash: bundleHash, contentKey })
+              : decodedFiles || [];
 
             await upsertIndex({
               indexId: payload.index_id,
@@ -479,6 +498,7 @@ export function createPostgresPublishStore() {
                 fileFormat: BUNDLE_FILE_FORMAT,
                 wholeBundleDisabled: payload.index_id !== "finance-hub-public",
                 allowedBases: payload.allowed_bases,
+                libraryRestrictions: libraryRestrictionsFromFiles(restrictionFiles, payload.index_id),
                 version: payload.version,
                 operation: payload.operation,
                 manifestSha256,

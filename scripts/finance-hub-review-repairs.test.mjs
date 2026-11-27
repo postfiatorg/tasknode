@@ -3,9 +3,43 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  FINANCE_HUB_TIER,
   evaluateFinanceHubAccess,
   evaluateValidatorFinanceHubState,
 } from "../server/finance-hub-access.js";
+import { createValidatorBundleHandler } from "../server/validator-bundles.js";
+import { BUNDLE_FILE_FORMAT } from "../server/validator-bundle-files.js";
+import { createFinanceHubRoutesHandler } from "../server/finance-hub-routes.js";
+import { libraryRestrictionsFromFiles } from "../server/finance-hub-library.js";
+
+async function invokeHandler(handler, { method = "GET", pathname, session = null, body = null, headers = {} }) {
+  const response = { status: null, headers: {}, body: null };
+  const res = {
+    writeHead(status, resHeaders = {}) {
+      response.status = status;
+      response.headers = Object.fromEntries(
+        Object.entries(resHeaders).map(([k, v]) => [k.toLowerCase(), v])
+      );
+    },
+    end(payload) {
+      response.body = payload;
+    },
+  };
+  const json = (_, status, payload, extraHeaders = {}) => {
+    res.writeHead(status, { "content-type": "application/json", ...extraHeaders });
+    res.end(payload);
+  };
+  const readJson = async () => body ?? {};
+  const handled = await handler({
+    json,
+    readJson,
+    req: { method, headers },
+    res,
+    session,
+    url: new URL(pathname, "https://tasknode.postfiat.org"),
+  });
+  return { handled, ...response };
+}
 
 // ============================================================================
 // (e) An access check that cannot decide refuses (review 447-02, 447-03, 447-04)
@@ -132,4 +166,80 @@ test("(e.3) validator grace starts at a recorded time, ramp-in is bounded, and a
   assert.equal(inactive.ok, true);
   assert.equal(inactive.basis, "grace");
   assert.equal(inactive.graceEndsAt, "2026-12-01T00:00:00.000Z");
+});
+
+// ============================================================================
+// (f) Library item restrictions apply on every route (review 447-07, 447-21)
+// ============================================================================
+
+test("(f) a Library item's allowed_bases applies to Today, Library and the direct file route; an empty list admits nobody", async () => {
+  const restricted = { id: "validator-only", title: "CONFIDENTIAL_VALIDATOR_REPORT", url: "/api/research/bundles/ga-models/restricted.html", allowed_bases: ["validator"] };
+  const nobody = { id: "nobody", title: "EMPTY_POLICY_ITEM", path: "nobody.html", allowed_bases: [] };
+  const open = { id: "open", title: "OPEN_ITEM", url: "/api/research/bundles/ga-models/open.html" };
+  const bundle = {
+    "hub/library.json": Buffer.from(JSON.stringify({ items: [restricted, nobody, open] })),
+    "hub/today.json": Buffer.from(JSON.stringify({ library: [restricted] })),
+    "restricted.html": Buffer.from("CONFIDENTIAL_VALIDATOR_REPORT"),
+    "nobody.html": Buffer.from("EMPTY_POLICY_ITEM"),
+    "open.html": Buffer.from("OPEN_ITEM"),
+  };
+  // The restriction map is trusted publication metadata, derived from the bundle at publish time.
+  const libraryRestrictions = libraryRestrictionsFromFiles(
+    Object.entries(bundle).map(([filePath, bytes]) => ({ path: filePath, bytes })), "ga-models");
+  assert.deepEqual(libraryRestrictions, { "restricted.html": ["validator"], "nobody.html": [] });
+  const index = {
+    indexId: "ga-models",
+    tier: FINANCE_HUB_TIER,
+    contentHash: "hash-lib",
+    availableAt: "2026-01-01T00:00:00Z",
+    metadata: { fileFormat: BUNDLE_FILE_FORMAT, allowedBases: ["top30", "validator"], libraryRestrictions },
+  };
+  const reads = [];
+  const loadFile = async (_id, _ix, filePath) => {
+    reads.push(filePath);
+    if (bundle[filePath]) return bundle[filePath];
+    const error = new Error("bundle_file_not_found");
+    error.status = 404;
+    throw error;
+  };
+  const asBasis = (basis) => async () => ({ ok: true, basis });
+  const body = (res) => (Buffer.isBuffer(res.body) ? res.body.toString("utf8") : JSON.stringify(res.body));
+
+  for (const [basis, sees] of [["top30", ["OPEN_ITEM"]], ["validator", ["CONFIDENTIAL_VALIDATOR_REPORT", "OPEN_ITEM"]]]) {
+    const api = createFinanceHubRoutesHandler({ readIndex: async () => index, checkAccess: asBasis(basis), loadFile, readUserState: async () => ({}) });
+    const files = createValidatorBundleHandler({ readIndex: async () => index, meetsTier: asBasis(basis), loadFile, accessGuard: null, watermarkSecret: "s" });
+    const library = await invokeHandler(api, { pathname: "/api/finance-hub/library", session: { accountId: "acct" } });
+    const today = await invokeHandler(api, { pathname: "/api/finance-hub/today", session: { accountId: "acct" } });
+    assert.deepEqual(library.body.items.map((item) => item.title), sees);
+    assert.deepEqual(today.body.library.map((item) => item.title), sees);
+    const manifest = await invokeHandler(files, { pathname: "/api/research/bundles/ga-models/hub/library.json", session: { accountId: "acct" } });
+    assert.equal(manifest.status, 200);
+    assert.deepEqual(JSON.parse(body(manifest)).items.map((item) => item.title), sees);
+    assert.equal(body(manifest).includes("EMPTY_POLICY_ITEM"), false);
+
+    reads.length = 0;
+    const report = await invokeHandler(files, { pathname: "/api/research/bundles/ga-models/restricted.html", session: { accountId: "acct" } });
+    assert.equal(report.status, basis === "validator" ? 200 : 403, `${basis} on restricted.html`);
+    if (basis !== "validator") {
+      assert.equal(report.body.error, "library_item_basis_not_allowed");
+      assert.equal(reads.includes("restricted.html"), false, "the restricted file must not be read before the check");
+    }
+    const empty = await invokeHandler(files, { pathname: "/api/research/bundles/ga-models/nobody.html", session: { accountId: "acct" } });
+    assert.equal(empty.status, 403);
+    const openFile = await invokeHandler(files, { pathname: "/api/research/bundles/ga-models/open.html", session: { accountId: "acct" } });
+    assert.equal(openFile.status, 200);
+  }
+
+  // 447-21: an explicitly empty publication policy admits nobody; only absence falls back to the tier.
+  const emptyPolicy = await evaluateFinanceHubAccess({
+    accountId: "acct_validator",
+    index: { tier: FINANCE_HUB_TIER, metadata: { allowedBases: [] } },
+    env: {},
+    getBlacklist: async () => null,
+    getSuspension: async () => null,
+    getValidatorBindings: async () => [{ network: "devnet" }],
+    getTop30Snapshot: async () => null,
+  });
+  assert.equal(emptyPolicy.ok, false);
+  assert.equal(emptyPolicy.reason, "publication_basis_not_allowed");
 });

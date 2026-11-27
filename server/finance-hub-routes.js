@@ -9,6 +9,7 @@ import {
   evaluateFinanceHubAccess,
   prepareGoodbriefSrcDoc,
 } from "./finance-hub-access.js";
+import { filterLibraryItems } from "./finance-hub-library.js";
 
 const IDLE_VISIT_GAP_MS = 30 * 60_000;
 const TICKER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$/;
@@ -315,11 +316,10 @@ export function createFinanceHubRoutesHandler({
               : Array.isArray(todayDoc?.models)
                 ? todayDoc.models
                 : [],
-            library: Array.isArray(libraryDoc?.items)
-              ? libraryDoc.items
-              : Array.isArray(todayDoc?.library)
-                ? todayDoc.library
-                : [],
+            library: filterLibraryItems(
+              Array.isArray(libraryDoc?.items) ? libraryDoc.items : todayDoc?.library,
+              gaAccess.basis
+            ),
           },
           {
             "cache-control": "private, no-store",
@@ -354,7 +354,7 @@ export function createFinanceHubRoutesHandler({
           200,
           {
             ok: true,
-            items: Array.isArray(libraryDoc?.items) ? libraryDoc.items : [],
+            items: filterLibraryItems(libraryDoc?.items, access.basis),
             watermarkId: watermark.watermarkId,
           },
           {

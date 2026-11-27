@@ -7,16 +7,18 @@ import pg from "pg";
 
 const committed = []; // one entry per commit: the statements that became visible together
 let failOn = "";
+const indexMetadata = [];
 function fakeClient() {
   const pending = [];
   return {
     on() {}, off() {}, removeListener() {}, release() {},
-    async query(text) {
+    async query(text, params) {
       const sql = typeof text === "string" ? text : text.text;
       if (sql === "BEGIN") return { rows: [], rowCount: 0 };
       if (sql === "COMMIT") { committed.push(pending.splice(0)); return { rows: [], rowCount: 0 }; }
       if (sql === "ROLLBACK") { pending.splice(0); return { rows: [], rowCount: 0 }; }
       if (failOn && sql.includes(failOn)) throw new Error("simulated storage failure");
+      if (sql.includes("INSERT INTO index_viewer_indices")) indexMetadata.push(JSON.parse(params[8]));
       if (/^\s*(INSERT|UPDATE|DELETE)/.test(sql)) pending.push(sql.trim().split(/\s+/).slice(0, 3).join(" "));
       if (sql.includes("current_version")) return { rows: [{ current_version: 0 }], rowCount: 1 };
       if (sql.includes("RETURNING *")) return { rows: [{ index_id: "goodbrief", metadata_json: {} }], rowCount: 1 };
@@ -41,7 +43,10 @@ const publish = () => createPostgresPublishStore().withIndexLock("goodbrief", (t
     signature: { key_id: "review", algorithm: "hmac-sha256" },
   },
   manifestSha256: "a".repeat(64),
-  decodedFiles: [{ path: "index.html", bytes: Buffer.from("test") }],
+  decodedFiles: [
+    { path: "index.html", bytes: Buffer.from("test") },
+    { path: "hub/library.json", bytes: Buffer.from(JSON.stringify({ items: [{ path: "v.html", allowed_bases: ["validator"] }] })) },
+  ],
 }));
 
 test("a failed file insert leaves nothing published, not even the index pointer", async () => {
@@ -58,8 +63,16 @@ test("a successful publication commits the pointer, files, nonce and version tog
   assert.deepEqual(committed, [[
     "INSERT INTO index_viewer_indices",
     "INSERT INTO index_viewer_bundle_files",
+    "INSERT INTO index_viewer_bundle_files",
     "INSERT INTO finance_hub_publish_nonces",
     "INSERT INTO finance_hub_publish_manifests",
     "DELETE FROM finance_hub_publish_nonces",
   ]]);
+});
+
+test("the published index carries the bundle's Library restrictions as trusted metadata (447-07)", async () => {
+  indexMetadata.length = 0;
+  failOn = "";
+  await publish();
+  assert.deepEqual(indexMetadata.at(-1).libraryRestrictions, { "v.html": ["validator"] });
 });

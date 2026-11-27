@@ -27,8 +27,9 @@ export function isFinanceHubProtectedIndex(indexId = "", index = null) {
 
 export function allowedBasesForIndex(index = null, tier = "") {
   const raw = index?.metadata?.allowedBases ?? index?.metadata?.allowed_bases;
-  if (Array.isArray(raw) && raw.length) {
-    return raw.map((item) => String(item || "").trim()).filter(Boolean);
+  // Only an absent policy falls back to the tier; a present empty or malformed one admits nobody.
+  if (raw !== undefined && raw !== null) {
+    return Array.isArray(raw) ? raw.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean) : [];
   }
   const effectiveTier = String(index?.tier || tier || "");
   if (effectiveTier === PUBLIC_SAFE_TIER) return ["public"];
