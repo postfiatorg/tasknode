@@ -1,6 +1,7 @@
 import { isAsciiLetter, isAsciiDigit } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { enqueueIpfsReplicationJob } from "./repositories/ipfs-replication-jobs.js";
+import { canonicalJson as rfc8785CanonicalJson } from "../shared/canonical-json.js";
 
 const DEFAULT_GATEWAYS = [
   "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
@@ -179,8 +180,8 @@ export async function fetchContextIpfsJson({
   }
 }
 
-function canonicalJson(value) {
-  return JSON.stringify(value);
+function serializeContextJson(value, { canonical = false } = {}) {
+  return canonical ? rfc8785CanonicalJson(value) : JSON.stringify(value);
 }
 
 function sha256Hex(text) {
@@ -303,6 +304,7 @@ function safeObject(value) {
 
 function replicationSourceRef(keyvalues = {}) {
   const fields = [
+    keyvalues.session_id,
     keyvalues.task_id,
     keyvalues.request_id,
     keyvalues.run_id,
@@ -327,6 +329,8 @@ export function classifyIpfsPayloadForReplication({ keyvalues = {}, name = "", s
   if (type === "profile_nft_thumbnail") return "profile_nft_thumbnail";
   if (safeName.includes("profile_nft_metadata")) return "profile_nft_metadata";
   if (safeName.includes("profile_nft")) return "profile_nft_image";
+
+  if (schema.startsWith("pf.governance.") || contentKind === "GOVERNANCE") return "governance";
 
   if (schema === "pf.daily_airdrop.v1") return "daily_airdrop";
   if (schema === "pf.reward.v1") return "task_reward";
@@ -596,6 +600,7 @@ export async function pinContextIpfsJson({
   payload,
   name = "context.json",
   keyvalues = {},
+  canonical = false,
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
@@ -606,7 +611,7 @@ export async function pinContextIpfsJson({
     throw error;
   }
 
-  const body = canonicalJson(payload || {});
+  const body = serializeContextJson(payload || {}, { canonical });
   const byteLength = new TextEncoder().encode(body).byteLength;
   if (byteLength > MAX_PIN_JSON_BYTES) {
     const error = new Error("context_ipfs_payload_too_large");

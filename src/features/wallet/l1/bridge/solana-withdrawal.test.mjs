@@ -7,7 +7,7 @@ import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { normalAmount, withdrawalAtoms as atomsFor, checkRecipient, destinationRef, LATE_MS, matchedBalance, payoutJob, payoutPace, phantomRecipient, solanaOffered, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { normalAmount, withdrawalAtoms as atomsFor, changeSlot, checkRecipient, destinationRef, LATE_MS, matchedBalance, payoutJob, payoutPace, phantomRecipient, solanaOffered, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
 import { recipientKind } from "./solana-recipient.js";
 
 // A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
@@ -251,4 +251,22 @@ test("the withdrawal snapshot hands the screen the proving window of a closed or
     assert.deepEqual(seen, [{ window, open: false }, { window, open: false, answered: true }, { window: undefined, open: false },
       { window: undefined, open: false, answered: false }]);
   } finally { globalThis.fetch = realFetch; }
+});
+
+// R451-R2-02: in a browser without Web Locks, a manual change of the slot is made directly; any
+// other change (a new burn's claim) still needs the lock and is a rejection, never a thrown error.
+test("changeSlot without Web Locks makes manual changes and refuses a claim by rejection", async (t) => {
+  const store = new Map([["slot", "submitting"]]), original = globalThis.localStorage, kept = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  globalThis.localStorage = { setItem: (key, value) => store.set(key, value), getItem: key => store.get(key) ?? null, removeItem: key => store.delete(key) };
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+  t.after(() => { globalThis.localStorage = original; if (kept) Object.defineProperty(globalThis, "navigator", kept); else delete globalThis.navigator; });
+  const claim = changeSlot("slot", prior => (prior ? undefined : "submitting:claim"));
+  assert.ok(claim instanceof Promise);
+  await assert.rejects(claim, TypeError);
+  assert.equal(await changeSlot("slot", () => null, { manual: true }), "submitting");
+  assert.equal(store.has("slot"), false);
+  assert.equal(await changeSlot("slot", () => "e".repeat(96), { manual: true }), null);
+  assert.equal(store.get("slot"), "e".repeat(96));
+  globalThis.localStorage.setItem = () => { throw Error("quota"); };
+  await assert.rejects(changeSlot("slot", () => "f".repeat(96), { manual: true }), /quota/);
 });

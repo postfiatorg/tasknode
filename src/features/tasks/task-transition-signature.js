@@ -44,7 +44,9 @@ export async function buildActorTransitionSignature({
   }
   const { digest, message } = await signatureMessage({ payload, role: "actor", transition, taskId });
   const walletCore = await import("../../wallet-core");
-  const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, message);
+  const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, message, {
+    purpose: "task_transition",
+  });
   return {
     schema: "pf.task.transition_signature.v1",
     role: "actor",

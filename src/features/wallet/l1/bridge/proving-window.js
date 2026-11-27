@@ -72,6 +72,27 @@ export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
   return nowMs < open ? open - nowMs : close - nowMs;
 }
 
+// Both browser clocks now: a readiness request takes them when it starts.
+export function clocks() { return { monotonic: monotonicNow(), wall: Date.now() }; }
+// How long an answer permits a withdrawal: the window's next boundary or the freshness limit,
+// whichever is first, counted from `started` (clocks() when its request started), so the time spent
+// delivering or processing the answer never extends it; null (never expires) without a window.
+export function answerExpiry(window, started) {
+  const boundary = msUntilBoundary(window);
+  return boundary === null || !started ? null : { started, limit: Math.min(boundary, STALE_MS) };
+}
+// Whether an answer's authority has ended, the one test of an expiry: as soon as either clock's
+// elapsed time reaches the limit. The monotonic clock can stand still while the machine sleeps, and a
+// wall clock moved forward only ends it early. A clock that reads earlier than at the request's start
+// (moved back) or no number at all can no longer measure the time, so it ends the authority too.
+export function expired(expiry, now = clocks()) {
+  if (!expiry) return false;
+  const monotonic = now.monotonic - expiry.started.monotonic, wall = now.wall - expiry.started.wall;
+  return !(monotonic >= 0 && wall >= 0) || monotonic >= expiry.limit || wall >= expiry.limit;
+}
+// Said when a burn's readiness answer expired before the burn left; nothing was sent.
+export const EXPIRED = "The withdrawal's availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again.";
+
 // kind: "deposit" or "withdrawal"; open: the route reports ready; unknown: the last read failed;
 // nowMs: the server's time now; ageMs: how old the answer is. Empty when no window is set.
 export function provingWindowText(window, { kind, open, unknown = false, timeZone, nowMs, ageMs = 0 } = {}) {

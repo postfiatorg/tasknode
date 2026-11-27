@@ -2,24 +2,17 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
 import { verifyWalletSignature } from "../wallet-proof.js";
 import { getLinkedWallet as getDurableLinkedWallet } from "./account-wallets.js";
+import {
+  collaborationChallengePayload,
+  stableCollaborationJson,
+} from "../../shared/collaboration-challenge.js";
+
+export { collaborationChallengePayload, stableCollaborationJson };
 
 const challengeTtlMs = 5 * 60_000;
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
-}
-
-function safeObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function stableValue(value) {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.keys(value).sort().reduce((output, key) => {
-    if (value[key] !== undefined) output[key] = stableValue(value[key]);
-    return output;
-  }, {});
 }
 
 function sha256(value = "") {
@@ -32,22 +25,6 @@ function ensureDatabase() {
   error.code = "collaboration_database_not_configured";
   error.status = 503;
   throw error;
-}
-
-export function stableCollaborationJson(value) {
-  return JSON.stringify(stableValue(value));
-}
-
-export function collaborationChallengePayload({
-  action = "",
-  resourceId = "",
-  payload = {},
-} = {}) {
-  return {
-    action: safeText(action, 80),
-    resourceId: safeText(resourceId, 240),
-    payload: stableValue(safeObject(payload)),
-  };
 }
 
 export async function createCollaborationChallenge({

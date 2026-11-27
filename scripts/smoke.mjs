@@ -282,7 +282,7 @@ if (devAuth.response.status === 200) {
     }
   );
 
-  const walletProof = signWalletChallenge(smokeMnemonic, walletChallenge.message);
+  const walletProof = signWalletChallenge(smokeMnemonic, walletChallenge.message, { purpose: "wallet_proof" });
   await checkRequest(
     "/api/wallet/link/verify",
     {

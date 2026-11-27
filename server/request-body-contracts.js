@@ -325,12 +325,49 @@ export const nostrBindBody = strictBody(128 * KiB, {
 
 export const hiveChatBody = strictBody(8 * MiB, chatProperties);
 export const hiveGroupMessageBody = strictBody(64 * KiB, {
+  channelId: text(64, 0),
   event: { type:"object",allowUnknown:false,required:["id","pubkey","sig","kind","created_at","content","tags"],properties:{
     id:text(64,64),pubkey:text(64,64),sig:text(128,128),kind:integer(1,1),created_at:integer(),content:text(8000,1),
     tags:{type:"array",maxItems:32,items:{type:"array",maxItems:5,items:text(500)}},
   } },
 },{required:["event"]});
-export const hiveGroupReadBody = strictBody(4 * KiB,{sequence:integer()},{required:["sequence"]});
+export const hiveGroupReadBody = strictBody(4 * KiB,{channelId:text(64,0),sequence:integer()},{required:["sequence"]});
+export const hiveGovernanceScheduleBody = strictBody(512 * KiB, {
+  sessionId: text(120, 0),
+  title: text(240, 1),
+  summary: text(8000, 0),
+  chainId: text(80, 0),
+  founderL1Address: text(128, 1),
+  founderNostrPubkey: text(64, 64),
+  identityHandle: text(120, 0),
+  postingPolicy: text(40, 0, { enum: ["founder_only", "allowlist", "all_members"] }),
+  facilitatorMode: text(40, 0, { enum: ["off", "agenda", "interactive"] }),
+  durationMinutes: integer(5, 240),
+  rateLimitSeconds: integer(1, 300),
+  maxNonFounderMessages: integer(1, 100),
+  maxFacilitatorTurns: integer(0, 50),
+  reservedFounderTurns: integer(0, 50),
+  allowlistPubkeys: stringArray(500, 128),
+  snapshotInput: opaqueObject,
+  previousDeliverablesStatus: { type: "array", maxItems: 100, items: opaqueObject },
+  openQuestions: stringArray(32, 500),
+  proposedDecisions: { type: "array", maxItems: 50, items: opaqueObject },
+  attachments: { type: "array", maxItems: 20, items: opaqueObject },
+}, { required: ["title", "founderL1Address", "founderNostrPubkey"] });
+export const hiveGovernanceActionBody = strictBody(512 * KiB, {
+  durationMinutes: integer(5, 240),
+  observedEvents: { type: "array", maxItems: 500, items: opaqueObject },
+  minutesDraft: opaqueObject,
+  summary: text(8000, 0),
+  previousDeliverablesReview: { type: "array", maxItems: 100, items: opaqueObject },
+  decisions: { type: "array", maxItems: 50, items: opaqueObject },
+  nextDeliverables: { type: "array", maxItems: 100, items: opaqueObject },
+  communityInput: { type: "array", maxItems: 100, items: opaqueObject },
+  approval: opaqueObject,
+  txHash: text(128, 0),
+  blockHeight: integer(0, Number.MAX_SAFE_INTEGER),
+  pinnerConfirmations: integer(0, 20),
+});
 export const hiveHarvestResolveBody = strictBody(8192, {
   outcome: text(80), resolutionOutcome: text(80), note: text(4000), resolutionNote: text(4000),
 }, { requiredAny: [["outcome", "resolutionOutcome"]] });

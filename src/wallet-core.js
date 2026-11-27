@@ -2,6 +2,21 @@ import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/b
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import * as keypairs from "ripple-keypairs";
 import { Wallet } from "xrpl/dist/npm/Wallet/index.js";
+import {
+  PASSWORD_ENABLE_PROOF_PURPOSES,
+  WALLET_CHALLENGE_PREFIXES,
+  WALLET_LINK_PROOF_PURPOSES,
+  parseChallengeFields,
+  validateWalletChallengeMessage,
+} from "../shared/wallet-challenge-guard.js";
+
+export {
+  PASSWORD_ENABLE_PROOF_PURPOSES,
+  WALLET_CHALLENGE_PREFIXES,
+  WALLET_LINK_PROOF_PURPOSES,
+  parseChallengeFields,
+  validateWalletChallengeMessage,
+};
 
 export const TASKNODE_DERIVATION_PATH = "m/44'/144'/0'/0/0";
 export const TASKNODE_VAULT_VERSION = 1;
@@ -59,7 +74,7 @@ export function deriveWalletSummary(mnemonic) {
   };
 }
 
-export function signWalletChallenge(mnemonic, message) {
+export function signWalletChallenge(mnemonic, message, options = {}) {
   const normalized = normalizeMnemonic(mnemonic);
   if (!isValidTaskNodeMnemonic(normalized)) {
     throw new Error("INVALID_MNEMONIC");
@@ -68,6 +83,10 @@ export function signWalletChallenge(mnemonic, message) {
   const wallet = Wallet.fromMnemonic(normalized, {
     mnemonicEncoding: "bip39",
     derivationPath: TASKNODE_DERIVATION_PATH,
+  });
+  validateWalletChallengeMessage(message, {
+    ...options,
+    walletAddress: wallet.classicAddress,
   });
   const signature = keypairs.sign(messageToHex(message), wallet.privateKey);
 

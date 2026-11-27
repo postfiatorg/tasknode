@@ -558,7 +558,11 @@ export function WalletLinkModal({
         return;
       }
 
-      const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message);
+      const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message, {
+        purpose: "wallet_proof",
+        allowedSubPurposes: walletCore.WALLET_LINK_PROOF_PURPOSES,
+        expectedAccountId: challengeAccountId,
+      });
       const tasknodeEncryptionPubkey = await walletCore.deriveTaskNodePublicKey(normalized);
       if (isCreate) setMessage("Wallet proof signed. Waiting for Task Node to link the wallet.");
       const verify = await requestJson(start.body.verifyPath || "/api/wallet/link/verify", {
