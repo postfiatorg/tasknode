@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://postfiat.org/schemas/finance-hub/coverage_manifest.v1.schema.json",
+  "title": "Finance Hub Coverage Manifest v1",
+  "description": "Public-safe Finance Hub coverage universe manifest exported for Pillar 10 Information Hive Mind matching. Restricted strictly to crypto protocols/tokens and perp-backed liquid megacap equities; zero random or illiquid non-perp equities and zero gated model targets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "publication_version",
+    "universe_policy",
+    "assets"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "finance-hub.coverage-manifest.v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "publication_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "universe_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_asset_classes",
+        "exclude_non_perp_equities",
+        "public_safe_only"
+      ],
+      "properties": {
+        "allowed_asset_classes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["crypto_protocol", "perp_megacap_equity"]
+          }
+        },
+        "exclude_non_perp_equities": {
+          "type": "boolean",
+          "const": true
+        },
+        "public_safe_only": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/coverage_asset"
+      }
+    }
+  },
+  "$defs": {
+    "info_type": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "builder",
+        "customer",
+        "trader",
+        "public_data_analyst"
+      ]
+    },
+    "coverage_asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_id",
+        "ticker",
+        "name",
+        "asset_class",
+        "perp_venues",
+        "perp_liquidity_verified",
+        "area_tags",
+        "eligible_info_types",
+        "interview_mode",
+        "paid_interviews_enabled",
+        "equity_counsel_approved",
+        "public_brief_path",
+        "status",
+        "updated_at"
+      ],
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "ticker": {
+          "type": "string",
+          "pattern": "^[A-Z0-9][A-Z0-9._-]{0,15}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "asset_class": {
+          "type": "string",
+          "enum": ["crypto_protocol", "perp_megacap_equity"]
+        },
+        "perp_venues": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{1,31}$"
+          }
+        },
+        "perp_liquidity_verified": {
+          "type": "boolean"
+        },
+        "area_tags": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          }
+        },
+        "eligible_info_types": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/info_type"
+          }
+        },
+        "interview_mode": {
+          "type": "string",
+          "enum": [
+            "disabled",
+            "counsel_pending",
+            "public_only",
+            "member_and_public"
+          ]
+        },
+        "paid_interviews_enabled": {
+          "type": "boolean"
+        },
+        "equity_counsel_approved": {
+          "type": "boolean"
+        },
+        "public_brief_path": {
+          "type": "string",
+          "pattern": "^public/briefs/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\\.json$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "added", "deprecated"]
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "asset_class": { "const": "perp_megacap_equity" }
+            },
+            "required": ["asset_class"]
+          },
+          "then": {
+            "properties": {
+              "perp_venues": { "minItems": 1 },
+              "perp_liquidity_verified": { "const": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "asset_class": { "const": "perp_megacap_equity" },
+              "paid_interviews_enabled": { "const": true }
+            },
+            "required": ["asset_class", "paid_interviews_enabled"]
+          },
+          "then": {
+            "properties": {
+              "equity_counsel_approved": { "const": true },
+              "interview_mode": {
+                "enum": ["public_only", "member_and_public"]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

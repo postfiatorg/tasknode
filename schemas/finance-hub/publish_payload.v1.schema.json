@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://postfiat.org/schemas/finance-hub/publish_payload.v1.schema.json",
+  "title": "Finance Hub Signed Publish Payload v1",
+  "description": "Authenticated, quota-limited signed publish envelope for Finance Hub indices (ga-models, goodbrief, finance-hub-public). Supports Ed25519 and HMAC-SHA256 signatures with 2-key rotation, timestamp + nonce replay protection, strictly monotonic versions, and monotonic-version rollbacks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "index_id",
+    "tier",
+    "allowed_bases",
+    "version",
+    "operation",
+    "issued_at",
+    "expires_at",
+    "nonce",
+    "title",
+    "manifest_sha256",
+    "total_bytes",
+    "files",
+    "render_gate",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "finance-hub.publish-payload.v1"
+    },
+    "index_id": {
+      "type": "string",
+      "enum": ["ga-models", "goodbrief", "finance-hub-public"]
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["finance_hub", "validator", "public_safe"]
+    },
+    "allowed_bases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["validator", "top30", "grace", "public"]
+      }
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["publish", "rollback"]
+    },
+    "rollback_target_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "rollback_of_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{24,128}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "total_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 67108864
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/publish_file"
+      }
+    },
+    "render_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "shrink_guard_passed",
+        "public_leak_scan_passed",
+        "file_count"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean",
+          "const": true
+        },
+        "shrink_guard_passed": {
+          "type": "boolean",
+          "const": true
+        },
+        "public_leak_scan_passed": {
+          "type": "boolean"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "key_id",
+        "signing_input_version",
+        "payload_sha256",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519", "hmac-sha256"]
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$"
+        },
+        "signing_input_version": {
+          "type": "string",
+          "const": "canonical-json-v1"
+        },
+        "payload_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/=_-]{64,256}$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": { "const": "rollback" }
+        },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["rollback_target_version", "rollback_of_manifest_sha256"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "index_id": { "enum": ["ga-models", "goodbrief"] }
+        },
+        "required": ["index_id"]
+      },
+      "then": {
+        "properties": {
+          "tier": { "enum": ["finance_hub", "validator"] },
+          "allowed_bases": {
+            "items": { "enum": ["validator", "top30", "grace"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "index_id": { "const": "finance-hub-public" }
+        },
+        "required": ["index_id"]
+      },
+      "then": {
+        "properties": {
+          "tier": { "const": "public_safe" },
+          "allowed_bases": {
+            "items": { "const": "public" }
+          },
+          "render_gate": {
+            "properties": {
+              "public_leak_scan_passed": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "publish_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "content_type",
+        "encoding"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\)[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "encoding": {
+          "type": "string",
+          "enum": ["identity", "gzip"]
+        },
+        "content_base64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/=]*$"
+        }
+      }
+    }
+  }
+}
