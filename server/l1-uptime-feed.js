@@ -234,8 +234,8 @@ function checkAttestation(feed, attestation, pinned, windowStartDay, windowEndDa
     fail("observed_at is outside the evaluation day of this window");
   }
   const claims = attestation.validator_claims;
-  if (!Array.isArray(claims) || !claims.length || !count(attestation.finalized_height) || attestation.finalized_height < 1) {
-    fail("an attestation names a finalized height and at least one validator");
+  if (!Array.isArray(claims) || !count(attestation.finalized_height) || attestation.finalized_height < 1) {
+    fail("an attestation names a finalized height and a validator claim list");
   }
   const keys = new Set();
   claims.forEach((claim, index) => {
