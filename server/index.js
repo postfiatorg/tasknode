@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
 import { handleHiveGroupRoute } from "./hive-group-routes.js";
+import { handleHiveGovernanceRoute } from "./hive-governance-routes.js";
 import { installGracefulShutdown, installProcessHardening } from "./process-hardening.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
@@ -479,6 +480,7 @@ async function routeApi(req, url, res) {
   if (await handleBoardAdminRoute({ json, readJson, req, res, url })) return true;
   if (await handleBmFeedRoute({ json, req, res, url })) return true;
 
+  if (await handleHiveGovernanceRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleHiveGroupRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 

@@ -1,9 +1,14 @@
-import { getEventHash, getPublicKey, verifyEvent } from "nostr-tools/pure";
+import { getEventHash, getPublicKey } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
 import { npubEncode } from "nostr-tools/nip19";
 import { wrapManyEvents } from "nostr-tools/nip17";
 import { decrypt, getConversationKey } from "nostr-tools/nip44";
 import * as walletCore from "../../wallet-core.js";
+import {
+  assertDirectMessageSigningAllowed,
+  sanitizeRelayList,
+  verifyInboundNostrEvent,
+} from "../../../shared/nostr-signing-guard.js";
 
 export const TASKNODE_NOSTR_PURPOSE = "tasknode.private-messages.v1";
 export const TASKNODE_MESSAGE_SUBJECT = "tasknode-dm:";
@@ -48,13 +53,18 @@ export function buildNostrDerivationMessage({ accountId = "", walletAddress = ""
 export async function deriveNostrMessagingIdentity({ accountId = "", walletSecret } = {}) {
   const mnemonic = String(walletSecret?.mnemonic || "").trim();
   if (!mnemonic) throw new Error("Unlock your wallet to use Messages.");
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) throw new Error("Account ID is required to derive a Nostr identity.");
   const wallet = walletCore.deriveWalletSummary(mnemonic);
-  const message = buildNostrDerivationMessage({ accountId, walletAddress: wallet.address });
-  const signed = walletCore.signWalletChallenge(mnemonic, message);
+  const message = buildNostrDerivationMessage({ accountId: normalizedAccountId, walletAddress: wallet.address });
+  const signed = walletCore.signWalletChallenge(mnemonic, message, {
+    purpose: "nostr_v1_derivation",
+    expectedAccountId: normalizedAccountId,
+  });
   const seed = textEncoder.encode(stableJson({
     domain: "tasknode.nostr.private-messages",
     version: 1,
-    accountId: String(accountId).trim(),
+    accountId: normalizedAccountId,
     walletAddress: wallet.address,
     walletPublicKey: signed.publicKey,
     walletSignature: signed.signature,
@@ -77,25 +87,41 @@ export async function deriveNostrMessagingIdentity({ accountId = "", walletSecre
 }
 
 export function normalizeMessageRelays(relays = []) {
-  return Array.from(new Set((Array.isArray(relays) ? relays : [])
-    .map((relay) => String(relay || "").trim().replace(/\/+$/, ""))
-    .filter((relay) => /^wss:\/\/[a-z0-9.-]+(?::[0-9]{2,5})?(?:\/[^\s]*)?$/i.test(relay))))
-    .slice(0, 5);
+  return sanitizeRelayList(relays, { production: false, strict: false });
 }
 
-export function createDirectMessageEvents({ privateKey, recipientPublicKey, recipientRelay = "", message = "" } = {}) {
+export function createDirectMessageEvents({
+  privateKey,
+  recipientPublicKey,
+  recipientRelay = "",
+  message = "",
+  signingContext = {},
+} = {}) {
   const recipient = String(recipientPublicKey || "").trim().toLowerCase();
   const content = String(message || "").trim();
   if (!/^[0-9a-f]{64}$/.test(recipient)) throw new Error("Invalid recipient identity.");
   if (!content || content.length > 8000) throw new Error("Messages must be between 1 and 8,000 characters.");
   const sender = getPublicKey(privateKey);
   if (sender === recipient) throw new Error("Choose another Task Node member.");
+  assertDirectMessageSigningAllowed({
+    senderPubkey: sender,
+    recipientPubkey: recipient,
+    content,
+    recipientRelay,
+    context: {
+      source: "messages_ui",
+      userInitiated: true,
+      ...signingContext,
+    },
+  });
   const wrapped = wrapManyEvents(
     privateKey,
     [{ publicKey: recipient, relayUrl: recipientRelay || undefined }],
     content,
     `${TASKNODE_MESSAGE_SUBJECT}${recipient}`
   );
+  verifyInboundNostrEvent(wrapped[0], { expectedKind: 1059 });
+  verifyInboundNostrEvent(wrapped[1], { expectedKind: 1059 });
   return { senderCopy: wrapped[0], recipientCopy: wrapped[1] };
 }
 
@@ -105,15 +131,25 @@ function parseEncryptedJson(event, privateKey) {
 }
 
 export function unwrapDirectMessage(wrap, privateKey) {
-  if (!wrap || wrap.kind !== 1059 || getEventHash(wrap) !== wrap.id || !verifyEvent(wrap)) throw new Error("Invalid gift wrap.");
+  let verifiedWrap;
+  try {
+    verifiedWrap = verifyInboundNostrEvent(wrap, { expectedKind: 1059 });
+  } catch {
+    throw new Error("Invalid gift wrap.");
+  }
   const ownPublicKey = getPublicKey(privateKey);
-  if (!wrap.tags?.some((tag) => tag[0] === "p" && tag[1] === ownPublicKey)) {
+  if (!verifiedWrap.tags?.some((tag) => tag[0] === "p" && tag[1] === ownPublicKey)) {
     throw new Error("Gift wrap is for another recipient.");
   }
-  const seal = parseEncryptedJson(wrap, privateKey);
-  if (seal?.kind !== 13 || getEventHash(seal) !== seal.id || !verifyEvent(seal)) throw new Error("Invalid message seal.");
-  const rumor = parseEncryptedJson(seal, privateKey);
-  if (rumor?.kind !== 14 || rumor.pubkey !== seal.pubkey || rumor.id !== getEventHash(rumor)) {
+  const seal = parseEncryptedJson(verifiedWrap, privateKey);
+  let verifiedSeal;
+  try {
+    verifiedSeal = verifyInboundNostrEvent(seal, { expectedKind: 13 });
+  } catch {
+    throw new Error("Invalid message seal.");
+  }
+  const rumor = parseEncryptedJson(verifiedSeal, privateKey);
+  if (rumor?.kind !== 14 || rumor.pubkey !== verifiedSeal.pubkey || rumor.id !== getEventHash(rumor)) {
     throw new Error("Invalid private message.");
   }
   const subject = rumor.tags?.find((tag) => tag[0] === "subject")?.[1] || "";
@@ -126,7 +162,7 @@ export function unwrapDirectMessage(wrap, privateKey) {
     : rumor.pubkey;
   return {
     id: rumor.id,
-    wrapId: wrap.id,
+    wrapId: verifiedWrap.id,
     content: rumor.content,
     createdAt: new Date(rumor.created_at * 1000).toISOString(),
     createdAtUnix: rumor.created_at,

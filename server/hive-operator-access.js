@@ -107,6 +107,26 @@ export function canResolveTaskAccountingHarvest({ session = null, profile = {}, 
   );
 }
 
+// Founder authority comes only from exact configured account ids. Display names
+// and handles are chosen by each account, so they never grant it.
+export async function hiveGovernanceFounderAccess(session = null, { env = process.env } = {}) {
+  if (!session?.accountId) {
+    return { ok: false, status: 401, error: "hive_governance_login_required", message: "Sign in before managing governance sessions." };
+  }
+  const founderAccountIds = new Set(
+    String(env.TASKNODE_GOVERNANCE_FOUNDER_ACCOUNT_IDS || "").split(",").map((item) => item.trim()).filter(Boolean)
+  );
+  if (founderAccountIds.has(String(session.accountId).trim())) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    status: 403,
+    error: "hive_governance_founder_required",
+    message: "Only the configured founder governance authority can trigger or finalize governance sessions.",
+  };
+}
+
 export async function taskAccountingCheckoutPermissions({ getLinkedWallet, session = null } = {}) {
   const linkedWallet = await linkedWalletForSession({ getLinkedWallet, session });
   const walletAddress = safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120);

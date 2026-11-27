@@ -157,7 +157,7 @@ try {
   const createFlowSession = createAccountSession(createFlowAccount, { provider: "github", assurance: "medium" });
   const createStart = await walletCreateStart("POST", createFlowSession.session);
   const createMnemonic = generateTaskNodeMnemonic();
-  const createProof = signWalletChallenge(createMnemonic, createStart.body.challenge.message);
+  const createProof = signWalletChallenge(createMnemonic, createStart.body.challenge.message, { purpose: "wallet_proof" });
   const createVerify = await walletLinkVerify({
     challengeId: createStart.body.challenge.id,
     address: createProof.address,
@@ -203,7 +203,7 @@ try {
   const linkFlowAccount = getOrCreateProviderAccount({ provider: "github", providerUserId: "runtime-smoke-link-gh", username: "runtime-smoke-link" });
   const linkFlowSession = createAccountSession(linkFlowAccount, { provider: "github", assurance: "medium" });
   const linkStart = await walletLinkStart("POST", linkFlowSession.session);
-  const linkProof = signWalletChallenge(generateTaskNodeMnemonic(), linkStart.body.challenge.message);
+  const linkProof = signWalletChallenge(generateTaskNodeMnemonic(), linkStart.body.challenge.message, { purpose: "wallet_proof" });
   const linkVerify = await walletLinkVerify({ challengeId: linkStart.body.challenge.id, address: linkProof.address, publicKey: linkProof.publicKey, signature: linkProof.signature }, "POST", linkFlowSession.session);
   const linkLinkedWallet = getLinkedWallet({ accountId: linkFlowAccount.id });
   if (linkStart.status !== 200 || linkStart.body.challenge.accountId !== linkFlowAccount.id || linkStart.body.challenge.purpose !== "wallet_link" || linkVerify.status !== 200 || linkLinkedWallet.status !== "linked" || linkLinkedWallet.address !== linkProof.address) {

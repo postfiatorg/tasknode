@@ -1,5 +1,10 @@
-import { requestJson } from "../../api";
-import * as walletCore from "../../wallet-core";
+import { requestJson } from "../../api.js";
+import * as walletCore from "../../wallet-core.js";
+import { validateWalletChallengeMessage } from "../../../shared/wallet-challenge-guard.js";
+import {
+  collaborationChallengePayload,
+  stableCollaborationJson,
+} from "../../../shared/collaboration-challenge.js";
 
 function requireMnemonic(walletSecret) {
   const mnemonic = String(walletSecret?.mnemonic || "").trim();
@@ -7,17 +12,93 @@ function requireMnemonic(walletSecret) {
   return mnemonic;
 }
 
-export async function signedCollaborationProof({ action, resourceId = "", payload = {}, walletSecret }) {
+async function sha256Hex(value = "") {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function computeCollaborationPayloadDigest({ action = "", resourceId = "", payload = {} } = {}) {
+  const canonical = collaborationChallengePayload({ action, resourceId, payload });
+  return {
+    canonical,
+    digest: await sha256Hex(stableCollaborationJson(canonical)),
+  };
+}
+
+function guardError(code, detail = "") {
+  const error = new Error(detail ? `${code}: ${detail}` : code);
+  error.code = code;
+  return error;
+}
+
+export async function verifyCollaborationChallengeMessage({
+  message = "",
+  action = "",
+  resourceId = "",
+  payload = {},
+  accountId = "",
+  walletAddress = "",
+  now = Date.now(),
+} = {}) {
+  const parsed = validateWalletChallengeMessage(message, {
+    purpose: "collaboration_auth",
+    walletAddress,
+    expectedAccountId: accountId,
+    now,
+  });
+  const { canonical, digest } = await computeCollaborationPayloadDigest({ action, resourceId, payload });
+  const { fields } = parsed;
+  if (fields.Action !== canonical.action) {
+    throw guardError("SIGNING_GUARD_PREFIX_MISMATCH", "Collaboration challenge Action does not match local request.");
+  }
+  if (fields.Resource !== (canonical.resourceId || "new")) {
+    throw guardError("SIGNING_GUARD_PREFIX_MISMATCH", "Collaboration challenge Resource does not match local request.");
+  }
+  if (fields["Payload SHA-256"].toLowerCase() !== digest.toLowerCase()) {
+    throw guardError("SIGNING_GUARD_PREFIX_MISMATCH", "Collaboration challenge Payload SHA-256 does not match local payload.");
+  }
+  return { parsed, canonical, digest };
+}
+
+export async function signedCollaborationProof({
+  action,
+  resourceId = "",
+  payload = {},
+  walletSecret,
+  accountId = "",
+  requestImpl = requestJson,
+  now = Date.now(),
+}) {
   const mnemonic = requireMnemonic(walletSecret);
-  const challengeResult = await requestJson("/api/collaboration/challenge", {
+  const wallet = walletCore.deriveWalletSummary(mnemonic);
+  const expectedAccountId = String(accountId || walletSecret?.accountId || "").trim();
+  const requestBody = JSON.stringify({ action, resourceId, payload });
+  const challengeResult = await requestImpl("/api/collaboration/challenge", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, resourceId, payload }),
+    body: requestBody,
   });
   if (!challengeResult.ok || !challengeResult.body?.challenge?.message) {
     throw new Error(challengeResult.body?.error || "Could not create wallet authorization.");
   }
-  const signed = walletCore.signWalletChallenge(mnemonic, challengeResult.body.challenge.message);
+  const message = challengeResult.body.challenge.message;
+  // The server hashes the request as it parsed it from JSON, so check the challenge against the same values.
+  const sent = JSON.parse(requestBody);
+  await verifyCollaborationChallengeMessage({
+    message,
+    action: sent.action,
+    resourceId: sent.resourceId,
+    payload: sent.payload,
+    accountId: expectedAccountId,
+    walletAddress: wallet.address,
+    now,
+  });
+  const signed = walletCore.signWalletChallenge(mnemonic, message, {
+    purpose: "collaboration_auth",
+    expectedAccountId,
+    now,
+  });
   return {
     challengeId: challengeResult.body.challenge.id,
     signature: signed.signature,

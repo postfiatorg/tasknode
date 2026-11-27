@@ -278,7 +278,11 @@ function PasswordSecurity({ linkedWallet, onSessionChange, onWalletUnlock, sessi
           return;
         }
         const walletCore = await import("../../wallet-core");
-        const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, start.body.challenge.message);
+        const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, start.body.challenge.message, {
+          purpose: "wallet_proof",
+          allowedSubPurposes: walletCore.PASSWORD_ENABLE_PROOF_PURPOSES,
+          expectedAccountId: session?.accountId || "",
+        });
         if (proof.address !== linkedWallet.address) {
           setMessage("The unlocked wallet does not match the wallet linked to this account.");
           return;

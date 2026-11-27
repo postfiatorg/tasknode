@@ -53,7 +53,7 @@ async function linkTestWallet(accountId) {
 }
 
 function signedEnablePayload(started, wallet, password) {
-  const proof = signWalletChallenge(wallet.mnemonic, started.body.challenge.message);
+  const proof = signWalletChallenge(wallet.mnemonic, started.body.challenge.message, { purpose: "wallet_proof" });
   return {
     challengeId: started.body.challenge.id,
     address: proof.address,
