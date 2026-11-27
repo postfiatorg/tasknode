@@ -19,20 +19,55 @@ const fromHex = text => Uint8Array.from(text.match(/../g), pair => parseInt(pair
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 function must(condition, reason) { if (!condition) throw Error(refusalText(reason)); }
 
-// Only public instruction metadata goes to the browser console, never the signed wire transaction.
+// An account's role from the message header: s(igner) and w(ritable) or r(ead-only).
+function roleOf(header, count, index) {
+  const signer = index < header.numSignerAccounts;
+  const writable = signer ? index < header.numSignerAccounts - header.numReadonlySignerAccounts
+    : index < count - header.numReadonlyNonSignerAccounts;
+  return (signer ? "s" : "") + (writable ? "w" : "r");
+}
+
+// Public metadata of a transaction for diagnostics, or null: the message version, each account's
+// public address and role, and per instruction its program and account indices, tag and data
+// length. Never signatures or instruction data. The relay logs it when either side refuses.
 export function instructionLayout(bytes) {
   try {
-    const { header, staticAccounts, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(1 + 64 * bytes[0]));
-    return { header, staticAccounts, instructions: instructions.map(ix => ({ program: staticAccounts[ix.programAddressIndex],
-      accounts: Array.from(ix.accountIndices ?? [], i => staticAccounts[i]), tag: ix.data?.[0], dataLength: ix.data?.length ?? 0 })) };
-  } catch { return { unreadable: true }; }
+    const { version, header, staticAccounts: keys, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(1 + 64 * bytes[0]));
+    return { version, accounts: keys.map((key, i) => [key, roleOf(header, keys.length, i)]),
+      instructions: instructions.map(ix => ({ program: ix.programAddressIndex, accounts: Array.from(ix.accountIndices ?? []),
+        tag: ix.data?.[0] ?? null, length: ix.data?.length ?? 0 })) };
+  } catch { return null; }
 }
+
+const key32 = value => { try { return typeof value === "string" && value.length <= 88 && bs58.decode(value).length === 32; } catch { return false; } };
+const byte = value => Number.isInteger(value) && value >= 0 && value < 256;
+const object = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+// The fixed schema of instructionLayout's output: public addresses with roles, program and account
+// indices, tags and lengths. The browser attaches only a layout that passes it, and the relay logs only such a one.
+export function validLayout(layout) {
+  if (!object(layout) || Object.keys(layout).sort().join() !== "accounts,instructions,version") return false;
+  const { version, accounts, instructions } = layout;
+  return (version === "legacy" || version === 0) && Array.isArray(accounts) && accounts.length <= 64 &&
+    accounts.every(row => Array.isArray(row) && row.length === 2 && key32(row[0]) && ["sw", "sr", "w", "r"].includes(row[1])) &&
+    Array.isArray(instructions) && instructions.length <= 64 && instructions.every(ix => object(ix) &&
+      Object.keys(ix).sort().join() === "accounts,length,program,tag" && byte(ix.program) && (ix.tag === null || byte(ix.tag)) &&
+      Number.isInteger(ix.length) && ix.length >= 0 && ix.length <= 1232 && Array.isArray(ix.accounts) && ix.accounts.length <= 64 && ix.accounts.every(byte));
+}
+
+// Raise this whenever checkDepositShape accepts or refuses a different set of transactions. The
+// co-signing relay reports it in readiness and with each prepared deposit. The browser opens Phantom
+// for a two-signer (reserved nonce) deposit only when the prepared deposit's matches its own, so
+// nobody signs a deposit the relay will refuse to co-sign. One-signer deposits go ahead on any
+// version: raising it needs no coordinated deploy of the web and relay hosts for them, and a skew
+// at worst refuses one before anything is sent.
+export const DEPOSIT_CHECK_VERSION = 1;
 
 // Both the browser and the co-signer decode the actual signed legacy message. Instructions are
 // compared by address and privilege because adding a read-only key can renumber compiled indices.
 export async function checkDepositShape(bytes, expected, { signed = false } = {}) {
   const signers = bytes[0], start = 1 + 64 * signers;
   must([1, 2].includes(signers) && bytes.length > start, "signature count");
+  // Solana carries at most 1232 bytes; main's relay already refused more.
   must(bytes.length <= 1232, "transaction size");
   const message = bytes.subarray(start);
   let compiled;
@@ -40,14 +75,11 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
   must(compiled.version === "legacy" && hex(getCompiledTransactionMessageEncoder().encode(compiled)) === hex(message), "message encoding");
   const { header, staticAccounts: keys, instructions } = compiled;
   must(header.numSignerAccounts === signers, "signer count");
+  // Solana refuses a message with a key listed twice, a read-only fee payer or header counts out of
+  // range; the roles read below assume none of them.
   must(new Set(keys).size === keys.length && keys.length >= signers &&
     header.numReadonlyNonSignerAccounts <= keys.length - signers && header.numReadonlySignerAccounts < signers, "account header");
-  const role = index => {
-    const signer = index < header.numSignerAccounts;
-    const writable = signer ? index < header.numSignerAccounts - header.numReadonlySignerAccounts
-      : index < keys.length - header.numReadonlyNonSignerAccounts;
-    return (signer ? "s" : "") + (writable ? "w" : "r");
-  };
+  const role = index => roleOf(header, keys.length, index);
   const read = ix => {
     const indices = ix.accountIndices ?? [];
     must([ix.programAddressIndex, ...indices].every(index => Number.isInteger(index) && index < keys.length), "account index");
@@ -58,9 +90,13 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     const { program, accounts, data } = read(ix);
     // Every program is invoked read-only, as compiled; no instruction can make one writable or a signer.
     must(role(ix.programAddressIndex) === "r", "program role");
+    // One signer: main's rule; only the size and header checks above are added, and they refuse
+    // nothing Solana would accept. Phantom's Lighthouse instructions pass unread; they sit inside
+    // the depositor's own signature, and the header and role checks still apply.
+    if (program === LIGHTHOUSE_PROGRAM && signed && signers === 1) continue;
     if (program === LIGHTHOUSE_PROGRAM && signed) {
-      // LighthouseInstruction (Jac0xb/lighthouse): 0/1 write or close memory. Only the known
-      // assertion variants (2..17) test state and abort on a mismatch.
+      // Two signers: LighthouseInstruction (Jac0xb/lighthouse) 0/1 write or close memory. Only the
+      // known assertion variants (2..17) test state and abort on a mismatch.
       must(data[0] >= 2 && data[0] <= 17, "Lighthouse instruction");
       assertions.push(...accounts);
       continue;
@@ -112,12 +148,17 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     rest.join() === [config, custody, expected.mint, receipt, TOKEN_PROGRAM, SYSTEM_PROGRAM].join() &&
     deposit.roles.join() === "sw,w,w,w,r,w,r,r", "deposit accounts");
   if (durable) {
-    // The authority is read-only and only AdvanceNonce receives its signer privilege or the
-    // leased nonce account. The depositor pays the fee and authorizes the original vault action.
-    // Extra instructions can only set a bounded budget or assert state. Even unused keys cannot
-    // enlarge the writable set, and assertions cannot use either nonce credential.
-    const protectedKey = key => key === durable.nonce_authority || key === durable.nonce_account;
-    must(!deposit.accounts.some(protectedKey) && !assertions.some(protectedKey), "nonce account or authority outside advance");
+    // The authority is read-only and only AdvanceNonce receives its signer privilege. The depositor
+    // pays the fee and authorizes the original vault action. Extra instructions can only set a
+    // bounded budget or assert state. Even unused keys cannot enlarge the writable set. The advance
+    // changes the nonce account, so Phantom may assert on it. The message marks it writable because
+    // the advance writes it, so an assertion naming it receives that write privilege too; assertions
+    // (tags 2..17) write nothing, and only the System program, which needs the authority's
+    // signature, can change that System-owned account. The deposit may name neither nonce key, and
+    // no assertion the authority, whose signer privilege it would receive.
+    const { nonce_account: account, nonce_authority: authority } = durable;
+    must(!deposit.accounts.some(key => key === account || key === authority) && !assertions.includes(authority),
+      "nonce account or authority outside advance");
     const writable = new Set([owner, source, config, custody, receipt, durable.nonce_account]);
     must(keys.every((key, i) => !role(i).endsWith("w") || writable.has(key)), "additional writable account");
   }

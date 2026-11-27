@@ -1,7 +1,7 @@
 import bs58 from "bs58";
 import { bridgeJson } from "./bridge-relay.js";
-import { knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
-import { checkDepositShape, instructionLayout } from "./solana-shape.js";
+import { CHECK_MISMATCH, knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
+import { checkDepositShape, DEPOSIT_CHECK_VERSION, instructionLayout, validLayout } from "./solana-shape.js";
 
 const signature = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const jobId = /^0x[0-9a-f]{64}$/;
@@ -36,7 +36,9 @@ export function setAside(earlier, record) {
   return list;
 }
 // Give the server's nonce lease back; a failure here only delays its expiry.
-const release = (nonce, reason) => postSolana("release", { nonce, reason }).catch(() => {});
+// A refused layout goes along so the relay log shows it, only within the relay's schema and request limit.
+const release = (nonce, reason, layout) => postSolana("release", { nonce, reason,
+  layout: reason && validLayout(layout) && JSON.stringify(layout).length <= 3000 ? layout : undefined }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;
@@ -69,9 +71,11 @@ async function checkIntent(intent, request, ready) {
   return shape;
 }
 
+// One signer: main's rule, so the source is not pinned (the relay pins none there either). Two
+// signers: the relay co-signs only the leased deposit, prepared source included.
 async function checkSigned(signed, intent, request, ready, prepared) {
   await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint,
-    source: prepared.source, nonce: intent.nonce, ...prepared.durable }, { signed: true });
+    source: prepared.durable ? prepared.source : undefined, nonce: intent.nonce, ...prepared.durable }, { signed: true });
   if (signed[0] !== prepared.signers) throw Error(refusalText("signer count"));
   if (signed.subarray(1, 65).every(byte => byte === 0)) throw Error(refusalText("missing depositor signature"));
 }
@@ -84,15 +88,20 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
   await navigator.locks.request(key, { ifAvailable: true }, async lock => {
     if (!lock || readSaved(key)) throw Error("A Solana deposit is already in progress.");
     const intent = await postSolana("intent", request);
-    // Every refusal before Phantom opens gives the server's nonce lease back.
-    const refuse = async (reason, detail = "") => {
-      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, reason);
+    // The relay that prepared this deposit names the shape check it runs on /send. Where it co-signs,
+    // with a durable nonce, that must be this page's, or it could refuse what Phantom signed.
+    // One-signer deposits go ahead on any version, or none (an older relay).
+    const current = intent?.check_version === DEPOSIT_CHECK_VERSION;
+    // Every refusal before Phantom opens gives the server's nonce lease back. An older relay accepts no reason.
+    const refuse = async (reason, detail = "", layout) => {
+      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, current ? reason : undefined, layout);
       throw Error(reason + detail);
     };
     if (intent.build_id !== pageBuild) await refuse(RELOAD_DEPOSIT);
     if (!active() || provider.publicKey?.toString() !== request.owner) await refuse(RECONNECT_PHANTOM);
     let shape;
     try { shape = await checkIntent(intent, request, ready); } catch (error) { await refuse(shapeReason(error), ". Phantom was not opened."); }
+    if (shape.durable && !current) await refuse(CHECK_MISMATCH);
     if (!active()) await refuse(RECONNECT_PHANTOM);
     // A durable-nonce deposit expires only when its nonce moves, so keep what it signed.
     const record = { ...request, nonce: intent.nonce, last_valid_block_height: intent.last_valid_block_height,
@@ -122,8 +131,9 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
         try { bytes = Uint8Array.from(signed.serialize({ requireAllSignatures: false, verifySignatures: false })); } catch { /* no wire layout */ }
         reason = refusalText(bytes?.length ? "invalid Phantom signature" : "unreadable Phantom reply");
       }
-      console.warn(reason, instructionLayout(bytes));
-      await refuse(reason, ". Nothing was sent.");
+      const layout = instructionLayout(bytes);
+      console.warn(reason, layout);
+      await refuse(reason, ". Nothing was sent.", layout);
     }
     const transaction = base64(bytes);
     // Keep the signed copy of a durable deposit: recovery can send it again while its lease is held.

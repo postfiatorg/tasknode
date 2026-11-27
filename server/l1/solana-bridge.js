@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
 import { knownRefusal, RELOAD_DEPOSIT } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
+import { DEPOSIT_CHECK_VERSION, validLayout } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { walletBuildId } from '../wallet-build.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, USDC, vaultSettings } from './solana-vault.js';
 
@@ -40,11 +41,14 @@ function b58(value, size) {
   if (typeof value !== 'string' || value.length > 88) return false;
   try { return bs58.decode(value).length === size; } catch { return false; }
 }
+const object = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 function validBody(path, body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  if (!object(body)) return false;
   const keys = Object.keys(body).sort().join(',');
   const hex32 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' || (keys === 'nonce,reason' && knownRefusal(body.reason)));
+  // A layout is a diagnostic: one outside the schema is not logged, and never blocks the release.
+  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' ||
+    (['nonce,reason', 'layout,nonce,reason'].includes(keys) && knownRefusal(body.reason)));
   // A durable-nonce deposit also names the nonce account and the value it signed.
   if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id']
     .some(base => keys === base || keys === [...base.split(','), 'nonce_account', 'nonce_value'].sort().join(',')) &&
@@ -145,7 +149,8 @@ async function localRoute(env, suffix, body, holder) {
   try { epoch = JSON.parse(await readFile(path(config.state + '/epoch.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; epoch = config.current_epoch; }
   const ready = await readVault(settings, { ready: true, vault_program_id: settings.program, light_client_epoch: epoch });
-  return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body, holder) : ready };
+  // This host co-signs on /send: readiness and each prepared deposit name the shape check it runs there.
+  return { status: 200, payload: { ...(body ? await buildVaultDeposit(settings, ready, body, holder) : ready), check_version: DEPOSIT_CHECK_VERSION } };
 }
 
 export async function handleSolana({ req, res, json, readJson, fail, suffix, env, session, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {
@@ -153,11 +158,16 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   const forwarded = req.headers?.['x-tasknode-account'];
   const holder = session?.accountId === 'relay-service' ? (HOLDER.test(forwarded || '') ? forwarded : null)
     : session?.accountId ? String(session.accountId).replace(/[^A-Za-z0-9:_@.-]/g, '_').slice(0, 128) : null;
-  let body;
+  let body, valid = false;
   // Keep only public, validated tracking fields. Never log raw bodies, transaction bytes, RPC
   // errors, headers, or relay replies. The nonce correlates intent, refusal, send and recovery.
-  function log(status, code, payload, message) {
+  // layout: the public layout of a refused transaction, from the relay's own decode or a release.
+  // reason: a fixed diagnostic of the relay's own, where the message carries outside text.
+  // A release's reason and layout come from the caller: logged only when it gave back its own lease.
+  function log(status, code, payload, message, layout = undefined, reason = undefined) {
     const step = JOB.test(suffix) ? 'job-status' : suffix.slice(8);
+    const released = suffix === '/solana/release' && payload ? payload.released === true : undefined;
+    const caller = valid && released ? body : {};
     const nonce = body?.nonce ?? payload?.nonce;
     const signature = body?.signature ?? payload?.signature;
     const job = JOB.test(suffix) ? suffix.split('/').at(-1) : payload?.job_id;
@@ -165,9 +175,10 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
       nonce: typeof nonce === 'string' && /^[0-9a-f]{64}$/.test(nonce) ? nonce : undefined,
       signature: b58(signature, 64) ? signature : undefined, job: typeof job === 'string' && /^0x[0-9a-f]{64}$/.test(job) ? job : undefined,
       durable: suffix === '/solana/intent' && status === 200 ? Boolean(payload?.nonce_account) : undefined,
-      reason: knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined }));
+      released, reason: reason ?? (knownRefusal(message) ? message : knownRefusal(caller.reason) ? caller.reason : undefined),
+      layout: [layout, caller.layout].find(validLayout) }));
   }
-  const reject = (status, code, message) => { log(status, code, undefined, message); return fail(status, code, message); };
+  const reject = (status, code, message, layout, reason) => { log(status, code, undefined, message, layout, reason); return fail(status, code, message); };
   if (!solanaPath(suffix)) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (req.method !== (post ? 'POST' : 'GET')) return reject(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (post) {
@@ -176,6 +187,7 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     if (origin.host !== req.headers.host || req.headers['sec-fetch-site'] === 'cross-site') return reject(403, 'bridge_origin_mismatch', 'Same-origin request required.');
     try { body = await readJson(req, 4096); } catch { /* reject invalid or oversized JSON */ }
     if (!validBody(suffix, body)) return reject(400, 'invalid_solana_request', 'Invalid Solana deposit request.');
+    valid = true;
   }
   try {
     // The authenticated proxy has already checked its own page. Its upstream relay can be
@@ -206,7 +218,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     json(res, result.status, result.payload);
     return true;
   } catch (error) {
-    return reject(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
-      error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.');
+    const known = error instanceof DepositError;
+    return reject(known ? error.status : 502, known ? error.code : 'solana_bridge_unavailable',
+      known ? error.message : 'The Solana vault or proof relay is unreachable.', known ? error.layout : undefined, known ? error.reason : undefined);
   }
 }

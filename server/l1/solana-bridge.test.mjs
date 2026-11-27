@@ -9,11 +9,12 @@ import { isSignerRole, isWritableRole } from '@solana/instructions';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder, decompileTransactionMessage } from '@solana/transaction-messages';
 import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { walletBuildId } from '../wallet-build.js';
+import { knownRefusal, RELAY_REFUSALS } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
 import * as vault from './solana-vault.js';
 import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
-import { MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { checkDepositShape, DEPOSIT_CHECK_VERSION, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
-import { assertLamports, assertTokenAccount, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
+import { assertLamports, assertTokenAccount, recompile, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const pub = byte => bs58.encode(Buffer.alloc(32, byte));
 const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
@@ -161,15 +162,119 @@ test('release and failure logs contain only bounded public diagnostics', async t
   const log = t.mock.method(console, 'log', () => {});
   const nonce = '12'.repeat(32), reason = 'Not the vault deposit: source account';
   const release = body => route('release', { readJson: async () => body });
-  assert.equal((await release({ nonce, reason })).status, 200);
   assert.equal((await release({ nonce, reason: 'arbitrary private text' })).status, 400);
   assert.equal((await route('send', { readJson: async () => ({ nonce, transaction_b64: 'A'.repeat(100) }) })).status, 503);
   const lines = log.mock.calls.map(call => call.arguments[0]);
-  assert.equal(lines.length, 3);
-  assert.ok(lines[0].includes(reason));
-  assert.ok(lines[1].includes('invalid_solana_request'));
-  assert.ok(lines[2].includes('solana_bridge_unavailable'));
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].includes('invalid_solana_request'));
+  assert.ok(lines[1].includes('solana_bridge_unavailable'));
   assert.doesNotMatch(lines.join(' '), /arbitrary private text|A{100}|transaction_b64/);
+  assert.ok(knownRefusal(reason));
+});
+
+test('a release logs its reason and layout only for a lease the caller holds; otherwise it is answered as before', async t => {
+  const f = await durableFixture(t, 135);
+  const log = t.mock.method(console, 'log', () => {});
+  const reason = 'Not the vault deposit: source account';
+  const layout = { version: 'legacy', accounts: [[owner, 'sw'], [pub(136), 'w']], instructions: [{ program: 0, accounts: [1], tag: 5, length: 12 }] };
+  const release = (body, accountId = 'test') => route('release', { session: { accountId }, readJson: async () => body });
+  const nonce = (await buildVaultDeposit(f.settings, f.ready, request, 'test')).nonce;
+  assert.deepEqual((await release({ nonce: '12'.repeat(32), reason, layout })).body, { ok: true, released: false }, 'no lease');
+  assert.deepEqual((await release({ nonce, reason, layout }, 'other')).body, { ok: true, released: false }, 'another holder\'s lease');
+  assert.deepEqual((await release({ nonce, reason, layout })).body, { ok: true, released: true });
+  const rows = log.mock.calls.map(call => JSON.parse(call.arguments[0].slice('solana release '.length)));
+  assert.deepEqual(rows.map(row => [row.status, row.released, row.reason, row.layout]),
+    [[200, false, undefined, undefined], [200, false, undefined, undefined], [200, true, reason, layout]]);
+});
+
+test('relay refusals on /send reach its log with the step, the deposit nonce and the public layout, never bytes, signatures or keys', async t => {
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(new URL(url).host, 'jobs.test', 'nothing reaches Solana');
+    return Response.json({ ok: true, ready: true, ledger: 'node', route_id: 'solana-mainnet-usdc-v1',
+      source_proof_kind: 'sp1-solana-alpenglow-finality-v1', program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+  });
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '3a'.repeat(32), authority = pub(121);
+  const base = { program, mint, owner, source, nonce, amount_atoms: '1000000', pftl_recipient: request.pftl_recipient,
+    nonceAccount: pub(120), authority, lifetime: pub(122), budget: [unitLimit(200450), unitPrice(150000)] };
+  const cases = [
+    [RELAY_REFUSALS.lease, signAsDepositor(await solanaDeposit({ ...base, extra: [assertLamports(owner, 1)] }))],
+    ['Not the vault deposit: nonce account or authority outside advance', signAsDepositor(await solanaDeposit({ ...base, extra: [assertLamports(authority, 1)] }))],
+    [RELAY_REFUSALS.unsigned, await solanaDeposit(base)],
+  ];
+  for (const [reason, bytes] of cases) {
+    const result = await route('send', { env, readJson: async () => sendBody(bytes, nonce) });
+    assert.deepEqual([result.status, result.body.code, result.body.message], [400, 'solana_deposit_shape_mismatch', reason]);
+  }
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.equal(lines.length, cases.length);
+  for (const [i, [reason, bytes]] of cases.entries()) {
+    assert.ok(lines[i].startsWith('solana send '), lines[i]);
+    const row = JSON.parse(lines[i].slice('solana send '.length));
+    assert.deepEqual([row.code, row.nonce, row.reason], ['solana_deposit_shape_mismatch', nonce, reason]);
+    assert.equal(row.layout.version, 'legacy');
+    assert.deepEqual(row.layout.accounts.slice(0, 2), [[owner, 'sw'], [authority, 'sr']]);
+    assert.deepEqual(row.layout.instructions.map(ix => [row.layout.accounts[ix.program][0], ix.tag, ix.length]).slice(0, 3),
+      [[SYSTEM, 4, 4], [COMPUTE_BUDGET, 2, 5], [COMPUTE_BUDGET, 3, 9]]);
+    const text = lines[i], wire = Buffer.from(bytes);
+    for (const secret of [wire.toString('base64'), bs58.encode(wire.subarray(1, 65)), wire.subarray(1, 65).toString('hex'),
+      bs58.encode(Buffer.alloc(32, 5)), 'fixture-only', 'transaction_b64']) assert.ok(!text.includes(secret), 'no ' + secret.slice(0, 12));
+  }
+  assert.ok(lines[1].includes(LIGHTHOUSE), 'the refused assertion program is named');
+  // Every refusal the relay itself produces is a fixed diagnostic.
+  for (const reason of [...Object.values(RELAY_REFUSALS), 'Not the vault deposit: leased deposit accounts or data changed']) assert.ok(knownRefusal(reason), reason);
+});
+
+test('Solana\'s rejection on /send is logged with a fixed reason and the public layout, never Solana\'s text', async t => {
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
+  const rpcText = 'Transaction simulation failed: Lighthouse assertion private-detail';
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (new URL(url).host === 'solana.test') return Response.json({ jsonrpc: '2.0', id: JSON.parse(options.body).id, error: { code: -32002, message: rpcText } });
+    return Response.json({ ok: true, ready: true, ledger: 'node', route_id: 'solana-mainnet-usdc-v1',
+      source_proof_kind: 'sp1-solana-alpenglow-finality-v1', program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+  });
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '3c'.repeat(32);
+  const bytes = await solanaDeposit({ program, mint, owner, source, nonce, amount_atoms: '1000000', pftl_recipient: request.pftl_recipient,
+    budget: [unitLimit(200450), unitPrice(150000)], extra: [assertLamports(owner, 1)], signed: 9 });
+  const result = await route('send', { env, readJson: async () => sendBody(bytes, nonce) });
+  assert.deepEqual([result.status, result.body.code, result.body.message], [409, 'solana_deposit_rejected', 'Solana rejected the deposit: ' + rpcText]);
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.equal(lines.length, 1);
+  const row = JSON.parse(lines[0].slice('solana send '.length));
+  assert.deepEqual([row.code, row.nonce, row.reason], ['solana_deposit_rejected', nonce, 'Solana rejected the deposit']);
+  assert.deepEqual(row.layout.instructions.map(ix => [row.layout.accounts[ix.program][0], ix.tag]).at(-1), [LIGHTHOUSE, 5]);
+  assert.ok(!lines[0].includes('private-detail'), 'Solana\'s text stays out of the log');
+});
+
+test('a browser refusal always releases the lease; only a layout that passes the fixed schema is logged', async t => {
+  const f = await durableFixture(t, 170);
+  const log = t.mock.method(console, 'log', () => {});
+  const reason = 'Not the vault deposit: Lighthouse instruction';
+  const layout = { version: 'legacy', accounts: [[owner, 'sw'], [pub(121), 'sr'], [LIGHTHOUSE, 'r']],
+    instructions: [{ program: 2, accounts: [1], tag: 0, length: 12 }] };
+  const release = body => route('release', { readJson: async () => body });
+  const lease = async () => (await buildVaultDeposit(f.settings, f.ready, request, 'test')).nonce;
+  assert.deepEqual((await release({ nonce: await lease(), reason, layout })).body, { ok: true, released: true });
+  const bad = [{ ...layout, signature: signature }, { ...layout, version: 1 }, { ...layout, accounts: [[signature, 'sw']] },
+    { ...layout, accounts: [['private text', 'r']] }, { ...layout, accounts: [[owner, 'x']] },
+    { ...layout, instructions: [{ program: 2, accounts: [1], tag: 0, length: 12, data: 'AAAA' }] },
+    { ...layout, instructions: [{ program: 999, accounts: [], tag: 0, length: 1 }] },
+    { ...layout, instructions: [{ program: 2, accounts: Array(65).fill(0), tag: 5, length: 12 }] }, 'text', null];
+  for (const wrong of bad) {
+    assert.deepEqual((await release({ nonce: await lease(), reason, layout: wrong })).body, { ok: true, released: true }, JSON.stringify(wrong));
+  }
+  assert.equal((await release({ nonce: await lease(), layout })).status, 400, 'a layout comes with a reason');
+  const rows = log.mock.calls.map(call => call.arguments[0]).filter(line => line.startsWith('solana release '))
+    .map(line => JSON.parse(line.slice('solana release '.length)));
+  assert.equal(rows.length, bad.length + 2);
+  assert.deepEqual([rows[0].reason, rows[0].layout], [reason, layout]);
+  assert.ok(rows.slice(1, -1).every(row => row.status === 200 && row.reason === reason && row.layout === undefined));
+  assert.deepEqual([rows.at(-1).code, rows.at(-1).layout], ['invalid_solana_request', undefined]);
+  assert.doesNotMatch(log.mock.calls.map(call => call.arguments[0]).join(' '), new RegExp(signature + '|private text|AAAA'));
 });
 
 async function relayFiles(t) {
@@ -205,8 +310,10 @@ test('Solana proxy forwards job create and status to configured endpoints and gu
   assert.equal(calls[1].href, 'http://local.test/api/bridge/jobs/' + id);
   const remote = { ...read, env: { L1_SOLANA_VAULT_PROGRAM_ID: program }, withdrawViaRelay: true, bridgeProxyUrl: 'https://relay.test', proxyToken: 'test-token', proxyOrigin: 'https://relay.test' };
   const jobPayload = payload;
-  payload = { ok: true, ready: true, vault_program_id: program, mint: USDC };
-  assert.equal((await route('readiness', remote)).status, 200);
+  payload = { ok: true, ready: true, vault_program_id: program, mint: USDC, check_version: DEPOSIT_CHECK_VERSION + 1 };
+  const forwarded = await route('readiness', remote);
+  assert.equal(forwarded.status, 200);
+  assert.equal(forwarded.body.check_version, DEPOSIT_CHECK_VERSION + 1, 'the relay host\'s version, not this server\'s');
   payload = jobPayload;
   assert.equal(calls[2].href, 'https://relay.test/api/l1/bridge/solana/readiness');
   assert.equal(calls[2].headers.Authorization, 'Bearer test-token');
@@ -252,7 +359,10 @@ test('readiness and intent use the same current route through the Solana JSON-RP
   const readiness = await route('readiness', { req: { method: 'GET', headers: { 'x-tasknode-build': walletBuildId() } }, env });
   assert.equal(readiness.body.light_client_epoch, 3);
   assert.equal(readiness.body.available_atoms, '5000000');
-  assert.equal((await route('intent', { env })).status, 200);
+  assert.equal(readiness.body.check_version, DEPOSIT_CHECK_VERSION, 'the co-signing relay reports the check it runs on /send');
+  const intent = await route('intent', { env });
+  assert.equal(intent.status, 200);
+  assert.equal(intent.body.check_version, DEPOSIT_CHECK_VERSION, 'and names it again with each deposit it prepares');
   epoch++;
   assert.equal((await route('intent', { env })).status, 503);
 });
@@ -593,12 +703,6 @@ test('durable recovery: expired only when the finalized nonce moved past the sig
   assert.notEqual((await route('recovery', { readJson: async () => recovery })).status, 400, 'the route accepts the nonce fields');
 });
 
-// Re-encode the message of signed bytes after `edit`, keeping every signature slot as it was.
-function recompile(bytes, edit) {
-  const start = 1 + 64 * bytes[0];
-  const compiled = getCompiledTransactionMessageDecoder().decode(bytes.subarray(start));
-  return Buffer.concat([bytes.subarray(0, start), Buffer.from(getCompiledTransactionMessageEncoder().encode(edit(compiled)))]);
-}
 const shapeRefused = { status: 400, code: 'solana_deposit_shape_mismatch' };
 
 test('/solana/send: a wallet-added compute budget passes on the one-signer path within the caps; AdvanceNonce stays first', async t => {
@@ -674,7 +778,7 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
     { owner: pub(88) }, { source: pub(89) }, { amount_atoms: '1999999' }, { pftl_recipient: 'pf' + 'cd'.repeat(20) },
     { nonce: 'de'.repeat(32) }, { lifetime: pub(90) }, { nonceAccount: f.nonceAccounts[1] },
     { extra: [assertLamports(pub(44), 1, { role: 2 })] }, { extra: [assertLamports(f.authority, 1, { role: 1 })] },
-    { extra: [assertLamports(f.authority, 1)] }, { extra: [assertLamports(intent.nonce_account, 1)] },
+    { extra: [assertLamports(f.authority, 1)] }, { extra: [assertLamports(intent.nonce_account, 1), assertLamports(f.authority, 1)] },
     { extra: [assertLamports(pub(44), 1, { role: 1 })] }, { extra: [assertLamports(mint, 1, { role: 1 })] },
     { extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }, { budget: [unitLimit(410000)] },
     { budget: [unitPrice(MAX_COMPUTE_UNIT_PRICE + 1)] }, { budget: [unitPrice(MAX_COMPUTE_UNIT_PRICE)] },
@@ -692,6 +796,11 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
   for (const budget of [[], [unitPrice(42)]]) {
     const optional = signAsDepositor(await solanaDeposit({ ...durable, budget }));
     assert.equal((await sendDeposit(f.settings, sendBody(optional, intent.nonce), quick)).ok, true);
+  }
+  // AdvanceNonce changes the nonce account, so Phantom may assert on it; the assertion gets its write privilege but cannot change it.
+  for (const extra of [[assertLamports(intent.nonce_account, 1)], [...lighthouse, assertLamports(intent.nonce_account, 1, { role: 1 })]]) {
+    const guarded = signAsDepositor(await solanaDeposit({ ...durable, extra }));
+    assert.equal((await sendDeposit(f.settings, sendBody(guarded, intent.nonce), quick)).ok, true);
   }
 
 });

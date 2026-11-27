@@ -1,7 +1,7 @@
 // Solana vault deposit transactions for tests, built independently of the server's builder.
 import { getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
-import { compileTransactionMessage, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
+import { compileTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
 import bs58 from 'bs58';
 
 export const pub = byte => bs58.encode(Buffer.alloc(32, byte));
@@ -65,3 +65,10 @@ export const assertTokenAccount = (target, owner, atLeast, { role = READONLY, pr
 // A System transfer from the owner, for "no other instruction" cases.
 export const transfer = (from, to) => ({ programAddress: SYSTEM, data: Buffer.from([2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]),
   accounts: [{ address: from, role: WRITABLE_SIGNER }, { address: to, role: WRITABLE }] });
+
+// Re-encode the message of signed bytes after `edit`, keeping every signature slot as it was.
+export function recompile(bytes, edit) {
+  const start = 1 + 64 * bytes[0];
+  const compiled = getCompiledTransactionMessageDecoder().decode(bytes.subarray(start));
+  return Buffer.concat([bytes.subarray(0, start), Buffer.from(getCompiledTransactionMessageEncoder().encode(edit(compiled)))]);
+}
