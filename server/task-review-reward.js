@@ -4,6 +4,7 @@ import { query } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
 import { signTaskTransition } from "./task-transition-signatures.js";
+import { assertVerifiedFastPayReceipt, isFastPayPayoutsEnabled, isL1Address } from "./l1/fastpay-payout.js";
 import {
   agentDecisionsEnabled,
   boardForTask,
@@ -382,6 +383,8 @@ export async function processVerificationResponse(row, {
   logger = console,
   blacklistLookup = activeBlacklistEntry,
   parkClaim = clearWorkerClaim,
+  fastpayDriver = null,
+  env = process.env,
 } = {}) {
   const workerName = "reward_scoring";
   if (String(row.task_id).startsWith("task_reinstate_")) return { ok: true, skipped: true, reason: "unpaid_reinstatement" };
@@ -704,17 +707,62 @@ export async function processVerificationResponse(row, {
     }
 
     publicationAttempted = true;
-    reward = await publishAuthorityPointer({
-      payload: rewardPayload,
-      contentKind: "REWARD",
-      destination: row.subject_wallet,
-      kind: "REWARD",
-      signerWallet: rewardWallet,
-      tasknodeKey,
-      accountId: row.account_id,
-      amountDrops: rewardAmountDrops,
-      onPrepared: (transactionReceipt) => updateRewardPaymentGuard({ taskId: row.task_id, patch: { transaction_receipt: transactionReceipt } }),
-    });
+    const useFastPay = Boolean(
+      isFastPayPayoutsEnabled(env) &&
+      fastpayDriver &&
+      isL1Address(row.l1_recipient_account || row.subject_wallet)
+    );
+    if (useFastPay) {
+      const fastpayReceipt = await fastpayDriver.executePayout({
+        payoutId: row.task_id,
+        taskId: row.task_id,
+        recipientAccount: row.l1_recipient_account || row.subject_wallet,
+        recipientPubkeyHex: row.l1_recipient_pubkey_hex || "",
+        recipientXWingPublicKey: row.recipient_xwing_public_key,
+        serviceXWingPublicKey: row.service_xwing_public_key || null,
+        amountAtoms: rewardAmountDrops,
+        summary: score.reason || "Task Node reward payout",
+        onPrepared: ({ orderHash, lockId }) => updateRewardPaymentGuard({
+          taskId: row.task_id,
+          patch: { lane: "fastpay", order_hash: orderHash, fastpay_lock_id: lockId },
+        }),
+      });
+      // Paid only on a verified certificate (or a validated fallback); anything else is submit_unknown.
+      assertVerifiedFastPayReceipt(fastpayReceipt);
+      await updateRewardPaymentGuard({
+        taskId: row.task_id,
+        patch: {
+          lane: fastpayReceipt.lane,
+          order_hash: fastpayReceipt.orderHash,
+          certificate_digest: fastpayReceipt.certificateDigest || "",
+          pointer_version: fastpayReceipt.pointerVersion || "v5",
+          explorer_badge: fastpayReceipt.badge || "Task reward",
+        },
+      });
+      reward = {
+        cid: fastpayReceipt.cid,
+        txHash: fastpayReceipt.orderHash || fastpayReceipt.txHash,
+        orderHash: fastpayReceipt.orderHash,
+        certificateDigest: fastpayReceipt.certificateDigest || "",
+        lane: fastpayReceipt.lane,
+        pointerVersion: fastpayReceipt.pointerVersion || "v5",
+        badge: fastpayReceipt.badge || "Task reward",
+        ledgerIndex: fastpayReceipt.blockHeight || 0,
+        engineResult: fastpayReceipt.lane === "fastpay" ? "fastpay_certified" : "consensus_validated",
+      };
+    } else {
+      reward = await publishAuthorityPointer({
+        payload: rewardPayload,
+        contentKind: "REWARD",
+        destination: row.subject_wallet,
+        kind: "REWARD",
+        signerWallet: rewardWallet,
+        tasknodeKey,
+        accountId: row.account_id,
+        amountDrops: rewardAmountDrops,
+        onPrepared: (transactionReceipt) => updateRewardPaymentGuard({ taskId: row.task_id, patch: { transaction_receipt: transactionReceipt } }),
+      });
+    }
     await markRewardPaymentSubmitted({ taskId: row.task_id, reward });
     const recordedReward = await directWriteReviewTransition({
       row,
@@ -723,6 +771,13 @@ export async function processVerificationResponse(row, {
         ...rewardPayload,
         cid: reward.cid,
         tx_hash: reward.txHash,
+        ...(reward.orderHash ? {
+          order_hash: reward.orderHash,
+          certificate_digest: reward.certificateDigest || "",
+          payment_lane: reward.lane || "fastpay",
+          pointer_version: reward.pointerVersion || "v5",
+          explorer_badge: reward.badge || "Task reward",
+        } : {}),
       },
       sourceTxHash: reward.txHash,
       sourceCid: reward.cid,
@@ -730,6 +785,12 @@ export async function processVerificationResponse(row, {
         phase: "reward_scoring",
         workerName,
         reward_pft: score.reward_pft,
+        ...(reward.orderHash ? {
+          order_hash: reward.orderHash,
+          payment_lane: reward.lane || "fastpay",
+          pointer_version: reward.pointerVersion || "v5",
+          explorer_badge: reward.badge || "Task reward",
+        } : {}),
       },
     });
     const publishedRef = {

@@ -606,6 +606,40 @@
   font-weight: 600;
 }
 
+.pf-tile-chain-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(18, 22, 28, 0.78);
+  color: #f4f6f8;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.pf-tile-chain-badge.is-migrated,
+.pf-tile-chain-badge.is-l1 {
+  background: rgba(16, 112, 68, 0.88);
+  color: #f5fff9;
+}
+
+.pf-tile-chain-badge.is-recorded {
+  background: rgba(65, 82, 110, 0.86);
+  color: #f3f6fb;
+}
+
+.pf-tile-issuer {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--tn-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pf-tile-title {
   margin-top: 8px;
   overflow: hidden;

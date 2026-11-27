@@ -1,5 +1,6 @@
 import { profileNftGenerateStart } from "./profile-nft-generation.js";
 import { profileNftMintStart } from "./profile-nft-mint.js";
+import { buildDualChainProfileNftsView } from "./l1/dual-chain-nfts.js";
 import { createHash } from "node:crypto";
 import { loadPrompt } from "./prompt-registry.js";
 import { runPublicProfileSnapshot } from "./profile-public-snapshot.js";
@@ -797,13 +798,18 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       accountId: session.accountId,
       ...(walletAddress ? { walletAddress } : {}),
     });
+    const dualChainView = buildDualChainProfileNftsView({
+      legacyNfts: nfts,
+      filter: url.searchParams.get("chain") || "all",
+    });
     json(res, 200, {
       ok: true,
       walletAddress,
       walletScoped: Boolean(walletAddress),
-      nfts,
+      nfts: dualChainView.nfts,
       total,
-      latest: latestProfileStudioNft(nfts, { walletAddress }),
+      dualChainSummary: dualChainView.counts,
+      latest: latestProfileStudioNft(dualChainView.allNfts, { walletAddress }),
     });
     return true;
   }

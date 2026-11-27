@@ -3,8 +3,63 @@
 import { localRpc } from './read-rpc.js';
 import { getNavcoinRegistry } from './navcoin-registry.js';
 import { assetSymbols, routeSymbols } from '../../src/features/wallet/l1/market/constants.js';
+import { CONTENT_KIND, addressFromPublicKey, decodeAnyPointerMemo } from './message-protocol.js';
 const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swap_transactions', 'escrow_transactions', 'nft_transactions', 'offer_transactions'];
 const ADDRESS_FIELDS = ['source', 'from', 'to', 'owner', 'account', 'recipient', 'native_recipient', 'settlement_recipient', 'spread_recipient'];
+
+function addressFromHexPubkey(pubkeyHex = '') {
+  const hex = String(pubkeyHex || '').trim();
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return '';
+  return addressFromPublicKey(Buffer.from(hex, 'hex'));
+}
+
+function projectFastPayEffects(block, address, rows) {
+  const effects = Array.isArray(block?.fastpay_pre_state_effects) ? block.fastpay_pre_state_effects : [];
+  effects.forEach((fence, effectIndex) => {
+    const decision = fence?.decision;
+    const confirmed = decision?.Confirmed || (decision?.kind === 'confirmed' ? decision : null);
+    const cert = fence?.certificate;
+    if (!confirmed || !cert || !cert.order) return;
+    const orderHash = confirmed.order_digest || confirmed.order_hash || '';
+    const certificateDigest = confirmed.certificate_digest || '';
+    if (!orderHash) return;
+    const from = cert.owner_account || addressFromHexPubkey(cert.owner_pubkey_hex);
+    const memos = Array.isArray(cert.order.memos) ? cert.order.memos : [];
+    const pointer = memos.map(decodeAnyPointerMemo).find(Boolean) || null;
+    const isUnwrap = Boolean(cert.order.to_address && !Array.isArray(cert.order.outputs));
+    if (isUnwrap) {
+      const to = cert.order.to_address;
+      if (from !== address && to !== address) return;
+      rows.push({
+        tx_id: orderHash, order_hash: orderHash, certificate_digest: certificateDigest || undefined,
+        fastpay_lock_id: fence.lock_id, block_height: block.header.height, batch_kind: 'fastpay',
+        batch_id: fence.lock_id, transaction_index: effectIndex, transaction_kind: 'owned_unwrap_v3',
+        from, to, amount: cert.order.amount, fee: cert.order.fee, sequence: cert.order.nonce,
+        memos, tx_role: 'fastpay_unwrap', accepted: true, receipt_code: 'accepted',
+        ...(pointer ? { pointer_version: pointer.version, pointer_cid: pointer.cid, pointer_kind: pointer.kindLabel, task_id: pointer.taskId || undefined } : {}),
+      });
+      return;
+    }
+    const outputs = Array.isArray(cert.order.outputs) ? cert.order.outputs : [];
+    outputs.forEach((output, outputIndex) => {
+      const to = output.owner_account || addressFromHexPubkey(output.owner_pubkey_hex);
+      if (from !== address && to !== address) return;
+      rows.push({
+        tx_id: orderHash, order_hash: orderHash, certificate_digest: certificateDigest || undefined,
+        fastpay_lock_id: fence.lock_id, block_height: block.header.height, batch_kind: 'fastpay',
+        batch_id: fence.lock_id, transaction_index: effectIndex, fill_index: outputIndex,
+        transaction_kind: 'owned_transfer_v3', from, to, amount: output.value,
+        fee: outputIndex === 0 ? cert.order.fee : 0, sequence: cert.order.nonce, memos,
+        tx_role: from === to ? 'fastpay_self_transfer' : 'fastpay_transfer', accepted: true, receipt_code: 'accepted',
+        ...(pointer ? {
+          pointer_version: pointer.version, pointer_cid: pointer.cid, pointer_kind: pointer.kindLabel,
+          task_id: pointer.taskId || undefined,
+          ...(pointer.kind === CONTENT_KIND.REWARD && pointer.visibility === 'private' ? { reward_memo_private: true } : {}),
+        } : {}),
+      });
+    });
+  });
+}
 
 // A Solana deposit is credited by the bridge's proof transaction, not by the wallet, so the
 // wallet's address appears only inside the proof's public values: an 8-byte tag, a 227-byte
@@ -35,6 +90,7 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
   }
   const rows = [];
   for (const block of blocks) {
+    projectFastPayEffects(block, address, rows);
     if (block.header.batch_kind !== 'transparent') continue;
     const entry = batches.get(`transparent:${block.header.batch_id}`);
     if (!entry) throw Error('History archive is incomplete for this block window');

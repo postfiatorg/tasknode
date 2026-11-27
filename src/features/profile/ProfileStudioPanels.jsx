@@ -5,6 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestJson } from "../../api";
 import { profileNftImageCandidates } from "./profile-nft-images.js";
 import {
+  dualChainNftCounts,
+  filterDualChainNfts,
+  formatIssuerCollection,
+  nftMigrationBadge,
+} from "./dual-chain-nfts.js";
+import {
   RewardsChart,
   latestAvatarNft,
   mintStepForPhase,
@@ -345,12 +351,18 @@ export function NFTGallery({
   minted = [],
   emptyCopy = "Portraits you generate appear here.",
   onSetProfilePicture = null,
+  onMigrateNft = null,
   selectingNftId = "",
 } = {}) {
   const [page, setPage] = useState(0);
+  const [chainFilter, setChainFilter] = useState("all");
   // Failed and abandoned renders are not portraits; they stay out of the gallery.
-  const records = useMemo(() => (Array.isArray(minted) ? minted : []).filter((nft) => !profileNftFailed(nft)), [minted]);
-  const mintedCount = records.filter((nft) => profileNftStatus(nft) === "minted").length;
+  const allRecords = useMemo(() => (Array.isArray(minted) ? minted : []).filter((nft) => !profileNftFailed(nft)), [minted]);
+  const counts = useMemo(() => dualChainNftCounts(allRecords), [allRecords]);
+  const showChainTabs = counts.l1v2 > 0 && counts.legacy > 0;
+  const effectiveFilter = showChainTabs ? chainFilter : "all";
+  const records = useMemo(() => filterDualChainNfts(allRecords, effectiveFilter), [allRecords, effectiveFilter]);
+  const mintedCount = allRecords.filter((nft) => profileNftStatus(nft) === "minted").length;
   const pageCount = Math.max(1, Math.ceil(records.length / NFT_GALLERY_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const start = currentPage * NFT_GALLERY_PAGE_SIZE;
@@ -365,14 +377,48 @@ export function NFTGallery({
       <div className="pf-section-head">
         <div>
           <h2>Portraits</h2>
-          <p>{records.length ? `${fmtN(records.length)} portrait${records.length === 1 ? "" : "s"} · ${fmtN(mintedCount)} minted` : emptyCopy}</p>
+          <p>
+            {allRecords.length
+              ? showChainTabs
+                ? `${fmtN(allRecords.length)} portrait${allRecords.length === 1 ? "" : "s"} · ${fmtN(counts.l1v2)} postfiatl1v2 · ${fmtN(counts.legacy)} legacy`
+                : `${fmtN(allRecords.length)} portrait${allRecords.length === 1 ? "" : "s"} · ${fmtN(mintedCount)} minted`
+              : emptyCopy}
+          </p>
         </div>
+        {showChainTabs && (
+          <div className="pf-tabs" role="tablist" aria-label="NFT chain filter">
+            {[
+              ["all", `All (${counts.total})`],
+              ["l1v2", `postfiatl1v2 (${counts.l1v2})`],
+              ["legacy", `Legacy (${counts.legacy})`],
+            ].map(([key, label]) => (
+              <button
+                aria-selected={effectiveFilter === key}
+                key={key}
+                onClick={() => {
+                  setChainFilter(key);
+                  setPage(0);
+                }}
+                role="tab"
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {records.length > 0 && (
         <>
           <div className="pf-gallery">
             {visibleRecords.map((nft) => (
-              <NFTTile key={nft.id} nft={nft} onSetProfilePicture={onSetProfilePicture} selecting={selectingNftId === nft.id} />
+              <NFTTile
+                key={nft.id}
+                nft={nft}
+                onMigrateNft={onMigrateNft}
+                onSetProfilePicture={onSetProfilePicture}
+                selecting={selectingNftId === nft.id}
+              />
             ))}
           </div>
           {pageCount > 1 && (
@@ -411,7 +457,7 @@ export function nftDateLabel(nft = {}) {
   return "";
 }
 
-export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) {
+export function NFTTile({ nft, onSetProfilePicture = null, onMigrateNft = null, selecting = false }) {
   const imageCandidates = useMemo(() => imageCandidatesForNft(nft), [nft]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
@@ -419,6 +465,8 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
   const canBecomeProfilePicture = profileNftCanBecomeAvatar(nft);
   const selected = nft.selected === true;
   const dateLabel = nftDateLabel(nft);
+  const badge = useMemo(() => nftMigrationBadge(nft), [nft]);
+  const issuerCollection = useMemo(() => formatIssuerCollection(nft), [nft]);
 
   useEffect(() => {
     setImageIndex(0);
@@ -428,6 +476,11 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
     <div className="pf-tile">
       <ExpandableProfileImage className="pf-tile-image" disabled={!imageSrc} nft={nft}>
         {selected && <span className="pf-tile-flag">Profile picture</span>}
+        {badge.label && (
+          <span className={`pf-tile-chain-badge is-${badge.tone}`} title={badge.chainLabel}>
+            {badge.label}
+          </span>
+        )}
         {imageSrc ? (
           <img alt={nft.title || "Portrait"} decoding="async" loading="lazy" onError={() => setImageIndex((index) => index + 1)} src={imageSrc} />
         ) : (
@@ -439,6 +492,21 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
         {dateLabel && <span>{dateLabel} · </span>}
         <span className={status === "minted" ? "is-minted" : ""}>{nftStatusLabel(nft)}</span>
       </div>
+      {issuerCollection && (
+        <div className="pf-tile-issuer tn-mono" title={issuerCollection}>{issuerCollection}</div>
+      )}
+      {badge.canMigrate && typeof onMigrateNft === "function" && (
+        <button
+          className="pf-text-button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onMigrateNft(nft);
+          }}
+          type="button"
+        >
+          Migrate
+        </button>
+      )}
       {canBecomeProfilePicture && !selected && typeof onSetProfilePicture === "function" && (
         <button
           className="pf-text-button"
