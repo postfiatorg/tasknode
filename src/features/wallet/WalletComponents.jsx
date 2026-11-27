@@ -560,7 +560,7 @@ export function WalletLinkModal({
 
       const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message, {
         purpose: "wallet_proof",
-        allowedSubPurposes: ["wallet_link", "wallet_create"],
+        allowedSubPurposes: walletCore.WALLET_LINK_PROOF_PURPOSES,
         expectedAccountId: challengeAccountId,
       });
       const tasknodeEncryptionPubkey = await walletCore.deriveTaskNodePublicKey(normalized);
