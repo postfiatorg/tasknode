@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac, generateKeyPairSync, randomBytes, sign as cryptoSign, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -200,6 +200,21 @@ function verifyPublishPayload(payload, { keyRing, currentVersion, seenNonces, no
 
   seenNonces.add(nonceKey);
   return { ok: true };
+}
+
+// Every purpose the server puts in a "Post Fiat Task Node wallet proof" challenge.
+function serverWalletProofPurposes() {
+  const serverDir = path.join(ROOT, "server");
+  const purposes = new Set();
+  for (const name of readdirSync(serverDir, { recursive: true })) {
+    if (!name.endsWith(".js")) continue;
+    const source = readFileSync(path.join(serverDir, name), "utf8");
+    const calls = source.match(/(?<!function )\bcreateWalletChallenge\(/g) || [];
+    const named = [...source.matchAll(/(?<!function )\bcreateWalletChallenge\(\{[^}]*?\bpurpose: "([a-z_]+)"/g)];
+    assert.equal(named.length, calls.length, `${name}: every createWalletChallenge call must name its purpose as a string literal`);
+    for (const [, purpose] of named) purposes.add(purpose);
+  }
+  return [...purposes].sort();
 }
 
 function goldenCoverageManifest() {
@@ -543,6 +558,13 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
     task_transition: "Post Fiat Task Node task transition",
   });
   const ALLOWED_NOSTR_KINDS = new Set([0, 1, 13, 1059, 10050, 22242]);
+  const nostrSpec = readFileSync(path.join(ROOT, "docs", "specs", "nostr-signing-guard-v1.md"), "utf8");
+  const walletProofRow = nostrSpec.split("\n").find((line) => line.startsWith("| `wallet_proof` |"));
+  const WALLET_PROOF_PURPOSES = JSON.parse(walletProofRow.match(/`Purpose:` in `(\[[^\]]*\])`/)[1]);
+  const walletProofChallenge = (proofPurpose) => [
+    "Post Fiat Task Node wallet proof", `Purpose: ${proofPurpose}`, "Account: acct_1",
+    "Challenge: 3f0c2a52-7d1e-4a55-9a43-0d6f5b1c2e90", "Issued: 2026-11-27T01:30:00.000Z", "Expires: 2026-11-27T01:40:00.000Z",
+  ].join("\n");
 
   function evaluateWalletSigningGuard({ purpose, message }) {
     if (!Object.hasOwn(REQUIRED_PREFIX, purpose)) return { ok: false, error: "SIGNING_GUARD_UNKNOWN_PURPOSE" };
@@ -554,7 +576,12 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
     if (purpose !== "nostr_v1_derivation" && message.normalize("NFKC").toLowerCase().includes("task node private messaging identity")) {
       return { ok: false, error: "SIGNING_GUARD_FORBIDDEN_DERIVATION_PREFIX" };
     }
-    return message.startsWith(`${REQUIRED_PREFIX[purpose]}\n`) ? { ok: true } : { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    if (!message.startsWith(`${REQUIRED_PREFIX[purpose]}\n`)) return { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    if (purpose === "wallet_proof") {
+      const proofPurpose = message.split("\n")[1].replace(/^Purpose: /, "");
+      if (!WALLET_PROOF_PURPOSES.includes(proofPurpose)) return { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    }
+    return { ok: true };
   }
 
   function evaluateNostrEventGuard({ kind, origin, isProduction, relayUrl }) {
@@ -571,6 +598,13 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
   assert.equal(evaluateWalletSigningGuard({ purpose: "collaboration_auth", message: "\uFEFFTask Node private messaging identity\nVersion: 1" }).error, "SIGNING_GUARD_MALFORMED_MESSAGE");
   assert.equal(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: "Post Fiat Task Node wallet proof\nTask Node private messaging identity" }).error, "SIGNING_GUARD_FORBIDDEN_DERIVATION_PREFIX");
 
+  const issuedProofPurposes = serverWalletProofPurposes();
+  assert.deepEqual([...WALLET_PROOF_PURPOSES].sort(), issuedProofPurposes, "the wallet_proof allow-list must equal the purposes the server issues");
+  for (const proofPurpose of issuedProofPurposes) {
+    assert.deepEqual(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: walletProofChallenge(proofPurpose) }), { ok: true }, `guard must accept ${proofPurpose}`);
+  }
+  assert.equal(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: walletProofChallenge("wallet_export") }).error, "SIGNING_GUARD_PREFIX_MISMATCH");
+
   assert.equal(evaluateNostrEventGuard({ kind: 24133, origin: "first_party_ui", isProduction: true }).error, "NOSTR_SIGNING_GUARD_KIND_BLOCKED");
   assert.equal(evaluateNostrEventGuard({ kind: 1, origin: "postMessage:hub-viewer.postfiat.org", isProduction: true }).error, "NOSTR_SIGNING_GUARD_UNTRUSTED_ORIGIN");
   assert.equal(evaluateNostrEventGuard({ kind: 0, origin: "first_party_ui", isProduction: false }).error, "NOSTR_SIGNING_GUARD_NONPROD_KIND0_BLOCKED");
@@ -578,7 +612,6 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
   assert.deepEqual(evaluateNostrEventGuard({ kind: 22242, origin: "first_party_ui", isProduction: true, relayUrl: "wss://relay.postfiat.org" }), { ok: true });
 
   const hubSpec = readFileSync(path.join(ROOT, "docs", "specs", "finance-hub-contracts-v1.md"), "utf8");
-  const nostrSpec = readFileSync(path.join(ROOT, "docs", "specs", "nostr-signing-guard-v1.md"), "utf8");
   for (const ref of ["coverage_manifest.v1.schema.json", "agent_brief_public.v1.schema.json", "publish_payload.v1.schema.json", "top30_snapshot.v1.schema.json"]) {
     assert.match(hubSpec, new RegExp(ref.replaceAll(".", "\\.")));
   }
