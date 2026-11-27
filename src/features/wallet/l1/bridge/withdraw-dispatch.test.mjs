@@ -87,7 +87,14 @@ async function tab(name, { source, answer = OPEN, saved = null } = {}, script) {
       removeItem: (key) => { writes.push(["remove", key]); slot.delete(key); },
     };
     globalThis.window = { addEventListener: (type, fn) => { if (type === "storage") listeners.push(fn); }, removeEventListener: (type, fn) => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); } };
-    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: { request: async (key, a, b) => (typeof a === "function" ? a : b)({ name: key }) } } });
+    // Web Locks: one holder per name at a time, the others wait in order (locked: the names now held).
+    const queues = new Map(), locked = new Set();
+    const request = (key, a, b) => {
+      const run = (queues.get(key) ?? Promise.resolve()).then(async () => { locked.add(key); try { return await (typeof a === "function" ? a : b)({ name: key }); } finally { locked.delete(key); } });
+      queues.set(key, run.catch(() => {}));
+      return run;
+    };
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: { request } } });
     globalThis.fetch = async (url, options = {}) => {
       const path = String(url); fetched.push(`${options.method || "GET"} ${path}`);
       if (path.includes("/recipient/")) return respond({ ok: true, recipient: WALLET, allowed: true, kind: "wallet" });
@@ -142,6 +149,20 @@ async function tab(name, { source, answer = OPEN, saved = null } = {}, script) {
         if (value === null) slot.delete("fixture"); else slot.set("fixture", value);
         if (heard) for (const fn of [...listeners]) fn({ storageArea: globalThis.localStorage, key: "fixture", newValue: value });
         page();
+      },
+      // Once this tab reads `value` from the slot, another tab replaces it under the slot's lock: at
+      // once while no one holds the lock, else as soon as the lock is free (it hears the storage event).
+      replaceOnRead(value, replacement) {
+        const storage = globalThis.localStorage, get = storage.getItem;
+        storage.getItem = (key) => {
+          const found = get(key);
+          if (key === "fixture" && found === value) {
+            storage.getItem = get;
+            const write = () => api.otherTab(replacement);
+            if (locked.has("fixture")) void request("fixture", write); else write();
+          }
+          return found;
+        };
       },
       text: () => text(page()),
       shape: () => shape(page()),
@@ -234,6 +255,50 @@ test("SolanaWithdraw: a sent burn does not overwrite a burn id another tab saved
     t.ctl.release(); await work; await settle();
     assert.equal(t.slot.get("fixture"), OTHER);
     assert.match(t.text(), new RegExp(TX));
+  });
+});
+
+// R451-02: another tab replaces the record between this tab's comparison and its change.
+test("SolanaWithdraw: a stopped Confirm's cleanup keeps a burn id another tab saves between the comparison and the removal", async () => {
+  await tab("SolanaWithdraw", {}, async (t) => {
+    await reviewed(t);
+    t.ctl.hold = "sign"; const work = t.confirm(); await settle();
+    const claim = t.slot.get("fixture");
+    await t.newer(CLOSED);
+    t.replaceOnRead(claim, OTHER);
+    t.ctl.release(); await work; await settle();
+    assert.equal(t.mempool(), 0);
+    assert.equal(t.slot.get("fixture"), OTHER);
+  });
+});
+test("SolanaWithdraw: a sent burn's id does not overwrite a burn id another tab saves between the comparison and the save, and stays visible", async () => {
+  await tab("SolanaWithdraw", {}, async (t) => {
+    await reviewed(t);
+    t.ctl.hold = "receipt"; const work = t.confirm(); await settle();
+    t.replaceOnRead(t.slot.get("fixture"), OTHER);
+    t.ctl.release(); await work; await settle();
+    assert.equal(t.slot.get("fixture"), OTHER);
+    assert.match(t.text(), new RegExp(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${TX}`));
+  });
+});
+test("SolanaWithdraw: \"I verified that no burn was accepted\" keeps a burn id another tab saves between the comparison and the removal", async () => {
+  await tab("SolanaWithdraw", { saved: "submitting" }, async (t) => {
+    await t.mount();
+    t.replaceOnRead("submitting", OTHER);
+    button(t.page(), "I verified that no burn was accepted").props.onClick(); await settle();
+    assert.equal(t.slot.get("fixture"), OTHER);
+    assert.match(t.text(), new RegExp(`tracking ${OTHER}`));
+  });
+});
+test("SolanaWithdraw: a burn id the browser cannot save stays on the screen", async () => {
+  await tab("SolanaWithdraw", {}, async (t) => {
+    await reviewed(t);
+    const set = globalThis.localStorage.setItem;
+    globalThis.localStorage.setItem = (key, value) => { if (value === TX) throw Error("quota"); set(key, value); };
+    await t.confirm(); await settle();
+    assert.equal(t.mempool(), 1);
+    assert.match(t.text(), new RegExp(`tracking ${TX}`));
+    assert.match(t.text(), /could not save the burn ID/);
   });
 });
 

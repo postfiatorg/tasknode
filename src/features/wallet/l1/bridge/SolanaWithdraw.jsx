@@ -3,7 +3,7 @@ import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
 import { answerExpiry, EXPIRED, monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
-import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+import { changeSlot, checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 // Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
 function WalletBurns({ client, onTrack }) {
@@ -122,20 +122,19 @@ export default function SolanaWithdraw({ client, storageKey }) {
     } catch (failure) { if (failure !== OBSOLETE && still()) setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
   }
 
+  const NOT_SAVED = "Your browser could not save the burn ID. Copy it before leaving to recover the payout.";
   function track(id, register) {
     setCreate(register); setBurn(id);
-    try { localStorage.setItem(storageKey, id); }
-    catch { setError("Your browser could not save the burn ID. Copy it before leaving to recover the payout."); }
+    changeSlot(storageKey, () => id).catch(() => setError(NOT_SAVED));
   }
   // This operation's own burn (mine: the record it holds in the slot). It replaces only that record
   // or an empty slot; a record another tab saved meanwhile is kept, and this burn ID is shown instead.
-  function keep(id, mine) {
+  async function keep(id, mine) {
     setCreate(true); setBurn(id);
     try {
-      const current = localStorage.getItem(storageKey);
-      if (current && current !== mine && current !== id) { setError(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${id}`); return; }
-      localStorage.setItem(storageKey, id);
-    } catch { setError("Your browser could not save the burn ID. Copy it before leaving to recover the payout."); }
+      const current = await changeSlot(storageKey, current => (!current || current === mine || current === id ? id : undefined));
+      if (current && current !== mine && current !== id) setError(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${id}`);
+    } catch { setError(NOT_SAVED); }
   }
   async function confirm() {
     if (!review || submitting.current) return;
@@ -158,11 +157,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const guarded = order.current.seen || op.carries();
       // Claim this account's slot across tabs before signing. Leave a marker until the receipt arrives.
       const claim = claimFor(guarded);
-      const existing = await navigator.locks.request(storageKey, () => {
-        const prior = localStorage.getItem(storageKey);
-        if (!prior) localStorage.setItem(storageKey, claim);
-        return prior;
-      });
+      const existing = await changeSlot(storageKey, prior => (prior ? undefined : claim));
       if (!existing) mine = claim;
       if (!still()) throw OBSOLETE;
       if (existing) { setBurn(existing); return; }
@@ -173,28 +168,27 @@ export default function SolanaWithdraw({ client, storageKey }) {
       sent = !guard;
       const result = await submitBurn(client, signed, storageKey, { mine: () => mine, onSaved: id => { mine = id; }, guard });
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");
-      keep(result.txId, mine);
+      await keep(result.txId, mine);
     } catch (failure) {
       if (sent && failure.code !== "l1_execution_rejected") {
-        if (isBurnId(failure.txId)) keep(failure.txId, mine); else setBurn(mine || "submitting");
+        if (isBurnId(failure.txId)) await keep(failure.txId, mine); else setBurn(mine || "submitting");
         setError(failure.message);
       } else {
         // Nothing was burned: stopped before the send, or the chain rejected the burn. Only this
         // operation's own record is removed.
-        if (mine) { try { if (localStorage.getItem(storageKey) === mine) localStorage.removeItem(storageKey); } catch { setBurn(mine); } }
+        if (mine) { try { await changeSlot(storageKey, current => (current === mine ? null : undefined)); } catch { setBurn(mine); } }
         // The outcome of a sent burn is always shown; before the send, a stop by a newer answer says nothing.
         if (expired) setError(EXPIRED);
         else if (sent || (failure !== OBSOLETE && failure.code !== "l1_not_dispatched" && still())) setError(`${failure.message} No PFUSDC was burned.`);
       }
     } finally { submitting.current = false; setBusy(false); }
   }
-  function reset() {
-    try {
-      // Clears only the record this screen shows; one another tab saved since is kept and shown.
-      const current = localStorage.getItem(storageKey);
-      if (current && current !== burn) { setCreate(false); setBurn(current); return; }
-      localStorage.removeItem(storageKey);
-    } catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
+  async function reset() {
+    let current;
+    // Clears only the record this screen shows; one another tab saved since is kept and shown.
+    try { current = await changeSlot(storageKey, current => (current && current !== burn ? undefined : null)); }
+    catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
+    if (current && current !== burn) { setCreate(false); setBurn(current); return; }
     setBurn(""); setCreate(false); setAmount(""); setRecovery(""); setError(""); setSnapshot(undefined);
   }
   const tick = useProvingWindowClock(provingWindow?.window, provingWindow?.received_at, burn ? undefined : refresh, provingWindow?.open === true, provingWindow);
