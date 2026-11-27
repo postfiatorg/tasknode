@@ -148,6 +148,11 @@ test("Contract C1 frozen hex vectors match byte-for-byte (V1, V2B, V3, V4, V5, V
 });
 
 test("Train A Sui-inspired FastPay minimum fee schedule matches worked examples", () => {
+  for (const [weightBytes, expected] of [[0, 25n], [511, 26n], [512, 26n], [513, 27n]]) {
+    assert.equal(fastpayMinimumFeeAtoms({ weightBytes, inputsConsumed: 0, outputsCreated: 0 }), expected);
+  }
+  assert.throws(() => fastpayMinimumFeeAtoms({ outputsCreated: 1n << 63n }), RangeError);
+  assert.throws(() => fastpayMinimumFeeAtoms({ inputsConsumed: Number.MAX_SAFE_INTEGER + 1 }), RangeError);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 420, inputsConsumed: 1, outputsCreated: 1 }), 27n);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 600, inputsConsumed: 1, outputsCreated: 2 }), 1_028n);
   assert.equal(fastpayMinimumFeeAtoms({ weightBytes: 8_192, inputsConsumed: 100, outputsCreated: 1 }), 141n);

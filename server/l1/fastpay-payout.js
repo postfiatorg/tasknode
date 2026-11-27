@@ -55,15 +55,22 @@ export function isL1Address(value = "") {
 // Sui-inspired minimum FastPay fee formula (Train A Contract Section 2.2):
 //   25 + ceil(weight_bytes / 512) * 1 + max(0, outputs - inputs) * 1000 + inputs * 1
 export function fastpayMinimumFeeAtoms({ weightBytes = 512, inputsConsumed = 1, outputsCreated = 2 } = {}) {
-  const w = BigInt(Math.max(1, Math.trunc(Number(weightBytes) || 1)));
-  const inputs = BigInt(Math.max(1, Math.trunc(Number(inputsConsumed) || 1)));
-  const outputs = BigInt(Math.max(0, Math.trunc(Number(outputsCreated) || 0)));
+  const maxU64 = (1n << 64n) - 1n;
+  const counts = [weightBytes, inputsConsumed, outputsCreated];
+  for (const count of counts) {
+    if ((typeof count !== "bigint" && !Number.isSafeInteger(count)) || count < 0 || count > maxU64) {
+      throw new RangeError("FastPay fee counts must be unsigned 64-bit integers");
+    }
+  }
+  const [w, inputs, outputs] = counts.map((count) => BigInt(count));
   const byteQuanta = (w + FASTPAY_FEE_BYTE_QUANTUM - 1n) / FASTPAY_FEE_BYTE_QUANTUM;
   const byteFee = byteQuanta * FASTPAY_FEE_PER_BYTE_QUANTUM_ATOMS;
   const netNewObjects = outputs > inputs ? outputs - inputs : 0n;
   const newObjectFee = netNewObjects * FASTPAY_FEE_PER_NEW_OBJECT_ATOMS;
   const inputFee = inputs * FASTPAY_FEE_PER_INPUT_ATOMS;
-  return FASTPAY_MIN_BASE_FEE_ATOMS + byteFee + newObjectFee + inputFee;
+  const total = FASTPAY_MIN_BASE_FEE_ATOMS + byteFee + newObjectFee + inputFee;
+  if (total > maxU64) throw new RangeError("FastPay minimum fee exceeds u64");
+  return total;
 }
 
 // Byte ports of Train A (postfiatl1v2 1d41d5bf4): fastpay_transfer_lock_preimage_v1
@@ -660,9 +667,7 @@ export function createFastPayPayoutDriver({
         await store.completeObjectLease({
           objectId: persisted.objectId,
           payoutId: id,
-          changeObject: checked.changeObject || (BigInt(persisted.changeAtoms || 0n) > 0n
-            ? { objectId: `${persisted.orderHash.slice(0, 64)}:1`, valueAtoms: persisted.changeAtoms, nonce: persisted.nonce }
-            : null),
+          changeObject: checked.changeObject || null,
         });
         await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
         if (awaitPin && pinPromise) await pinPromise;
@@ -693,9 +698,7 @@ export function createFastPayPayoutDriver({
       await store.completeObjectLease({
         objectId: persisted.objectId,
         payoutId: id,
-        changeObject: submitted?.changeObject || (BigInt(persisted.changeAtoms || 0n) > 0n
-          ? { objectId: `${persisted.orderHash.slice(0, 64)}:1`, valueAtoms: persisted.changeAtoms, nonce: persisted.nonce }
-          : null),
+        changeObject: submitted?.changeObject || null,
       });
       await store.savePayout(id, { ...persisted, status: "confirmed", receipt });
       if (awaitPin && pinPromise) await pinPromise;
