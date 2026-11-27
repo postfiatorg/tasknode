@@ -209,7 +209,8 @@
     "scripts/prompt-assistant-smoke.mjs",
     "scripts/prompt-recovery-smoke.mjs",
     "scripts/prompt-installer-smoke.mjs",
-    "scripts/verification-request-status.test.mjs"
+    "scripts/verification-request-status.test.mjs",
+    "scripts/finance-hub-contracts.test.mjs"
   ],
   "db": [
     "scripts/reinstatement-smoke.mjs",
