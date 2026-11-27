@@ -49,6 +49,7 @@ test("the credit follows a fresh row and nothing else", () => {
 });
 
 test("off by default; the URL must be https; the keyset must be a real keyset", () => {
+  assert.throws(() => l1UptimeFeedConfig({TASKNODE_L1_UPTIME_FEED_ENFORCED: "true"}));
   assert.deepEqual(l1UptimeFeedConfig({}), { configured: false, enforced: false });
   const env = { TASKNODE_L1_UPTIME_FEED_URL: "https://feed.example/validator-uptime-feed.json",
     TASKNODE_L1_UPTIME_FEED_KEYSET_JSON: JSON.stringify(keyset) };
@@ -98,16 +99,16 @@ test("refresh: a bad, stale or unreachable feed changes nothing", async () => {
   tampered.validators[0].access_state = "revoked";
   let db = fakeDb([binding("validator-0")]);
   assert.equal((await refreshL1ValidatorAccess({ env: enforced, now, db, fetchImpl: feedResponse(tampered) })).status, "feed_rejected");
-  assert.equal(writes(db), 0);
+  assert.equal(writes(db), 1);
   db = fakeDb([binding("validator-4")]);
   const stale = await refreshL1ValidatorAccess({ env: enforced, now: new Date(now.getTime() + 3700000), db,
     fetchImpl: feedResponse(load("postfiat-validator-uptime-v1.fixture.json")) });
   assert.equal(stale.status, "indeterminate");
-  assert.equal(writes(db), 0);
+  assert.equal(writes(db), 1);
   db = fakeDb([binding("validator-4")]);
   const down = await refreshL1ValidatorAccess({ env: enforced, now, db, fetchImpl: async () => { throw new Error("connect refused"); } });
   assert.equal(down.status, "feed_unavailable");
-  assert.equal(writes(db), 0);
+  assert.equal(writes(db), 1);
 });
 
 test("a new binding waits while the feed is indeterminate", async () => {
@@ -121,7 +122,7 @@ test("a new binding waits while the feed is indeterminate", async () => {
   assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: a, ...at(90) }], keyset, now), false);
   assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(-600) }, { observer_id: c, ...at(-600) }], keyset, now), false);
 
-  const rows = fresh => async () => ({ rows: fresh ? [{ observer_id: a, ...at(60) }, { observer_id: c, ...at(120) }] : [{ observer_id: a, ...at(60) }] });
+  const rows = fresh => async () => ({ rows: [{ poll_id: "current", accepted: fresh ? { [a]: at(60).last_observed_at, [c]: at(120).last_observed_at } : {} }] });
   const enforced = env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" });
   await requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true) });
   await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(false) }),

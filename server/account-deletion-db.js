@@ -5,7 +5,7 @@ import {
 } from "./account-deletion-audit.js";
 
 const blockingGrantStatuses = ["processing", "completed", "unknown"];
-const retainedAccountTables = ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants", "validator_reward_grants", "l1_validator_reward_grants"];
+const retainedAccountTables = ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants", "validator_reward_grants", "l1_validator_reward_grants", "validator_operator_reward_months"];
 
 function quoteIdentifier(value) {
   return `"${String(value || "").replaceAll("\"", "\"\"")}"`;
@@ -92,6 +92,7 @@ export async function deleteAccountDatabaseData({
       evidence_json='{"retainedAfterAccountDeletion":true}'::jsonb WHERE account_id=$1`, [accountId, archiveId]);
     await client.query(`UPDATE l1_validator_reward_grants SET account_id=$2,
       evidence_json='{"retainedAfterAccountDeletion":true}'::jsonb WHERE account_id=$1`, [accountId, archiveId]);
+    await client.query("UPDATE validator_operator_reward_months SET account_id=$2 WHERE account_id=$1", [accountId, archiveId]);
     const grants = await client.query(
       `UPDATE wallet_initiation_grants
           SET account_id = $4,

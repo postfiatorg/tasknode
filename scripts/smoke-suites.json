@@ -252,6 +252,7 @@
     "scripts/validator-research-postgres-smoke.mjs",
     "scripts/validator-connect-postgres-smoke.mjs",
     "scripts/l1-validator-postgres-smoke.mjs",
+    "scripts/l1-validator-access-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
     "scripts/validator-ux-postgres-smoke.mjs",
     "scripts/taskgen-credit-outage-retry-smoke.mjs",

@@ -40,16 +40,10 @@ test("the Python-signed fixture verifies and reads the same", () => {
   assert.equal(result.validators[3].grace_expires_at, "2026-12-08T00:00:00Z");
 });
 
-test("a feed signed by postfiat-node on the live devnet verifies", () => {
+test("a signed devnet feed using the retired late-vote metric is refused", () => {
   const live = load("node-signed.feed.json");
-  const result = verifyUptimeFeed(live, { keyset: load("node-signed.keyset.json"), now: new Date("2026-11-27T21:04:00Z") });
-  assert.equal(result.verifiedObservers.length, 3);
-  assert.equal(result.indeterminate, false);
-  assert.deepEqual(result.validators.map(row => row.validator_id),
-    ["validator-0", "validator-1", "validator-2", "validator-3", "validator-4", "validator-5"]);
-  assert.equal(result.validators.every(row => row.access_state === "active"), true);
-  // The fixture keyset does not vouch for it.
-  assert.throws(() => verifyUptimeFeed(live, { keyset, now: new Date("2026-11-27T21:04:00Z") }), FeedRejected);
+  assert.throws(() => verifyUptimeFeed(live, { keyset: load("node-signed.keyset.json"),
+    now: new Date("2026-11-27T21:04:00Z") }), FeedRejected);
 });
 
 test("one wrong observer is dropped; two make the feed indeterminate and revoke nobody", () => {
@@ -125,4 +119,14 @@ test("stale, replayed, another chain, moved constants", () => {
 
 test("canonical JSON is the bytes the other implementations sign", () => {
   assert.equal(canonicalJson({ b: [1, { d: null, c: true }], a: "x" }), '{"a":"x","b":[1,{"c":true,"d":null}]}');
+});
+
+test("two observers must agree on each effective entitlement and date", () => {
+  for (const field of ["reward_eligible", "finance_hub_access", "grace_expires_at", "first_active_date"]) {
+    const pair = feed().observer_attestations.slice(0, 2);
+    const claim = pair[0].validator_claims[0];
+    claim[field] = typeof claim[field] === "boolean" ? !claim[field] : "2026-11-01";
+    const { rows } = reconcile(pair);
+    assert.equal(rows.some(row => row.validator_id === claim.validator_id), false, field);
+  }
 });

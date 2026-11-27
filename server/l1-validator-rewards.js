@@ -2,7 +2,20 @@ import { query, transaction } from "./db/pool.js";
 import { fetchL1Registry, l1RewardEligibility, registeredL1Validator } from "./l1-validator-identity.js";
 import { rewardMonthWindow } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
-import { creditFromFeedRow, l1AccessRow, l1UptimeFeedConfig } from "./l1-validator-access.js";
+import { requireFeedForNewBinding, creditFromFeedRow, l1AccessRow, l1UptimeFeedConfig } from "./l1-validator-access.js";
+
+export async function currentRewardDecision(binding, now, client) {
+  let pollId;
+  try {
+    pollId = await requireFeedForNewBinding({ now, queryImpl: client.query.bind(client) });
+  } catch (error) {
+    if (error.status === 503) return { decision: { eligible: false, reason: "indeterminate" }, row: null };
+    throw error;
+  }
+  const row = await l1AccessRow(binding, client.query.bind(client));
+  const current = row?.poll_id === pollId && !binding.access_suspended_at ? row : null;
+  return { decision: creditFromFeedRow(current, now), row: current };
+}
 
 export async function grantL1ValidatorReward(binding, month, { registryOptions, now = new Date() } = {}) {
   const end = rewardMonthWindow(month, now);
@@ -17,18 +30,17 @@ export async function grantL1ValidatorReward(binding, month, { registryOptions, 
   // With the signed feed enforced, the credit follows the feed: the row two
   // observers agreed on, read within the last hour. Otherwise the rule of
   // before applies unchanged.
-  if (l1UptimeFeedConfig().enforced) {
-    const row = await l1AccessRow(current);
-    const fromFeed = creditFromFeedRow(row, now);
-    evidence = { ...evidence, eligible: fromFeed.eligible, eligibilityReason: fromFeed.reason,
-      policy: "l1-uptime-feed-v1", source: "postfiat-validator-uptime-v1", feedRow: row };
-  }
-  if (!evidence.eligible) return false;
   const key = `validator-reward:l1-devnet:${current.chain_id}:${current.validator_id}:${month}`;
   return transaction(async client => {
+    if (l1UptimeFeedConfig().enforced) {
+      const { decision, row } = await currentRewardDecision(current, now, client);
+      evidence = { ...evidence, eligible: decision.eligible, eligibilityReason: decision.reason,
+        policy: "l1-uptime-feed-v1", source: "postfiat-validator-uptime-v1", feedRow: row };
+    }
+    if (!evidence.eligible) return false;
     const active = await client.query(`SELECT 1 FROM validator_bindings
       WHERE id=$1 AND account_id=$2 AND network='l1-devnet' AND chain_id=$3 AND validator_id=$4
-        AND ml_dsa_public_key=$5 AND revoked_at IS NULL FOR UPDATE`,
+        AND ml_dsa_public_key=$5 AND access_suspended_at IS NULL AND revoked_at IS NULL FOR UPDATE`,
     [current.id, current.account_id, current.chain_id, current.validator_id, current.ml_dsa_public_key]);
     if (!active.rowCount) return false;
     const audit = { ...evidence, network: current.network, chainId: current.chain_id, validatorId: current.validator_id,
@@ -43,5 +55,8 @@ export async function grantL1ValidatorReward(binding, month, { registryOptions, 
     await insertLedgerEntry(client, { kind: "reward_credit", accountId: current.account_id, amountUsd: 20,
       source: "validator_reward", note: `L1 validator reward ${month}`, uniqueKey: key, onConflictUnique: true, metadata: audit });
     return true;
+  }).catch(error => {
+    if (error.code === "PV001") return false;
+    throw error;
   });
 }

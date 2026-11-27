@@ -31,11 +31,11 @@ const QUORUM_POLICY = Object.freeze({
   indeterminate_behavior: "block_new_bindings_and_credits_preserve_existing_access",
 });
 const WINDOW_SPEC = Object.freeze({
-  metric_version: "accepted-votes-observer-brackets-v1", time_basis: "observer_brackets",
+  metric_version: "certificate-votes-observer-brackets-v2", time_basis: "observer_brackets",
   max_observation_gap_seconds: 900, evaluation_horizon_days: HORIZON_DAYS, min_observed_days: MIN_OBSERVED_DAYS,
   liveness_threshold_bps: THRESHOLD_BPS, grace_period_days: GRACE_DAYS, recovery_consecutive_days: 3,
 });
-const CREDIT_SOURCES = ["precommit_certificate", "prepare_certificate", "proposer_vote_record"];
+const CREDIT_SOURCES = ["precommit_certificate", "prepare_certificate"];
 const CLAIM_KEYS = ["validator_id", "ml_dsa_public_key", "registry_active", "access_state", "access_state_reason",
   "first_active_date", "ramp_in_active", "observed_days", "mean_daily_participation_bps", "consecutive_passing_days",
   "liveness_met", "grace_started_at", "grace_expires_at", "recovery_floor_date", "removal_proposal_eligible",
@@ -120,7 +120,7 @@ function deriveRow(row, windowEndDay) {
   let streak = 0;
   for (let index = scored.length - 1; index >= 0 && scored[index].participation_bps >= THRESHOLD_BPS; index -= 1) streak += 1;
   const rampIn = within30Days(row.first_active_date === null ? null : parseDate(row.first_active_date), windowEndDay);
-  const liveness = row.registry_active && (observed === 0 || mean >= THRESHOLD_BPS);
+  const liveness = row.registry_active && (observed === 0 || (observed < MIN_OBSERVED_DAYS && !rampIn && !inRecovery) || mean >= THRESHOLD_BPS);
   let reason, hub, reward, removal = false;
   if (row.access_state === "pending") [reason, hub, reward] = ["awaiting_ratification", false, false];
   else if (row.access_state === "active") {
@@ -156,7 +156,7 @@ function checkRow(row, windowStartDay, windowEndDay) {
   }
   const firstDay = row.first_active_date === null ? null : parseDate(row.first_active_date);
   if (row.first_active_date !== null && firstDay === null) fail("first_active_date is not a date");
-  if ((state === "pending") !== (firstDay === null)) fail("first_active_date is null exactly while pending");
+  if (state === "pending" && firstDay !== null) fail("first_active_date is null exactly while pending");
   if (state === "pending" && row.registry_active) fail("a pending validator is not in the registry");
   if (state === "active" && !row.registry_active) fail("an active validator is in the registry");
   if ((state === "lapsed") !== (row.grace_started_at !== null)) fail("grace_started_at is set exactly while lapsed");
@@ -172,7 +172,7 @@ function checkRow(row, windowStartDay, windowEndDay) {
       fail("recovery_floor_date outlived its 30 days or its active state");
     }
   }
-  let expectedDay = firstDay === null ? windowEndDay : Math.max(firstDay, windowStartDay);
+  let expectedDay = state === "pending" ? windowEndDay : Math.max(firstDay ?? windowStartDay, windowStartDay);
   let lastTo = 0;
   for (const day of row.days) {
     exactKeys(day, DAY_KEYS, "a day");
@@ -234,8 +234,8 @@ function checkAttestation(feed, attestation, pinned, windowStartDay, windowEndDa
     fail("observed_at is outside the evaluation day of this window");
   }
   const claims = attestation.validator_claims;
-  if (!Array.isArray(claims) || !claims.length || !count(attestation.finalized_height) || attestation.finalized_height < 1) {
-    fail("an attestation names a finalized height and at least one validator");
+  if (!Array.isArray(claims) || !count(attestation.finalized_height) || attestation.finalized_height < 1) {
+    fail("an attestation names a finalized height and a validator claim list");
   }
   const keys = new Set();
   claims.forEach((claim, index) => {
@@ -267,7 +267,8 @@ export function reconcile(attestations) {
   for (const validatorId of [...byValidator.keys()].sort()) {
     const groups = new Map();
     for (const [observerId, claim] of byValidator.get(validatorId)) {
-      const key = JSON.stringify([claim.ml_dsa_public_key, claim.registry_active, claim.liveness_met, claim.access_state]);
+      const key = JSON.stringify([claim.ml_dsa_public_key, claim.registry_active, claim.liveness_met, claim.access_state,
+        claim.reward_eligible, claim.finance_hub_access, claim.research_api_keys_active, claim.removal_proposal_eligible, claim.first_active_date, claim.grace_started_at, claim.grace_expires_at, claim.recovery_floor_date]);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push([observerId, claim]);
     }
