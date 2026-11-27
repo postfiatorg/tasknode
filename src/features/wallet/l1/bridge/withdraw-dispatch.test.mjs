@@ -71,7 +71,8 @@ async function load(dir, name, source) {
 
 // One browser tab with the screen mounted. ctl.hold names the next await to hold (readiness,
 // balance, sign or receipt); ctl.connect holds the socket connection of the next request.
-async function tab(name, { source, answer = OPEN, saved = null } = {}, script) {
+// locks: false is a browser without the Web Locks API.
+async function tab(name, { source, answer = OPEN, saved = null, locks = true } = {}, script) {
   const dir = await mkdtemp(join(tmpdir(), "withdraw-dispatch-")), time = fakeTime(0);
   const kept = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator") };
   const ctl = { answer, hold: null, release: null, connect: null, reject: false, signs: 0 };
@@ -93,7 +94,7 @@ async function tab(name, { source, answer = OPEN, saved = null } = {}, script) {
       queues.set(key, run.catch(() => {}));
       return run;
     };
-    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: { request } } });
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: locks ? { locks: { request } } : {} });
     globalThis.fetch = async (url, options = {}) => {
       const path = String(url); fetched.push(`${options.method || "GET"} ${path}`);
       if (path.includes("/recipient/")) return respond({ ok: true, recipient: WALLET, allowed: true, kind: "wallet" });
@@ -395,6 +396,35 @@ test("EthereumWithdraw: a Confirm re-read whose answer arrives after the closing
     assert.equal(t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false);
     assert.match(t.text(), EXPIRED);
   });
+});
+
+// R451-R2-02: without the Web Locks API, the manual recovery of a pending record behaves as on
+// b24a7c1, and a new burn still needs the lock as it did.
+for (const action of ["Track this burn", "I verified that no burn was accepted"]) {
+  test(`SolanaWithdraw without Web Locks: "${action}" behaves as on b24a7c1`, async () => {
+    const run = (source) => tab("SolanaWithdraw", { source, answer: READY, saved: "submitting", locks: false }, async (t) => {
+      await t.mount();
+      if (action === "Track this burn") find(t.page(), (node) => node.type === "input").props.onChange({ target: { value: TX } });
+      let thrown = null;
+      try { await button(t.page(), action).props.onClick(); } catch (failure) { thrown = String(failure); }
+      await settle();
+      const shown = t.shape(); await settle();
+      return { thrown, stored: t.slot.get("fixture") ?? null, writes: [...t.writes], shown, after: t.shape(), fetched: [...t.fetched] };
+    });
+    const now = await run();
+    assert.deepEqual([now.thrown, now.stored], [null, action === "Track this burn" ? TX : null]);
+    assert.deepEqual(now, await run(await baseline("SolanaWithdraw")));
+  });
+}
+test("SolanaWithdraw without Web Locks: Confirm still needs the lock and burns nothing, as on b24a7c1", async () => {
+  const run = (source) => tab("SolanaWithdraw", { source, answer: READY, locks: false }, async (t) => {
+    await reviewed(t);
+    await t.confirm(); await settle();
+    return { shown: t.shape(), sends: [...t.sends], fetched: [...t.fetched], writes: [...t.writes], signs: t.ctl.signs };
+  });
+  const now = await run();
+  assert.deepEqual([now.signs, now.writes, now.sends.filter((method) => method.startsWith("mempool_"))], [0, [], []]);
+  assert.deepEqual(now, await run(await baseline("SolanaWithdraw")));
 });
 
 // Without a window in any answer, a whole Review and Confirm makes the same requests, sends the

@@ -127,7 +127,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
   const NOT_SAVED = "Your browser could not save the burn ID. Copy it before leaving to recover the payout.";
   function track(id, register) {
     setCreate(register); setBurn(id);
-    changeSlot(storageKey, () => id).catch(() => setError(NOT_SAVED));
+    changeSlot(storageKey, () => id, { manual: true }).catch(() => setError(NOT_SAVED));
   }
   // This operation's own burn (mine: the record it holds in the slot). It replaces only that record
   // or an empty slot; a record another tab saved meanwhile is kept, and this burn ID is shown instead.
@@ -190,7 +190,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function reset() {
     let current;
     // Clears only the record this screen shows; one another tab saved since is kept and shown.
-    try { current = await changeSlot(storageKey, current => (current && current !== burn ? undefined : null)); }
+    try { current = await changeSlot(storageKey, current => (current && current !== burn ? undefined : null), { manual: true }); }
     catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
     if (current && current !== burn) { setCreate(false); setBurn(current); return; }
     setBurn(""); setCreate(false); setAmount(""); setRecovery(""); setError(""); setSnapshot(undefined);

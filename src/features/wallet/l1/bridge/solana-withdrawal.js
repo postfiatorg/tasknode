@@ -170,12 +170,19 @@ export function withdrawalIntent(client, snapshot, amount, recipient) {
 // Every change of the shared withdrawal slot is made under the slot's Web Lock, which the claim also
 // takes, so no other tab writes between the comparison and the change. change(current) returns the
 // new record, null to remove it, or undefined to leave it; the result is the record found.
-export function changeSlot(storageKey, change) {
-  return navigator.locks.request(storageKey, () => {
+// In a browser without Web Locks a manual change (tracking or clearing a record by hand) is made
+// directly, as before the lock existed, with no coordination between tabs; any other change, such
+// as a new burn's claim, still needs the lock and fails as it did. A failure is always a rejection.
+export function changeSlot(storageKey, change, { manual = false } = {}) {
+  const apply = () => {
     const current = localStorage.getItem(storageKey), next = change(current);
     if (next === null) localStorage.removeItem(storageKey); else if (next !== undefined) localStorage.setItem(storageKey, next);
     return current;
-  });
+  };
+  try {
+    if (manual && typeof globalThis.navigator?.locks?.request !== "function") return Promise.resolve(apply());
+    return navigator.locks.request(storageKey, apply);
+  } catch (failure) { return Promise.reject(failure); }
 }
 
 // Keep the burn ID as soon as the chain names it, before the receipt wait that can time out.
