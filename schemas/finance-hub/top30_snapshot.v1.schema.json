@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://postfiat.org/schemas/finance-hub/top30_snapshot.v1.schema.json",
+  "title": "Finance Hub Daily Top-30 Snapshot v1",
+  "description": "Daily UTC snapshot of non-validator Task Node leaderboard seats for Finance Hub access. Uses the existing directory-leaderboard.js formula over all non-blacklisted, non-suspended, non-validator accounts with 30 seats, keep-until rank 35 hysteresis, 7-day grace window, and 30-day per-account grace cooldown.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "snapshot_date_utc",
+    "snapshot_at",
+    "status",
+    "formula",
+    "policy",
+    "summary",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "finance-hub.top30-snapshot.v1"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^top30-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
+    },
+    "snapshot_date_utc": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "snapshot_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "fallback_retained"]
+    },
+    "formula": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "network_task_weight",
+        "personal_task_weight",
+        "reward_divisor",
+        "alignment_weight",
+        "tie_break_order"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "const": "3x network tasks + personal tasks + rewards/25000 + alignment"
+        },
+        "network_task_weight": {
+          "type": "number",
+          "const": 3
+        },
+        "personal_task_weight": {
+          "type": "number",
+          "const": 1
+        },
+        "reward_divisor": {
+          "type": "number",
+          "const": 25000
+        },
+        "alignment_weight": {
+          "type": "number",
+          "const": 1
+        },
+        "tie_break_order": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "const": [
+            "score_desc",
+            "network_tasks_desc",
+            "rewards_desc",
+            "account_id_asc"
+          ]
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seat_count",
+        "keep_until_rank",
+        "grace_days",
+        "grace_cooldown_days",
+        "exclude_active_validators",
+        "include_private_accounts",
+        "exclude_blacklisted",
+        "exclude_suspended"
+      ],
+      "properties": {
+        "seat_count": {
+          "type": "integer",
+          "const": 30
+        },
+        "keep_until_rank": {
+          "type": "integer",
+          "const": 35
+        },
+        "grace_days": {
+          "type": "integer",
+          "const": 7
+        },
+        "grace_cooldown_days": {
+          "type": "integer",
+          "const": 30
+        },
+        "exclude_active_validators": {
+          "type": "boolean",
+          "const": true
+        },
+        "include_private_accounts": {
+          "type": "boolean",
+          "const": true
+        },
+        "exclude_blacklisted": {
+          "type": "boolean",
+          "const": true
+        },
+        "exclude_suspended": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eligible_non_validator_accounts",
+        "excluded_active_validators",
+        "excluded_blacklisted_or_suspended",
+        "seated_count",
+        "hysteresis_retained_count",
+        "grace_count"
+      ],
+      "properties": {
+        "eligible_non_validator_accounts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded_active_validators": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded_blacklisted_or_suspended": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seated_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "hysteresis_retained_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "grace_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/snapshot_entry"
+      }
+    }
+  },
+  "$defs": {
+    "snapshot_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "rank",
+        "score",
+        "network_tasks",
+        "personal_tasks",
+        "rewards_pft",
+        "alignment_score",
+        "is_public_profile",
+        "is_active_validator",
+        "access_basis",
+        "entitlement_state",
+        "previous_rank",
+        "grace_started_at",
+        "grace_ends_at",
+        "grace_cooldown_until"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "network_tasks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "personal_tasks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rewards_pft": {
+          "type": "number",
+          "minimum": 0
+        },
+        "alignment_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "is_public_profile": {
+          "type": "boolean"
+        },
+        "is_active_validator": {
+          "type": "boolean",
+          "const": false
+        },
+        "access_basis": {
+          "type": "string",
+          "enum": ["top30", "grace"]
+        },
+        "entitlement_state": {
+          "type": "string",
+          "enum": [
+            "seated_top30",
+            "retained_hysteresis_31_35",
+            "grace_7d"
+          ]
+        },
+        "previous_rank": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "grace_started_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        },
+        "grace_ends_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        },
+        "grace_cooldown_until": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "entitlement_state": { "const": "seated_top30" }
+            },
+            "required": ["entitlement_state"]
+          },
+          "then": {
+            "properties": {
+              "rank": { "minimum": 1, "maximum": 30 },
+              "access_basis": { "const": "top30" },
+              "grace_started_at": { "type": "null" },
+              "grace_ends_at": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "entitlement_state": { "const": "retained_hysteresis_31_35" }
+            },
+            "required": ["entitlement_state"]
+          },
+          "then": {
+            "properties": {
+              "rank": { "minimum": 31, "maximum": 35 },
+              "access_basis": { "const": "top30" },
+              "grace_started_at": { "type": "null" },
+              "grace_ends_at": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "entitlement_state": { "const": "grace_7d" }
+            },
+            "required": ["entitlement_state"]
+          },
+          "then": {
+            "properties": {
+              "rank": { "minimum": 36 },
+              "access_basis": { "const": "grace" },
+              "grace_started_at": { "type": "string" },
+              "grace_ends_at": { "type": "string" },
+              "grace_cooldown_until": { "type": "string" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
