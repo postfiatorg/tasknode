@@ -1,6 +1,7 @@
 // Review of PR 447 (8616a0f44): each test reproduces a finding and fails on that head.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { gzipSync } from "node:zlib";
 
 import {
   FINANCE_HUB_TIER,
@@ -11,6 +12,7 @@ import { createValidatorBundleHandler } from "../server/validator-bundles.js";
 import { BUNDLE_FILE_FORMAT } from "../server/validator-bundle-files.js";
 import { createFinanceHubRoutesHandler } from "../server/finance-hub-routes.js";
 import { libraryRestrictionsFromFiles } from "../server/finance-hub-library.js";
+import { sha256Hex, signPublishPayload, verifySignedPublishRequest } from "../server/finance-hub-publish.js";
 
 async function invokeHandler(handler, { method = "GET", pathname, session = null, body = null, headers = {} }) {
   const response = { status: null, headers: {}, body: null };
@@ -242,4 +244,82 @@ test("(f) a Library item's allowed_bases applies to Today, Library and the direc
   });
   assert.equal(emptyPolicy.ok, false);
   assert.equal(emptyPolicy.reason, "publication_basis_not_allowed");
+});
+
+// ============================================================================
+// (g) Public content is scanned as it will be served (review 447-05)
+// ============================================================================
+
+test("(g) public publications are decoded before the leak scan and their JSON must match the PR 446 schemas", async () => {
+  const now = Date.parse("2026-11-27T10:00:00Z");
+  const key = { algorithm: "hmac-sha256", keyId: "review-key", hmacSecret: Buffer.alloc(32, 1) };
+  const keyRing = new Map(["goodbrief", "finance-hub-public"].map((id) => [`${id}:review-key`, key]));
+  const file = (filePath, bytes, encoding = "identity", contentType = "application/json") => ({
+    path: filePath, sha256: sha256Hex(bytes), size_bytes: bytes.length, content_type: contentType, encoding, content_base64: bytes.toString("base64"),
+  });
+  const verify = (indexId, files) => verifySignedPublishRequest(signPublishPayload({
+    schema_version: "finance-hub.publish-payload.v1",
+    index_id: indexId,
+    tier: indexId === "finance-hub-public" ? "public_safe" : "finance_hub",
+    allowed_bases: indexId === "finance-hub-public" ? ["public"] : ["validator"],
+    version: 1,
+    operation: "publish",
+    issued_at: new Date(now).toISOString(),
+    expires_at: new Date(now + 300_000).toISOString(),
+    nonce: "review_nonce_1234567890_abcdef",
+    title: "review",
+    manifest_sha256: "0".repeat(64),
+    total_bytes: files.reduce((sum, entry) => sum + entry.size_bytes, 0),
+    files,
+    render_gate: { passed: true, shrink_guard_passed: true, public_leak_scan_passed: true, file_count: files.length },
+  }, key), { keyRing, currentVersion: 0, hasSeenNonce: async () => false, nowMs: now });
+
+  const gzSecret = gzipSync(Buffer.from("Our price target is $240."));
+  const hidden = await verify("finance-hub-public", [file("public/briefs/a.txt", gzSecret, "gzip", "text/plain")]);
+  assert.equal(hidden.ok, false);
+  assert.equal(hidden.error, "public_leak_detected");
+
+  const wrongSchema = Buffer.from(JSON.stringify({ schema_version: "not-a-brief", anything: "arbitrary extra field" }));
+  const invalid = await verify("finance-hub-public", [file("public/briefs/ABC.json", wrongSchema)]);
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error, "public_schema_invalid");
+
+  const brief = {
+    schema_version: "finance-hub.agent-brief-public.v1",
+    index_scope: "public_safe",
+    model_id: "NVDA", ticker: "NVDA", name: "NVIDIA Corporation", asset_class: "perp_megacap_equity",
+    generated_at: "2026-11-27T01:00:00Z", publication_version: 42,
+    public_summary: "NVIDIA designs GPU compute platforms, networking interconnects, and CUDA software stacks deployed across public cloud hyperscalers and enterprise AI clusters.",
+    area_tags: ["ai-accelerators", "datacenter-capex"],
+    public_topics: [{
+      topic_id: "cloud-inference-utilization",
+      title: "Public cloud GPU instance availability and queue behavior",
+      description: "Observable cloud instance pricing, waitlist behavior, and deployment lead times reported by infrastructure buyers in public markets.",
+      observable_by: ["operator", "customer"],
+    }],
+    public_questions: [{
+      question_id: "q-triangulate-role",
+      prompt: "Which public cloud or open-benchmark GPU workloads do you directly observe in your day-to-day technical work?",
+      phase: "triangulation", mnpi_safe_verified: true,
+    }],
+    redaction_attestation: {
+      contains_price_targets: false, contains_internal_estimates: false, contains_member_claims: false,
+      contains_private_memory: false, leak_scan_passed: true, scanner_version: "public-brief-guard-v1",
+    },
+  };
+  const briefBytes = Buffer.from(JSON.stringify(brief));
+  const gzBrief = gzipSync(briefBytes);
+  const valid = await verify("finance-hub-public", [file("public/briefs/NVDA.json", gzBrief, "gzip")]);
+  assert.equal(valid.ok, true, JSON.stringify(valid.details));
+  assert.deepEqual(valid.decodedFiles[0].bytes, briefBytes, "the served representation is the decoded content");
+  const misnamed = await verify("finance-hub-public", [file("public/briefs/AMD.json", briefBytes)]);
+  assert.equal(misnamed.error, "public_schema_invalid");
+
+  // Gated bundles also store what they will serve: decoded, since no Content-Encoding is kept.
+  const html = Buffer.from("<article>Goodbrief</article>");
+  const gated = await verify("goodbrief", [file("index.html", gzipSync(html), "gzip", "text/html")]);
+  assert.equal(gated.ok, true);
+  assert.deepEqual(gated.decodedFiles[0].bytes, html);
+  const corrupt = await verify("goodbrief", [file("index.html", Buffer.from("not gzip"), "gzip", "text/html")]);
+  assert.equal(corrupt.error, "file_encoding_invalid");
 });
