@@ -401,13 +401,15 @@ test("EthereumWithdraw: a Confirm re-read whose answer arrives after the closing
 });
 
 // R451-R3-01: the answer is formed at 18:59:58 and the machine sleeps six seconds while the burn
-// waits; the monotonic clock stands still, the wall clock moves on to 19:00:04.
+// waits; the monotonic clock stands still, the wall clock moves on to 19:00:04. R451-R4-01: the same
+// sleep, and the wall clock is also moved back an hour, or an hour-fast wall clock is corrected.
 const AT = Date.UTC(2026, 10, 27, 18, 59, 58);
+const SLEEPS = [["", AT, AT + 6_000], [" and the wall clock is moved back an hour", AT, AT + 6_000 - 3_600_000], [" and an hour-fast wall clock is corrected", AT + 3_600_000, AT + 6_000]];
 for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
-  for (const point of ["readiness", "sign", "connect"]) {
-    test(`${name}: a sleep with the monotonic clock standing still while Confirm waits at ${point} sends nothing`, async () => {
+  for (const point of ["readiness", "sign", "connect"]) for (const [clock, from, to] of SLEEPS) {
+    test(`${name}: a sleep with the monotonic clock standing still${clock} while Confirm waits at ${point} sends nothing`, async () => {
       await tab(name, { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
-        t.wall(AT); await reviewed(t);
+        t.wall(from); await reviewed(t);
         // Ethereum reads again in Confirm only once the Review's answer has expired.
         if (point === "readiness" && name === "EthereumWithdraw") t.jump(2_000);
         t.ctl.hold = point === "connect" ? "sign" : point; const work = t.confirm(); await settle();
@@ -415,7 +417,7 @@ for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
         assert.equal(typeof release, "function", `it waits at ${point}`);
         if (point === "connect") { t.ctl.connect = later(); release(); await settle(); }
         const monotonic = performance.now();
-        t.wall(AT + 6_000);
+        t.wall(to);
         assert.equal(performance.now(), monotonic, "the monotonic clock stood still");
         if (t.ctl.connect) { const connect = t.ctl.connect; t.ctl.connect = null; connect.finish(); } else release();
         await work; await settle();
@@ -427,11 +429,11 @@ for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
     });
   }
 }
-test("EthereumWithdraw: a sleep between Review and Confirm reads readiness again and sends nothing after the closing", async () => {
+for (const [clock, from, to] of SLEEPS) test(`EthereumWithdraw: a sleep${clock} between Review and Confirm reads readiness again and sends nothing after the closing`, async () => {
   await tab("EthereumWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
-    t.wall(AT); await reviewed(t);
+    t.wall(from); await reviewed(t);
     const reads = t.fetched.filter((path) => path.endsWith("/readiness")).length;
-    t.wall(AT + 6_000); t.ctl.answer = { ...CLOSED, proving_window: hours(19, 0, 4) };
+    t.wall(to); t.ctl.answer = { ...CLOSED, proving_window: hours(19, 0, 4) };
     await t.confirm(); await settle();
     assert.equal(t.fetched.filter((path) => path.endsWith("/readiness")).length, reads + 1, "Confirm reads readiness again");
     assert.equal(t.ctl.signs, 0);
@@ -449,6 +451,21 @@ test("SolanaWithdraw: a wall clock moved back an hour leaves the monotonic limit
     assert.match(t.text(), EXPIRED);
   });
 });
+
+// The normal path: both clocks run forward together, well inside the limit, and the burn is sent.
+for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
+  test(`${name}: both clocks running forward inside the limit send the burn as before`, async () => {
+    await tab(name, { answer: { ...READY, proving_window: hours(17, 30) } }, async (t) => {
+      t.wall(AT); await reviewed(t);
+      t.ctl.hold = "sign"; const work = t.confirm(); await settle();
+      t.wall(AT + 5_000); await t.time.advance(5_000); t.ctl.release(); await work; await settle();
+      assert.equal(t.ctl.signs, 1);
+      assert.equal(t.mempool(), 1);
+      assert.doesNotMatch(t.text(), EXPIRED);
+      assert.equal(name === "SolanaWithdraw" ? t.slot.get("fixture") : t.slot.get(`l1-withdrawal:fixture:${ADDRESS}`), TX);
+    });
+  });
+}
 
 // R451-R2-02: without the Web Locks API, the manual recovery of a pending record behaves as on
 // b24a7c1, and a new burn still needs the lock as it did.

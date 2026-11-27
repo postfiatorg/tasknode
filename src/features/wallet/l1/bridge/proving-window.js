@@ -82,10 +82,13 @@ export function answerExpiry(window, started) {
   return boundary === null || !started ? null : { started, limit: Math.min(boundary, STALE_MS) };
 }
 // Whether an answer's authority has ended, the one test of an expiry: as soon as either clock's
-// elapsed time reaches the limit. The monotonic clock can stand still while the machine sleeps; a
-// wall clock moved forward only ends it early, one moved back leaves the monotonic measure in force.
+// elapsed time reaches the limit. The monotonic clock can stand still while the machine sleeps, and a
+// wall clock moved forward only ends it early. A clock that reads earlier than at the request's start
+// (moved back) or no number at all can no longer measure the time, so it ends the authority too.
 export function expired(expiry, now = clocks()) {
-  return Boolean(expiry) && (now.monotonic - expiry.started.monotonic >= expiry.limit || now.wall - expiry.started.wall >= expiry.limit);
+  if (!expiry) return false;
+  const monotonic = now.monotonic - expiry.started.monotonic, wall = now.wall - expiry.started.wall;
+  return !(monotonic >= 0 && wall >= 0) || monotonic >= expiry.limit || wall >= expiry.limit;
 }
 // Said when a burn's readiness answer expired before the burn left; nothing was sent.
 export const EXPIRED = "The withdrawal's availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again.";
