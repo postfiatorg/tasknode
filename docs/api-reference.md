@@ -241,5 +241,19 @@ resource membership, or other context beyond a generic identity class.
 | `usage_top_up_sync` | `/api/usage/top-up/sync` | `POST` | `handler` | strict JSON ≤ 1024 bytes | — |
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
+| `hive_mind_coverage` | `/api/hive-mind/coverage` | `GET` | `optional` | — | — |
+| `hive_mind_profile` | `/api/hive-mind/profile` | `GET` `POST` | `session` | strict JSON ≤ 16384 bytes | 60 / 600s |
+| `hive_mind_matches` | `/api/hive-mind/matches` | `GET` | `session` | — | 60 / 600s |
+| `hive_mind_interview_start` | `/api/hive-mind/interviews/start` | `POST` | `session` | strict JSON ≤ 16384 bytes | 20 / 600s |
+| `hive_mind_interview_message` | `/api/hive-mind/interviews/message` | `POST` | `session` | strict JSON ≤ 32768 bytes | 60 / 600s |
+| `hive_mind_claims_submit` | `/api/hive-mind/claims` | `POST` | `session` | strict JSON ≤ 32768 bytes | 30 / 600s |
+| `hive_mind_claims_resolve` | `/api/hive-mind/claims/resolve` | `POST` | `session` | strict JSON ≤ 8192 bytes | 30 / 600s |
+| `hive_mind_proposals_list` | `/api/hive-mind/proposals` | `GET` | `session` | — | — |
+| `hive_mind_proposals_decide` | `/api/hive-mind/proposals/decide` | `POST` | `session` | strict JSON ≤ 8192 bytes | 30 / 600s |
+| `hive_mind_bridge_proposals` | `/api/hive-mind/bridge/proposals` | `GET` | `bearer` | — | — |
+| `hive_mind_bridge_webhook` | `/api/hive-mind/bridge/webhook` | `POST` | `handler` | strict JSON ≤ 16384 bytes | 60 / 600s |
+| `hive_mind_takedown` | `/api/hive-mind/takedown` | `POST` | `session` | strict JSON ≤ 4096 bytes | 30 / 600s |
+| `hive_mind_insights` | `/api/hive-mind/insights` | `GET` | `optional` | — | — |
+| `hive_mind_roi` | `/api/hive-mind/roi` | `GET` | `session` | — | — |
 
-Total: **216 route policies** and **8 authentication modes**.
+Total: **230 route policies** and **8 authentication modes**.

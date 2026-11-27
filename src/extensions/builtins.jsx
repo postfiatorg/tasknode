@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { Brain, MessageSquare, Users } from "lucide-react";
 
 const HiveBrainView = lazy(() => import("../features/hive/HiveBrainView").then((module) => ({ default: module.HiveBrainView })));
+const HiveMindView = lazy(() => import("../hive-mind/HiveMindView.jsx").then((module) => ({ default: module.HiveMindView })));
 const MemoryView = lazy(() => import("../features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
 const MessagesView = lazy(() => import("../features/messages/MessagesView").then((module) => ({ default: module.MessagesView })));
 const TeamView = lazy(() => import("../features/team/TeamView").then((module) => ({ default: module.TeamView })));
@@ -48,6 +49,16 @@ export const builtInTaskNodeExtensions = Object.freeze([
     group: "insight",
     order: 30,
     requiresAuth: false,
+  },
+  {
+    id: "hive-mind",
+    label: "Hive Mind",
+    icon: Brain,
+    component: HiveMindView,
+    group: "insight",
+    order: 35,
+    requiresAuth: false,
+    props: ({ accountId }) => ({ accountId }),
   },
   {
     id: "memory",
