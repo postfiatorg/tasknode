@@ -1,5 +1,6 @@
 import { bodyPolicy } from "./request-validation.js";
 import * as requestBodies from "./request-body-contracts.js";
+import { hiveMindRoutePolicies } from "./hive-mind/route-policies.js";
 
 const tenMinutes = 10 * 60_000;
 const shortText = { type: "string", minLength: 1, maxLength: 500 };
@@ -902,6 +903,7 @@ export const apiRoutePolicies = [
     body: requestBodies.usageAdminCreditBody,
   },
   { id: "usage_ledger", path: "/api/usage/ledger", methods: ["GET"], auth: "session" },
+  ...hiveMindRoutePolicies,
 ];
 
 export function routePolicyForPath(pathname) {
