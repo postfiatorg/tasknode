@@ -4,6 +4,19 @@ import { rewardMonthWindow } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
 import { requireFeedForNewBinding, creditFromFeedRow, l1AccessRow, l1UptimeFeedConfig } from "./l1-validator-access.js";
 
+export async function currentRewardDecision(binding, now, client) {
+  let pollId;
+  try {
+    pollId = await requireFeedForNewBinding({ now, queryImpl: client.query.bind(client) });
+  } catch (error) {
+    if (error.status === 503) return { decision: { eligible: false, reason: "indeterminate" }, row: null };
+    throw error;
+  }
+  const row = await l1AccessRow(binding, client.query.bind(client));
+  const current = row?.poll_id === pollId && !binding.access_suspended_at ? row : null;
+  return { decision: creditFromFeedRow(current, now), row: current };
+}
+
 export async function grantL1ValidatorReward(binding, month, { registryOptions, now = new Date() } = {}) {
   const end = rewardMonthWindow(month, now);
   const current = (await query(`SELECT * FROM validator_bindings
@@ -20,16 +33,7 @@ export async function grantL1ValidatorReward(binding, month, { registryOptions, 
   const key = `validator-reward:l1-devnet:${current.chain_id}:${current.validator_id}:${month}`;
   return transaction(async client => {
     if (l1UptimeFeedConfig().enforced) {
-      let pollId;
-      try {
-        pollId = await requireFeedForNewBinding({ now, queryImpl: client.query.bind(client) });
-      } catch (error) {
-        if (error.status === 503) return false;
-        throw error;
-      }
-      const row = await l1AccessRow(current, client.query.bind(client));
-      if (!row || row.poll_id !== pollId) return false;
-      const decision = creditFromFeedRow(row, now);
+      const { decision, row } = await currentRewardDecision(current, now, client);
       evidence = { ...evidence, eligible: decision.eligible, eligibilityReason: decision.reason,
         policy: "l1-uptime-feed-v1", source: "postfiat-validator-uptime-v1", feedRow: row };
     }

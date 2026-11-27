@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { closePool, query } from "../server/db/pool.js";
+import { closePool, query, transaction } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { refreshL1ValidatorAccess, requireFeedForNewBinding } from "../server/l1-validator-access.js";
 import { hasValidatorBinding, listValidatorBindings } from "../server/repositories/validator-bindings.js";
@@ -92,6 +92,19 @@ await requireFeedForNewBinding({ env: env(false), now: new Date(now.getTime() + 
 // 5. An older feed cannot replace a newer one.
 await query(`UPDATE l1_uptime_feed_observers SET last_observed_at='2026-11-27T01:45:00Z' WHERE keyset_id=$1`, [keyset.keyset_id]);
 assert.equal((await refresh(true)).status, "indeterminate");
+
+// A later successful decision is consulted again under the billing lock.
+await assert.rejects(requireFeedForNewBinding({ env: env(true), now }), {status: 503});
+const account = `reward_race_${run}`, month = "2026-11";
+const receipts = await Promise.allSettled([
+  transaction(client => client.query(`INSERT INTO validator_reward_grants VALUES ($1,$2,$3,$4,20,'{}',now())`,
+    [randomUUID(), randomUUID(), account, month])),
+  transaction(client => client.query(`INSERT INTO l1_validator_reward_grants VALUES ($1,'l1-devnet',$2,$3,$4,$5,$6,20,'{}',now())`,
+    [randomUUID(), keyset.chain.chain_id, randomUUID(), keyOf("validator-0"), account, month])),
+]);
+assert.equal(receipts.filter(x => x.status === "fulfilled").length, 1);
+assert.equal(receipts.find(x => x.status === "rejected").reason.code, "PV001");
+assert.equal((await query("SELECT 1 FROM validator_operator_reward_months WHERE account_id=$1", [account])).rowCount, 1);
 
 await query(`UPDATE validator_bindings SET revoked_at=now() WHERE account_id = ANY($1::text[])`, [[healthy, lapsed, revoked]]);
 await query(`DELETE FROM l1_uptime_feed_observers WHERE keyset_id=$1`, [keyset.keyset_id]);

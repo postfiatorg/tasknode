@@ -2,7 +2,8 @@ import { query, transaction } from "./db/pool.js";
 import { dailyAgreement, fetchValidatorReports, findRegisteredValidator, rewardMonthWindow, validatorError } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
 import { l1BindingParticipation } from "./l1-validator-identity.js";
-import { grantL1ValidatorReward } from "./l1-validator-rewards.js";
+import { l1UptimeFeedConfig } from "./l1-validator-access.js";
+import { currentRewardDecision, grantL1ValidatorReward } from "./l1-validator-rewards.js";
 
 export async function grantValidatorReward(binding, month, evidence, dependencies = {}) {
   if (binding.network === "l1-devnet") return grantL1ValidatorReward(binding, month, dependencies);
@@ -34,9 +35,15 @@ export async function runValidatorRewards({ month = new Date().toISOString().sli
     try {
       if (binding.network === "l1-devnet") {
         Object.assign(item, { validatorId: binding.validator_id, chainId: binding.chain_id }, await l1BindingParticipation(binding, end, dependencies.registryOptions));
+        if (l1UptimeFeedConfig().enforced) {
+          const { decision } = await transaction(client => currentRewardDecision(binding, now, client));
+          item.eligible = decision.eligible;
+          item.eligibilityReason = decision.reason;
+        }
         item.alreadyGranted = Boolean((await query(`SELECT 1 FROM l1_validator_reward_grants
-          WHERE network=$1 AND reward_month=$2 AND ((chain_id=$3 AND validator_id=$4) OR ml_dsa_public_key=$5)`,
-        [binding.network, month, binding.chain_id, binding.validator_id, binding.ml_dsa_public_key])).rowCount);
+          WHERE network=$1 AND reward_month=$2 AND ((chain_id=$3 AND validator_id=$4) OR ml_dsa_public_key=$5)
+          UNION ALL SELECT 1 FROM validator_operator_reward_months WHERE account_id=$6 AND reward_month=$2`,
+        [binding.network, month, binding.chain_id, binding.validator_id, binding.ml_dsa_public_key, binding.account_id])).rowCount);
         if (!dryRun && item.eligible) item.granted = await grantL1ValidatorReward(binding, month, { registryOptions: dependencies.registryOptions, now });
         report.push(item);
         continue;
@@ -45,7 +52,7 @@ export async function runValidatorRewards({ month = new Date().toISOString().sli
       const reports = await (dependencies.reports || fetchValidatorReports)(binding.master_public_key, binding.network);
       const evidence = dailyAgreement(reports, end);
       Object.assign(item, evidence);
-      item.alreadyGranted = Boolean((await query(`SELECT 1 FROM validator_reward_grants WHERE master_public_key=$1 AND reward_month=$2`, [binding.master_public_key, month])).rowCount);
+      item.alreadyGranted = Boolean((await query(`SELECT 1 FROM validator_reward_grants WHERE master_public_key=$1 AND reward_month=$2 UNION ALL SELECT 1 FROM validator_operator_reward_months WHERE account_id=$3 AND reward_month=$2`, [binding.master_public_key, month, binding.account_id])).rowCount);
       if (!dryRun && evidence.eligible) item.granted = await grantValidatorReward(binding, month, { ...evidence, network: binding.network, source: "vhs_daily_reports" });
     } catch (error) { item.error = error.status ? error.message : "validator_history_unavailable"; }
     report.push(item);

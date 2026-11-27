@@ -120,3 +120,13 @@ test("stale, replayed, another chain, moved constants", () => {
 test("canonical JSON is the bytes the other implementations sign", () => {
   assert.equal(canonicalJson({ b: [1, { d: null, c: true }], a: "x" }), '{"a":"x","b":[1,{"c":true,"d":null}]}');
 });
+
+test("two observers must agree on each effective entitlement and date", () => {
+  for (const field of ["reward_eligible", "finance_hub_access", "grace_expires_at", "first_active_date"]) {
+    const pair = feed().observer_attestations.slice(0, 2);
+    const claim = pair[0].validator_claims[0];
+    claim[field] = typeof claim[field] === "boolean" ? !claim[field] : "2026-11-01";
+    const { rows } = reconcile(pair);
+    assert.equal(rows.some(row => row.validator_id === claim.validator_id), false, field);
+  }
+});

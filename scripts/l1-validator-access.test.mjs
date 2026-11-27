@@ -49,6 +49,7 @@ test("the credit follows a fresh row and nothing else", () => {
 });
 
 test("off by default; the URL must be https; the keyset must be a real keyset", () => {
+  assert.throws(() => l1UptimeFeedConfig({TASKNODE_L1_UPTIME_FEED_ENFORCED: "true"}));
   assert.deepEqual(l1UptimeFeedConfig({}), { configured: false, enforced: false });
   const env = { TASKNODE_L1_UPTIME_FEED_URL: "https://feed.example/validator-uptime-feed.json",
     TASKNODE_L1_UPTIME_FEED_KEYSET_JSON: JSON.stringify(keyset) };

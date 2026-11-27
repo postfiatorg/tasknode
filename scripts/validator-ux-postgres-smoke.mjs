@@ -74,9 +74,10 @@ try {
   response = await route(); assert.equal(response.body.bindings.find(b => b.id === l1.id).eligibility.state, "on_track");
   observed(25, .94);
   assert.equal((await route()).body.bindings.find(b => b.id === l1.id).eligibility.state, "below_threshold");
-  const l1Receipt = `validator-reward:l1-devnet:${l1.chain_id}:${l1.validator_id}:${month}`;
+  const priorMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1)).toISOString().slice(0, 7);
+  const l1Receipt = `validator-reward:l1-devnet:${l1.chain_id}:${l1.validator_id}:${priorMonth}`;
   await query(`INSERT INTO l1_validator_reward_grants(idempotency_key,network,chain_id,validator_id,ml_dsa_public_key,account_id,reward_month,amount_usd,evidence_json)
-    VALUES($1,'l1-devnet',$2,$3,$4,$5,$6,20,$7)`, [l1Receipt, l1.chain_id, l1.validator_id, l1.ml_dsa_public_key, owner, month, {}]);
+    VALUES($1,'l1-devnet',$2,$3,$4,$5,$6,20,$7)`, [l1Receipt, l1.chain_id, l1.validator_id, l1.ml_dsa_public_key, owner, priorMonth, {}]);
   response = await route(); assert.equal(response.body.rewardHistory.length, 2);
   assert.equal(response.body.bindings.find(b => b.id === l1.id).rewardHistory[0].id, l1Receipt);
   historyOffline = true;
