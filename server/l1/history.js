@@ -6,6 +6,25 @@ import { assetSymbols, routeSymbols } from '../../src/features/wallet/l1/market/
 const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swap_transactions', 'escrow_transactions', 'nft_transactions', 'offer_transactions'];
 const ADDRESS_FIELDS = ['source', 'from', 'to', 'owner', 'account', 'recipient', 'native_recipient', 'settlement_recipient', 'spread_recipient'];
 
+// A Solana deposit is credited by the bridge's proof transaction, not by the wallet, so the
+// wallet's address appears only inside the proof's public values: an 8-byte tag, a 227-byte
+// header ending in a little-endian count, then one 156-byte record per deposit (deposit id 32,
+// 32, recipient 20, amount u64 little-endian, 32, depositor 32). Any other shape yields no rows.
+export function solanaDepositCredits(publicValues, address) {
+  if (!Array.isArray(publicValues) || publicValues.length < 235) return [];
+  const bytes = Buffer.from(publicValues);
+  if (bytes.subarray(0, 8).toString('latin1') !== 'PFSOLDP1') return [];
+  const count = bytes.readUInt32LE(231);
+  if (bytes.length !== 235 + 156 * count) return [];
+  const credits = [];
+  for (let i = 0; i < count; i++) {
+    const record = bytes.subarray(235 + 156 * i, 235 + 156 * (i + 1));
+    if (`pf${record.subarray(64, 84).toString('hex')}` !== address) continue;
+    credits.push({ deposit_id: record.subarray(0, 32).toString('hex'), amount: record.readBigUInt64LE(84).toString() });
+  }
+  return credits;
+}
+
 const canonical = value => JSON.stringify(value, Object.keys(value).sort());
 export function projectHistory({ blocks, archives, receipts }, address, limit = 100, symbols = {}, routes = {}) {
   const batches = new Map(archives.map(entry => [`${entry.batch_kind}:${entry.batch_id}`, entry]));
@@ -27,8 +46,15 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
       const unsigned = transaction.unsigned;
       if (!unsigned) throw Error('History transaction has no signed fields');
       const op = typeof unsigned.operation === 'object' ? { ...unsigned, ...unsigned.operation } : unsigned;
-      if (!ADDRESS_FIELDS.some(key => op[key] === address)) return;
       const txId = block.receipt_ids[index], receipt = byTx.get(txId);
+      if (op.transaction_kind === 'solana_bridge_proof_v1') {
+        solanaDepositCredits(op.public_values, address).forEach((credit, part) => rows.push({ tx_id: txId, block_height: block.header.height,
+          transaction_index: index, fill_index: part, transaction_kind: 'solana_deposit', to: address, amount: credit.amount, unit: 'PFUSDC',
+          deposit_id: credit.deposit_id, accepted: conflicts.has(txId) ? null : receipt?.accepted ?? null,
+          receipt_code: conflicts.has(txId) ? 'conflicting_receipts' : receipt?.code }));
+        return;
+      }
+      if (!ADDRESS_FIELDS.some(key => op[key] === address)) return;
       const kind = op.transaction_kind === 'transparent_transfer' ? 'transfer' : op.transaction_kind || op.operation || 'transfer';
       const from = op.from || op.source || op.owner;
       const to = op.to || op.recipient || op.native_recipient || op.settlement_recipient;
@@ -38,6 +64,10 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
         accepted: conflicts.has(txId) ? null : receipt?.accepted ?? null,
         receipt_code: conflicts.has(txId) ? 'conflicting_receipts' : receipt?.code };
       if (['transfer', 'payment', 'payment_v2', 'issued_payment'].includes(kind)) row.amount = op.amount;
+      if (kind === 'vault_bridge_burn_to_redeem') {
+        row.amount = op.amount_atoms; row.unit = 'PFUSDC'; row.to = undefined;
+        row.withdraw_chain = String(op.destination_ref || '').startsWith('solana-spl:') ? 'Solana' : 'Ethereum';
+      }
       if (kind === 'pftl_uniswap_primary_redeem') { row.amount = op.nav_amount_atoms; row.unit = routes[op.route_id]; }
       if (['pftl_uniswap_order_reserve', 'pftl_uniswap_primary_subscribe_v2', 'pftl_uniswap_order_release'].includes(kind)) row.unit = routes[op.route_id];
       if (kind === 'offer_create') {

@@ -11,16 +11,23 @@ import {
 import { networkTaskContentViolation } from "../server/network-task-content-policy.js";
 
 test("only the boards the operator named take new work", () => {
-  for (const board of ["board_community_promotion", "board_postfiat_l1v2", "board_tasknode_fixes", "board_capital_markets"]) {
+  // Layer 1, Task Node, Corbanu Terminal, Trading, Media (2026-11-25).
+  for (const board of ["board_community_promotion", "board_postfiat_l1v2", "board_tasknode_fixes", "board_capital_markets", "board_pf_terminal"]) {
     assert.equal(boardOpenForNewWork(board), true, board);
   }
-  assert.equal(boardOpenForNewWork("board_pf_terminal"), false);
   assert.equal(boardOpenForNewWork("board_ai_l1_governance"), false);
-  assert.throws(() => assertBoardAcceptsWork({ boardId: "board_pf_terminal", workType: "code_task" }), { code: "board_work_policy_rejected" });
+  assert.throws(() => assertBoardAcceptsWork({ boardId: "board_ai_l1_governance", workType: "code_task" }), { code: "board_work_policy_rejected" });
+  assert.equal(boardWorkViolation({ boardId: "board_pf_terminal", workType: "code_task" }), null);
   // Operator referrals (merge and badge decisions) still reach the operator on any board.
-  assert.equal(boardWorkViolation({ boardId: "board_pf_terminal", workType: "project_management", operatorDuty: true }), null);
+  assert.equal(boardWorkViolation({ boardId: "board_ai_l1_governance", workType: "project_management", operatorDuty: true }), null);
   // Boards outside the table keep their own rules.
   assert.equal(boardWorkViolation({ boardId: "board_value_accountability", workType: "anything" }), null);
+});
+
+test("new validators are Layer 1 work paid on public proof", () => {
+  assert.equal(boardWorkViolation({ boardId: "board_postfiat_l1v2", workType: "validator_setup" }), null);
+  assert.equal(mergedPrRequiredForWork({ boardId: "board_postfiat_l1v2", workType: "validator_setup" }), false);
+  assert.equal(boardWorkViolation({ boardId: "board_community_promotion", workType: "validator_setup" }).code, "work_type_not_in_board_scope");
 });
 
 test("each board takes only its own kinds of work", () => {
@@ -63,20 +70,21 @@ test("written review findings are paid only as an L1 code review", () => {
   assert.equal(networkTaskContentViolation("Quote-post the latest goodalexander blog post on X with your own one-line takeaway."), null);
 });
 
-test("reproduced bug reports are paid on public surfaces, on a public issue", () => {
-  for (const board of ["board_tasknode_fixes", "board_community_promotion"]) {
-    for (const type of ["qa_report", "product_qa", "repro_packet"]) {
+test("reproduced bug reports: public issue on Media, merged fix on the code boards", () => {
+  for (const type of ["qa_report", "product_qa", "repro_packet"]) {
+    assert.equal(boardWorkViolation({ boardId: "board_community_promotion", workType: type }), null, type);
+    assert.equal(mergedPrRequiredForWork({ boardId: "board_community_promotion", workType: type }), false);
+    assert.equal(reviewDocumentAllowed({ boardId: "board_community_promotion", workType: type }), true);
+    // Task Node and Corbanu Terminal testing must end in a merged fix (2026-11-25).
+    for (const board of ["board_tasknode_fixes", "board_pf_terminal"]) {
       assert.equal(boardWorkViolation({ boardId: board, workType: type }), null, `${board} ${type}`);
-      assert.equal(mergedPrRequiredForWork({ boardId: board, workType: type }), false);
-      assert.equal(reviewDocumentAllowed({ boardId: board, workType: type }), true);
+      assert.equal(mergedPrRequiredForWork({ boardId: board, workType: type }), true, `${board} ${type}`);
+      assert.equal(reviewDocumentAllowed({ boardId: board, workType: type }), false);
     }
   }
-  // Not on the L1 or Capital Markets boards, and never on a closed board.
+  // Not on the L1 or Trading boards, and never on a closed board.
   assert.equal(boardWorkViolation({ boardId: "board_capital_markets", workType: "qa_report" }).code, "work_type_not_in_board_scope");
-  assert.equal(boardWorkViolation({ boardId: "board_pf_terminal", workType: "qa_report" }).code, "board_closed_to_new_work");
-  // QA tasks already issued on PF Terminal keep the merged pull request terms they were offered under.
-  assert.equal(mergedPrRequiredForWork({ boardId: "board_pf_terminal", workType: "qa_report" }), true);
-  assert.equal(reviewDocumentAllowed({ boardId: "board_pf_terminal", workType: "qa_report" }), false);
+  assert.equal(boardWorkViolation({ boardId: "board_ai_l1_governance", workType: "qa_report" }).code, "board_closed_to_new_work");
   const need = "Reproduce one defect on tasknode.postfiat.org and file a public issue report with exact steps, expected and actual result.";
   assert.equal(networkTaskContentViolation(need, { allowReviewDocument: true }), null);
 });

@@ -209,8 +209,15 @@ export function TaskProofSummary({ detail, displayTask, onSelectTab }) {
   );
 }
 
-export function submitClosedCopy(task = {}) {
+export function submitClosedCopy(task = {}, verificationRequestStatus = null) {
   const status = normalizeTaskStatus(task.statusKey || task.status);
+  if (status === "submitted" && verificationRequestStatus?.stalled) {
+    return {
+      title: "Verification request delayed",
+      body: "Your initial evidence is recorded, but Task Node has not generated the follow-up verification request on schedule.",
+      detail: "Do not resubmit or cancel the task. If this persists, report the task ID to Task Node operators.",
+    };
+  }
   if (status === "submitted") {
     return {
       title: "Evidence submitted",
@@ -484,7 +491,7 @@ export function TaskSubmitPanel({
   const actions = detail?.actions || {};
   const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
-  const closedCopy = submitClosedCopy(task);
+  const closedCopy = submitClosedCopy(task, detail?.verificationRequestStatus);
   const submissionModeKey = actions.canSubmitVerificationEvidence
     ? `verification:${verificationRequest?.eventId || verificationRequest?.body || taskId}`
     : actions.canSubmitInitialEvidence

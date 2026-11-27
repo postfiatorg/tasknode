@@ -42,7 +42,7 @@ function ensureDatabase() {
 export const networkBadgeCatalogVersion = "network_badges_v1";
 
 export const networkBadgeDefinitions = Object.freeze({
-  validator: { badgeId: "validator", label: "Validator", symbolKey: "server", maxPayoutPft: 0, rewardCaps: {}, allowedWorkTypes: [] },
+  validator: { badgeId: "validator", label: "Validator", symbolKey: "server", maxPayoutPft: 0, rewardCaps: {}, allowedWorkTypes: ["validator_setup"] },
   kol: {
     badgeId: "kol",
     label: "KOL",
@@ -69,7 +69,7 @@ export const networkBadgeDefinitions = Object.freeze({
       code_review: 30000,
       capability_gating_task: 30000,
     },
-    allowedWorkTypes: ["code_task", "private_repo_code", "core_repo_work", "code_review", "capability_gating_task"],
+    allowedWorkTypes: ["code_task", "private_repo_code", "core_repo_work", "code_review", "capability_gating_task", "validator_setup"],
   },
   expert: {
     badgeId: "expert",

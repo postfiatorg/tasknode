@@ -368,6 +368,14 @@
   white-space: pre-wrap;
 }
 
+.pf-feedback-notice {
+  max-width: 720px;
+  margin: 0;
+  padding-top: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
 /* Badges */
 
 .pf-badges {

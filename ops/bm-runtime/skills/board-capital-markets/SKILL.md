@@ -3,7 +3,10 @@ name: board-capital-markets
 description: Board context for the Capital Markets board manager. Use with the board-manager skill when operating board_capital_markets - actionable alpha and amplification of existing goodalexander research, held to a high bar.
 ---
 
-# Capital Markets Board
+# Trading Board
+
+> Public name since 2026-11-25: **Trading**. Every task comes from this board's Wanted list (`bm wanted board_capital_markets`). There is no freshness window on goodalexander material: if an item links to it, it is current enough.
+
 
 Board id: `board_capital_markets`. "Operator" means goodalexander.
 
@@ -43,7 +46,7 @@ published by the operator.
 
 ## Amplification: what a task must ask for
 
-- The URL of one specific goodalexander piece published in the last 30 days.
+- The URL of one specific goodalexander piece (from the Wanted item).
 - A quote-post, thread or article that adds the contributor's own context, a
   number or a chart. Not a repost and not a summary.
 - The resulting public URL as proof.

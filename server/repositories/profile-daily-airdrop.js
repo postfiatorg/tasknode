@@ -5,6 +5,7 @@ import {
   canonicalRewardedTaskProjectionSql,
   nonFixtureTaskProjectionSql,
 } from "./task-projection-integrity.js";
+import { dailyAirdropFeedbackNotice } from "../profile-daily-airdrop-feedback-notice.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -69,6 +70,8 @@ function normalizeDailyAirdropRun(row = null) {
     eligibilityStatus: row.eligibility_status || row.eligibilityStatus || "ineligible",
     eligibilityReason: row.eligibility_reason || row.eligibilityReason || "",
     reasoningText: safeText(row.reasoning_text || row.reasoningText, 2500),
+    feedbackStatus: safeText(outputJson?.feedback_review?.status, 40),
+    feedbackNotice: dailyAirdropFeedbackNotice(outputJson?.feedback_review),
     actualAirdropPft7d: Number(row.actual_airdrop_pft_7d || row.actualAirdropPft7d || 0),
     maxPossibleAirdropPft7d: Number(row.max_possible_airdrop_pft_7d || row.maxPossibleAirdropPft7d || 0),
     alignmentScore7d: Number(row.alignment_score_7d || row.alignmentScore7d || 0),

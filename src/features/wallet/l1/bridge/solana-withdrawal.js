@@ -97,28 +97,73 @@ export function normalAmount(amount) {
   return text;
 }
 
-export function withdrawalAtoms(amount, held, outstanding) {
+export function withdrawalAtoms(amount, held, outstanding, minimum = 1n) {
   const value = atoms(normalAmount(amount), "Withdrawal amount");
+  if (BigInt(value) < minimum) throw Error(`The smallest withdrawal to Solana is ${usdc(minimum)} USDC.`);
   if (BigInt(value) > held) throw Error("This exceeds your current Solana-backed balance.");
   if (BigInt(value) > integer(outstanding, "Bridge reserve")) throw Error("This exceeds the outstanding amount for this Solana series.");
   return value;
 }
 
-export async function withdrawalSnapshot(client) {
-  const ready = await bridgeJson(ROOT + "/readiness", { signal: AbortSignal.timeout(45000) }).catch(() => null);
-  if (ready?.ready !== true || ![ready.series_asset_id, ready.bucket_id, ready.asset_id, ready.reserve_packet_hash].every(isBurnId)
-      || !/^pf[0-9a-f]{40}$/.test(ready.issuer) || !Number.isSafeInteger(ready.epoch) || ready.epoch < 0
-      || ready.destination_prefix !== MAINNET_PREFIX || typeof ready.bucket_outstanding_atoms !== "string"
-      || !/^[0-9]+$/.test(ready.bucket_outstanding_atoms)) return null;
-  const result = rpcResult(await client.call("account_assets", { account: client.address, asset_id: ready.series_asset_id, limit: 10 }));
-  const { held, ...series } = matchedBalance(result, ready);
-  return { ready, held, series };
+function usdc(value) {
+  const text = BigInt(value).toString().padStart(7, "0");
+  return `${text.slice(0, -6)}.${text.slice(-6).replace(/0+$/, "").padEnd(2, "0")}`;
 }
 
-export function withdrawalIntent(client, { ready, held, series }, amount, recipient) {
+// Every Solana deposit batch the payout service covers. The first exit release names one series
+// at the top level; the second lists each covered bucket and a governed minimum.
+function coveredSeries(ready) {
+  const rows = Array.isArray(ready.buckets) ? ready.buckets
+    : [{ bucket_id: ready.bucket_id, series_asset_id: ready.series_asset_id, outstanding_atoms: ready.bucket_outstanding_atoms }];
+  return rows.filter(row => row && isBurnId(row.bucket_id) && isBurnId(row.series_asset_id)
+    && typeof row.outstanding_atoms === "string" && /^[0-9]+$/.test(row.outstanding_atoms));
+}
+
+// One burn spends one batch, so each batch the wallet holds is its own option, largest first.
+// `held` is what one withdrawal can take: the largest batch. `total` is every batch together.
+// onWindow receives the readiness answer's proving window and whether the route reported ready,
+// before any other check, so a wallet without a withdrawable balance still sees the right hours.
+export async function withdrawalSnapshot(client, onWindow) {
+  const ready = await bridgeJson(ROOT + "/readiness", { signal: AbortSignal.timeout(45000) }).catch(failure => {
+    onWindow?.({ window: failure?.payload?.proving_window, open: false, answered: Boolean(failure?.payload) });
+    return null;
+  });
+  if (ready) onWindow?.({ window: ready.proving_window, open: ready.ready === true });
+  if (ready?.ready !== true || ![ready.asset_id, ready.reserve_packet_hash].every(isBurnId)
+      || !/^pf[0-9a-f]{40}$/.test(ready.issuer) || !Number.isSafeInteger(ready.epoch) || ready.epoch < 0
+      || ready.destination_prefix !== MAINNET_PREFIX) return null;
+  const covered = coveredSeries(ready);
+  if (!covered.length) return null;
+  const minimum = /^[1-9][0-9]*$/.test(ready.min_withdrawal_atoms ?? "") ? BigInt(ready.min_withdrawal_atoms) : 1n;
+  const options = [];
+  for (const row of covered) {
+    const result = rpcResult(await client.call("account_assets", { account: client.address, asset_id: row.series_asset_id, limit: 10 }));
+    const rows = Array.isArray(result) ? result : result?.assets;
+    // A batch this wallet does not hold is simply not offered; any other mismatch still stops.
+    if (Array.isArray(rows) && !result.truncated && !rows.some(line => line.asset_id === row.series_asset_id)) continue;
+    const { held, ...series } = matchedBalance(result, { ...ready, series_asset_id: row.series_asset_id, bucket_id: row.bucket_id });
+    const outstanding = BigInt(row.outstanding_atoms), redeemable = held < outstanding ? held : outstanding;
+    if (redeemable > 0n && redeemable >= minimum) options.push({ held: redeemable, series, outstanding: row.outstanding_atoms });
+  }
+  if (!options.length) throw Error("Your wallet does not hold PFUSDC from the Solana series that can be paid now.");
+  options.sort((x, y) => (x.held === y.held ? 0 : x.held < y.held ? 1 : -1));
+  const total = options.reduce((sum, option) => sum + option.held, 0n);
+  return { ready, held: options[0].held, series: options[0].series, outstanding: options[0].outstanding, options, total, minimum };
+}
+
+// The smallest batch that covers the amount, so larger batches stay whole for larger withdrawals.
+export function withdrawalOption(snapshot, amount) {
+  const outstanding = snapshot.outstanding ?? snapshot.ready.bucket_outstanding_atoms;
+  const value = BigInt(withdrawalAtoms(amount, snapshot.held, outstanding, snapshot.minimum ?? 1n));
+  const options = snapshot.options || [{ held: snapshot.held, series: snapshot.series, outstanding }];
+  return [...options].reverse().find(option => value <= option.held && value <= BigInt(option.outstanding)) || options[0];
+}
+
+export function withdrawalIntent(client, snapshot, amount, recipient) {
+  const { ready } = snapshot, option = withdrawalOption(snapshot, amount);
   return { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address,
-    issuer: series.issuer, asset_id: series.asset_id, bucket_id: series.bucket_id,
-    amount_atoms: withdrawalAtoms(amount, held, ready.bucket_outstanding_atoms), epoch: ready.epoch,
+    issuer: option.series.issuer, asset_id: option.series.asset_id, bucket_id: option.series.bucket_id,
+    amount_atoms: withdrawalAtoms(amount, option.held, option.outstanding, snapshot.minimum ?? 1n), epoch: ready.epoch,
     reserve_packet_hash: ready.reserve_packet_hash, destination_ref: destinationRef(ready.destination_prefix, recipient) } };
 }
 

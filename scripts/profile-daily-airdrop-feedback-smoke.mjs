@@ -6,6 +6,7 @@ import {
   reviewDailyAirdropFeedback,
   scoreDailyAirdropWithOpenRouter,
 } from "../server/profile-daily-airdrop.js";
+import { DAILY_AIRDROP_FEEDBACK_FALLBACK_NOTICE, dailyAirdropFeedbackNotice } from "../server/profile-daily-airdrop-feedback-notice.js";
 
 const promptText = (await readFile(new URL("../prompts/profile/daily_airdrop_v1.md", import.meta.url), "utf8")).trim();
 const packet = {
@@ -66,6 +67,9 @@ try {
     const body = JSON.parse(init.body);
     assert.deepEqual(JSON.parse(body.messages[1].content).task_reward_packet, scoringPacket);
     assert.deepEqual(Object.keys(body.response_format.json_schema.schema.properties).sort(), Object.keys(fixtureFeedback).sort());
+    // #356: reasoning tokens count against max_tokens and truncated every large packet.
+    assert.deepEqual(body.reasoning, { effort: "none", exclude: true }, "Feedback review runs without reasoning");
+    assert.equal(body.max_tokens, 1400);
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ...fixtureFeedback, daily_airdrop_pft: 999999, retention_value_score: 0, eligibility_status: "ineligible" }) } }] }), { headers: { "content-type": "application/json" } });
   };
   const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", INFERENCE_AMBIENT_BACKUP_ENABLED: "false" };
@@ -83,6 +87,43 @@ try {
   }
   globalThis.fetch = async () => { throw new Error("fixture_provider_unavailable"); };
   assert.equal((await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env })).status, "unavailable");
+  assert.equal(dailyAirdropFeedbackNotice(feedback), "", "A completed review shows its own feedback, not a notice");
+
+  // #356 reproduction: the provider stops at max_tokens (finish_reason "length").
+  const truncated = () => new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{\"what_raised_today\": \"Accepted" } }] }), { headers: { "content-type": "application/json" } });
+  let truncatedCalls = 0;
+  globalThis.fetch = async () => { truncatedCalls++; return truncated(); };
+  const cutOff = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env });
+  assert.equal(truncatedCalls, 2, "A failed feedback review is retried once");
+  assert.equal(cutOff.status, "unavailable");
+  assert.equal(cutOff.error.code, "inference_response_truncated", "The failure reason is recorded, not discarded");
+  assert.deepEqual(cutOff.error.attemptCodes, ["inference_response_truncated", "inference_response_truncated"]);
+  assert.equal(cutOff.error.providerAttempts[0].code, "inference_response_truncated");
+  assert.equal({ ...facts, ...cutOff.output }.daily_airdrop_pft, 45, "Payout is unaffected by missing feedback");
+  const cutOffNotice = dailyAirdropFeedbackNotice(cutOff);
+  assert.match(cutOffNotice, /ran out of room/);
+  assert.doesNotMatch(cutOffNotice, /temporarily unavailable/, "A supplied reason replaces the generic message");
+
+  // One transient failure, then a full answer: the member sees real feedback.
+  let flakyCalls = 0;
+  globalThis.fetch = async () => (++flakyCalls === 1 ? truncated()
+    : new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(fixtureFeedback) } }] }), { headers: { "content-type": "application/json" } }));
+  const recovered = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env });
+  assert.equal(recovered.status, "completed");
+  assert.equal(recovered.attempts, 2);
+  assert.deepEqual(recovered.output, fixtureFeedback);
+
+  // Free-form error text (which could carry upstream detail) never becomes the stored code.
+  globalThis.fetch = async () => { throw new Error("upstream said: key sk-fixture-secret rejected for account fixture_account"); };
+  const leaky = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env });
+  assert.equal(leaky.status, "unavailable");
+  assert.doesNotMatch(JSON.stringify(leaky), /sk-fixture-secret|fixture_account/, "No upstream text or account data is stored");
+  assert.match(dailyAirdropFeedbackNotice(leaky), /returned an error/);
+
+  // Genuinely unavailable: runs stored before codes were kept fall back honestly.
+  assert.equal(dailyAirdropFeedbackNotice({ status: "unavailable" }), DAILY_AIRDROP_FEEDBACK_FALLBACK_NOTICE);
+  assert.equal(dailyAirdropFeedbackNotice({ status: "unavailable", error: { code: "something_unmapped" } }), DAILY_AIRDROP_FEEDBACK_FALLBACK_NOTICE);
+  assert.equal(dailyAirdropFeedbackNotice(null), "");
 } finally { globalThis.fetch = originalFetch; }
 
 if (process.argv.includes("--live")) {
@@ -105,4 +146,4 @@ if (process.argv.includes("--live")) {
   }));
   console.log(JSON.stringify(results.map(({ id, output, provider, model }) => ({ id, output, provider, model })), null, 2));
 }
-console.log("daily airdrop feedback smoke ok: model evidence excludes routing metadata; existing cap and no-reward protections preserved");
+console.log("daily airdrop feedback smoke ok: model evidence excludes routing metadata; reasoning off; failure code recorded and mapped to a member-safe reason; generic fallback only without a code; cap and no-reward protections preserved");
