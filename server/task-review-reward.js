@@ -4,7 +4,7 @@ import { query } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
 import { signTaskTransition } from "./task-transition-signatures.js";
-import { isFastPayPayoutsEnabled, isL1Address } from "./l1/fastpay-payout.js";
+import { assertVerifiedFastPayReceipt, isFastPayPayoutsEnabled, isL1Address } from "./l1/fastpay-payout.js";
 import {
   agentDecisionsEnabled,
   boardForTask,
@@ -723,6 +723,8 @@ export async function processVerificationResponse(row, {
         amountAtoms: rewardAmountDrops,
         summary: score.reason || "Task Node reward payout",
       });
+      // Paid only on a verified certificate (or a validated fallback); anything else is submit_unknown.
+      assertVerifiedFastPayReceipt(fastpayReceipt);
       await updateRewardPaymentGuard({
         taskId: row.task_id,
         patch: {
@@ -742,7 +744,7 @@ export async function processVerificationResponse(row, {
         pointerVersion: fastpayReceipt.pointerVersion || "v5",
         badge: fastpayReceipt.badge || "Task reward",
         ledgerIndex: fastpayReceipt.blockHeight || 0,
-        engineResult: "accepted",
+        engineResult: fastpayReceipt.lane === "fastpay" ? "fastpay_certified" : "consensus_validated",
       };
     } else {
       reward = await publishAuthorityPointer({

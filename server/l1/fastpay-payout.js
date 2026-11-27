@@ -286,6 +286,7 @@ export function createFastPayPayoutDriver({
   payoutSigner,
   submitFastPayOrder,
   queryFastPayOrder,
+  verifyFastPayCertificate = null,
   submitConsensusFallback = null,
   pinEnvelope = null,
   env = process.env,
@@ -295,6 +296,42 @@ export function createFastPayPayoutDriver({
   if (typeof submitFastPayOrder !== "function") throw new Error("fastpay_submit_fn_required");
   const senderAccount = addressFromPublicKey(payoutSigner.publicKey);
   const senderPubkeyHex = Buffer.from(payoutSigner.publicKey).toString("hex");
+
+  // A payout counts as paid only on a certificate the injected verifier accepts
+  // for this exact order hash. Refusals, empty answers and bare flags are unknown.
+  async function verifyChainResult(res, persisted, source) {
+    if (!res || typeof res !== "object") return { ok: false, reason: "no_answer" };
+    if (res.ok === false || res.accepted === false || res.refused === true || res.rejected === true || res.error) {
+      return { ok: false, reason: `refused:${safeText(res.error || res.reason || "refused", 120)}` };
+    }
+    if (source === "query" && res.confirmed !== true) return { ok: false, reason: "not_confirmed" };
+    const answeredHash = safeText(res.orderHash || res.order_hash, 128).toLowerCase();
+    if (source === "query" && !answeredHash) return { ok: false, reason: "query_without_order_hash" };
+    if (answeredHash && answeredHash !== persisted.orderHash) return { ok: false, reason: "order_hash_mismatch" };
+    const certificate = res.certificate ?? null;
+    const certificateDigest = safeText(res.certificateDigest || res.certificate_digest, 128).toLowerCase();
+    if (!certificate && !/^[0-9a-f]{96}$/.test(certificateDigest)) return { ok: false, reason: "no_certificate" };
+    if (typeof verifyFastPayCertificate !== "function") return { ok: false, reason: "certificate_verifier_missing" };
+    const verdict = await Promise.resolve()
+      .then(() => verifyFastPayCertificate({
+        orderHash: persisted.orderHash,
+        order: persisted.order,
+        certificate,
+        certificateDigest,
+        blockHeight: Number(res.blockHeight || res.block_height || 0),
+      }))
+      .catch(() => false);
+    if (verdict !== true && verdict?.ok !== true) return { ok: false, reason: "certificate_not_verified" };
+    const digest = safeText(verdict?.certificateDigest || certificateDigest, 128).toLowerCase();
+    if (!/^[0-9a-f]{96}$/.test(digest)) return { ok: false, reason: "certificate_digest_missing" };
+    return { ok: true, certificateDigest: digest };
+  }
+
+  function unverifiedError(reason) {
+    const error = new Error(`fastpay_unverified_result:${reason}`);
+    error.submissionAttempted = true;
+    return error;
+  }
 
   function scheduleAsyncPin(rawEnvelopeBytes, cid, meta) {
     if (typeof pinEnvelope !== "function") return Promise.resolve({ ok: true, cid, skipped: true });
@@ -449,8 +486,9 @@ export function createFastPayPayoutDriver({
     // so crash recovery NEVER double-pays an already-certified order.
     if (typeof queryFastPayOrder === "function" && persisted.status !== "order_persisted") {
       const checked = await queryFastPayOrder(persisted.orderHash).catch(() => null);
-      if (checked?.confirmed === true) {
-        const receipt = buildConfirmedReceipt(persisted, checked, "fastpay");
+      const checkedVerdict = await verifyChainResult(checked, persisted, "query");
+      if (checkedVerdict.ok) {
+        const receipt = buildConfirmedReceipt(persisted, { ...checked, certificateDigest: checkedVerdict.certificateDigest }, "fastpay");
         await store.completeObjectLease({
           objectId: persisted.objectId,
           payoutId: id,
@@ -472,7 +510,9 @@ export function createFastPayPayoutDriver({
         order: persisted.order,
         signedOrderBytes: Buffer.from(persisted.signedOrderBytesHex, "hex"),
       });
-      const receipt = buildConfirmedReceipt(persisted, submitted, "fastpay");
+      const submitVerdict = await verifyChainResult(submitted, persisted, "submit");
+      if (!submitVerdict.ok) throw unverifiedError(submitVerdict.reason);
+      const receipt = buildConfirmedReceipt(persisted, { ...submitted, certificateDigest: submitVerdict.certificateDigest }, "fastpay");
       await store.completeObjectLease({
         objectId: persisted.objectId,
         payoutId: id,
@@ -496,8 +536,9 @@ export function createFastPayPayoutDriver({
         ? await queryFastPayOrder(persisted.orderHash).catch(() => null)
         : null;
 
-      if (statusCheck?.confirmed === true) {
-        const receipt = buildConfirmedReceipt(persisted, statusCheck, "fastpay");
+      const statusVerdict = await verifyChainResult(statusCheck, persisted, "query");
+      if (statusVerdict.ok) {
+        const receipt = buildConfirmedReceipt(persisted, { ...statusCheck, certificateDigest: statusVerdict.certificateDigest }, "fastpay");
         await store.completeObjectLease({
           objectId: persisted.objectId,
           payoutId: id,
@@ -561,9 +602,22 @@ export function createFastPayPayoutDriver({
   };
 }
 
+// The reward path calls this before it writes a FastPay reward as paid.
+export function assertVerifiedFastPayReceipt(receipt = {}) {
+  const digestOk = /^[0-9a-f]{96}$/.test(safeText(receipt?.certificateDigest, 128));
+  const fallbackOk = receipt?.lane === "consensus_pft" && Boolean(safeText(receipt?.txHash, 128));
+  if (receipt?.ok !== true || receipt?.verified !== true || !(digestOk || fallbackOk)) {
+    const error = new Error("fastpay_receipt_not_verified");
+    error.submissionAttempted = true;
+    throw error;
+  }
+  return receipt;
+}
+
 function buildConfirmedReceipt(persisted, chainRes = {}, lane = "fastpay") {
   return {
     ok: true,
+    verified: true,
     lane,
     txHash: persisted.orderHash,
     orderHash: persisted.orderHash,

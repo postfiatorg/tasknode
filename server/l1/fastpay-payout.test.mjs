@@ -269,6 +269,7 @@ test("FastPay payout driver enforces feature flag, records order_hash, and guara
     store,
     payoutSigner,
     env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true" },
+    verifyFastPayCertificate: async ({ certificateDigest }) => certificateDigest === "d".repeat(96),
     pinEnvelope: async ({ cid }) => {
       pinCalls += 1;
       return { ok: true, cid };
@@ -340,8 +341,9 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
     },
     queryFastPayOrder: async (orderHash) => {
       assert.equal(orderHash, seenOrderHashA);
-      return { confirmed: true, certificateDigest: "a".repeat(96), blockHeight: 999 };
+      return { confirmed: true, orderHash, certificateDigest: "a".repeat(96), blockHeight: 999 };
     },
+    verifyFastPayCertificate: async ({ certificateDigest }) => certificateDigest === "a".repeat(96),
     submitConsensusFallback: async () => {
       fallbackCountA += 1;
       return { txHash: "fallback_should_not_run" };
@@ -553,4 +555,83 @@ test("Unified reward history & L1 history projection seamlessly read FastPay v5 
   assert.equal(v4Outcome.pointerVersion, "v4");
   assert.equal(v4Outcome.paymentTxHash, "LEGACY_TX_HASH");
   assert.equal(computeRawCidV1(built.rawEnvelopeBytes).multibaseCid, built.cid);
+});
+
+// Review of PR 450, finding 3: only a verified result is recorded as paid.
+test("finding 3: a refusal, an answer without a certificate, or a bare confirmed:true is never recorded as paid", async () => {
+  const fp = await import("./fastpay-payout.js");
+  const signer = generateMlDsa65Keypair(seed32("f3-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f3-recipient"));
+  const kem = generateXWingKeypair(seed32("f3-kem"));
+  const env = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" };
+  const OBJ = "aa".repeat(32);
+  const base = {
+    payoutId: "task_f3",
+    taskId: "task_f3",
+    recipientAccount: recip.account,
+    recipientPubkeyHex: recip.publicKeyHex,
+    recipientXWingPublicKey: kem.publicKey,
+    amountAtoms: "12000000",
+  };
+  const verifyFastPayCertificate = async ({ orderHash, certificateDigest }) =>
+    certificateDigest === "c".repeat(96) && orderHash.length === 96;
+  const run = async (hooks) => {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: OBJ, valueAtoms: 100_000_000n, version: 3, nonce: 0 }]);
+    const driver = createFastPayPayoutDriver({ store, payoutSigner: signer, env, verifyFastPayCertificate, ...hooks });
+    let result = null;
+    let error = null;
+    try {
+      result = await driver.executePayout(base);
+    } catch (caught) {
+      error = caught;
+    }
+    return { store, result, error, record: store.getPayout("task_f3") };
+  };
+
+  // S1 of the review: a refusal resolved instead of thrown.
+  const refused = await run({ submitFastPayOrder: async () => ({ ok: false, accepted: false, error: "InsufficientFee" }) });
+  assert.equal(refused.result, null);
+  assert.match(refused.error.message, /fastpay_unverified_result/);
+  assert.equal(refused.record.status, "submit_unknown");
+  assert.equal(refused.store.pool.get(OBJ).leasedBy, "task_f3");
+
+  // An answer with no certificate.
+  const empty = await run({ submitFastPayOrder: async () => ({}) });
+  assert.equal(empty.record.status, "submit_unknown");
+  assert.equal(empty.result, null);
+
+  // A certificate the verifier does not accept.
+  const forged = await run({ submitFastPayOrder: async () => ({ certificateDigest: "d".repeat(96) }) });
+  assert.equal(forged.record.status, "submit_unknown");
+
+  // The query is not trusted on confirmed === true alone.
+  const bareQuery = await run({
+    submitFastPayOrder: async () => {
+      throw new Error("timeout");
+    },
+    queryFastPayOrder: async () => ({ confirmed: true }),
+  });
+  assert.equal(bareQuery.record.status, "submit_unknown");
+  assert.equal(bareQuery.result, null);
+
+  // A confirmed record for another order hash is not this payout.
+  const otherHash = await run({
+    submitFastPayOrder: async () => {
+      throw new Error("timeout");
+    },
+    queryFastPayOrder: async () => ({ confirmed: true, orderHash: "f".repeat(96), certificateDigest: "c".repeat(96), blockHeight: 9 }),
+  });
+  assert.equal(otherHash.record.status, "submit_unknown");
+
+  // A verified certificate is recorded as paid.
+  const good = await run({ submitFastPayOrder: async () => ({ certificateDigest: "c".repeat(96), blockHeight: 9 }) });
+  assert.equal(good.error, null);
+  assert.equal(good.result.ok, true);
+  assert.equal(good.result.verified, true);
+  assert.equal(good.record.status, "confirmed");
+
+  // The reward path refuses a receipt that is not verified.
+  assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "" }), /fastpay_receipt_not_verified/);
+  assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "c".repeat(96) }), /fastpay_receipt_not_verified/);
+  assert.doesNotThrow(() => fp.assertVerifiedFastPayReceipt(good.result));
 });
