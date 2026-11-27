@@ -46,13 +46,15 @@ export default function SolanaWithdraw({ client, storageKey }) {
   order.current ??= readinessOrder();
   const request = useCallback((operation = false) => {
     const n = operation ? order.current.begin() : order.current.next();
-    // expires: when this request's answer stops permitting a withdrawal (see answerExpiry).
+    // expires: when this request's answer stops permitting a withdrawal, counted from when the
+    // request started (see answerExpiry); the window's display keeps its own arrival anchor.
+    const started = monotonicNow();
     let carries = false, expires = Infinity;
     const may = () => order.current.apply(n, carries);
     // After every later await of Review and Confirm: still the newest operation, and no newer answer said closed.
     const still = () => order.current.current(n, carries);
     const onWindow = value => {
-      carries = Boolean(value.window); expires = answerExpiry(value.window, monotonicNow());
+      carries = Boolean(value.window); expires = answerExpiry(value.window, started);
       if (order.current.apply(n, carries, value.open)) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
     };
     // The snapshot of this request, or its failure; the failure of an answer older than one already
@@ -146,6 +148,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const fresh = await operationRead(next => { op = next; });
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
+      // An answer already expired when it arrives permits nothing.
+      if (monotonicNow() >= op.expires()) { expired = true; throw OBSOLETE; }
       await checkRecipient(recipient);
       if (!still()) throw OBSOLETE;
       const current = withdrawalIntent(client, fresh, amount, recipient);

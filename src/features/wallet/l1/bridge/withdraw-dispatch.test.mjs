@@ -165,6 +165,8 @@ async function tab(name, { source, answer = OPEN, saved = null } = {}, script) {
       },
       text: () => text(page()),
       shape: () => shape(page()),
+      // Moves the monotonic clock to `at` without running any timer, as in a throttled tab.
+      jump(at) { Object.defineProperty(globalThis, "performance", { configurable: true, writable: true, value: { now: () => at } }); },
     };
     const result = await script(api);
     loaded.react.unmount();
@@ -355,6 +357,45 @@ for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
     });
   }
 }
+
+// R451-R2-01: the server forms the answer at 18:59:58 and it arrives six seconds later, at 19:00:04.
+// Its two seconds count from when the request started, not from its arrival.
+test("SolanaWithdraw: a Confirm whose answer arrives after the closing sends nothing", async () => {
+  await tab("SolanaWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
+    await reviewed(t);
+    t.ctl.hold = "readiness"; const work = t.confirm(); await settle();
+    t.jump(6_000); t.ctl.release(); await work; await settle();
+    assert.equal(t.ctl.signs, 0);
+    assert.equal(t.mempool(), 0);
+    assert.equal(t.slot.has("fixture"), false, "nothing is marked submitted");
+    assert.match(t.text(), EXPIRED);
+  });
+});
+test("EthereumWithdraw: a Review whose answer arrives after the closing does not let Confirm send", async () => {
+  await tab("EthereumWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
+    await t.mount(); t.fill();
+    t.ctl.hold = "readiness"; const work = t.review(); await settle();
+    t.jump(6_000); t.ctl.release(); await work; await settle();
+    t.ctl.answer = { ...CLOSED, proving_window: hours(19, 0, 4) };
+    if (t.offered()) { await t.confirm(); await settle(); }
+    assert.equal(t.ctl.signs, 0);
+    assert.equal(t.mempool(), 0);
+    assert.equal(t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false);
+  });
+});
+test("EthereumWithdraw: a Confirm re-read whose answer arrives after the closing sends nothing", async () => {
+  await tab("EthereumWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 30) } }, async (t) => {
+    await reviewed(t);
+    t.jump(40_000); t.ctl.answer = { ...READY, proving_window: hours(18, 59, 58) };
+    t.ctl.hold = "readiness"; const work = t.confirm(); await settle();
+    assert.equal(typeof t.ctl.release, "function", "Confirm reads readiness again");
+    t.jump(46_000); t.ctl.release(); await work; await settle();
+    assert.equal(t.ctl.signs, 0);
+    assert.equal(t.mempool(), 0);
+    assert.equal(t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false);
+    assert.match(t.text(), EXPIRED);
+  });
+});
 
 // Without a window in any answer, a whole Review and Confirm makes the same requests, sends the
 // same bytes, writes the same storage and shows the same thing as b24a7c1.

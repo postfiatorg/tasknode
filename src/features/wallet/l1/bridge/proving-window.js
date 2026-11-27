@@ -72,11 +72,12 @@ export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
   return nowMs < open ? open - nowMs : close - nowMs;
 }
 
-// The monotonic time at which an answer that arrived at `at` stops permitting a withdrawal: the
-// window's next boundary or the freshness limit, whichever is first; never without a window.
-export function answerExpiry(window, at) {
+// The monotonic time at which an answer stops permitting a withdrawal: the window's next boundary
+// or the freshness limit, whichever is first, counted from `started`, when its request started, so
+// the time spent delivering or processing the answer never extends it; never without a window.
+export function answerExpiry(window, started) {
   const boundary = msUntilBoundary(window);
-  return boundary === null || !Number.isFinite(at) ? Infinity : at + Math.min(boundary, STALE_MS);
+  return boundary === null || !Number.isFinite(started) ? Infinity : started + Math.min(boundary, STALE_MS);
 }
 // Said when a burn's readiness answer expired before the burn left; nothing was sent.
 export const EXPIRED = "The withdrawal's availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again.";

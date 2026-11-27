@@ -85,11 +85,13 @@ export default function EthereumWithdraw({ client }) {
   // applied a window, its answer, also a refusal, replaces the stored one through the same ordering;
   // an answer older than one already applied is not written and comes back as OBSOLETE. A screen
   // that never had a window keeps its earlier readiness.
+  // op.expires: when its answer stops permitting a burn, counted from when the request started (see answerExpiry).
   async function operationRead(op) {
     op.made = order.current.begin(); op.carries = false;
+    const started = monotonicNow();
     try {
       const fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
-      op.carries = Boolean(fresh.proving_window); op.at = monotonicNow();
+      op.carries = Boolean(fresh.proving_window); op.expires = answerExpiry(fresh.proving_window, started);
       return (order.current.seen || op.carries) && !store(op.made, op.carries, () => readinessAnswer(fresh), Boolean(fresh.ready)) ? OBSOLETE : fresh;
     } catch (failure) {
       op.carries = Boolean(failure.payload?.proving_window);
@@ -113,7 +115,7 @@ export default function EthereumWithdraw({ client }) {
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
       const quote = await client.quote(intent);
       if (!still()) throw OBSOLETE;
-      setReview({ intent, quote, atoms, to, made: op.made, carries: op.carries, window: fresh.proving_window, at: op.at });
+      setReview({ intent, quote, atoms, to, made: op.made, carries: op.carries, expires: op.expires });
     } catch (failure) { if (failure !== OBSOLETE && still()) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   async function confirm() {
@@ -128,7 +130,7 @@ export default function EthereumWithdraw({ client }) {
     // established and just before the burn leaves; without one the burn counts as sent from here, as before.
     const guarded = order.current.seen || op.carries;
     // expires: when the answer this burn rests on stops permitting it (see answerExpiry).
-    let sent = false, expired = false, expires = answerExpiry(approved.window, approved.at);
+    let sent = false, expired = false, expires = approved.expires;
     try {
       // The Review's answer is not trusted past the window's next boundary or once stale: read again.
       if (guarded && monotonicNow() >= expires) {
@@ -141,7 +143,9 @@ export default function EthereumWithdraw({ client }) {
             || operation.destination_ref !== `${fresh.destination_prefix}${approved.to}` || approved.atoms > BigInt(fresh.bucket_outstanding_atoms)) {
           throw new Error("The reserve changed. Review the withdrawal again.");
         }
-        expires = answerExpiry(fresh.proving_window, op.at);
+        // An answer already expired when it arrives permits nothing.
+        expires = op.expires;
+        if (monotonicNow() >= expires) { expired = true; throw new Error(EXPIRED); }
       }
       const signed = await client.sign(approved.intent, approved.quote);
       if (!still()) return;  // signed, never sent
