@@ -212,6 +212,8 @@ function l1NftInfoHeight(info) {
   return Number(info?.height ?? info?.block_height ?? info?.mintedHeight ?? info?.minted_height ?? 0);
 }
 
+export const DEFAULT_MAX_MIGRATION_BATCH_SIZE = 25;
+
 // Burn-First Idempotent Batch Migrator (Pillar 4 Section 2):
 // Enforces:
 //   - Frozen allowlist + pre-cutoff ledger check
@@ -238,6 +240,7 @@ export function createBurnFirstNftMigrator({
   mintL1Nft,
   anchorPinOnlyProvenance = null,
   policyOverrides = {},
+  maxBatchSize = DEFAULT_MAX_MIGRATION_BATCH_SIZE,
 } = {}) {
   if (!ledgerStore) throw new Error("migration_ledger_store_required");
   if (!migrationIssuerSigner?.publicKey || !migrationIssuerSigner?.secretKey) {
@@ -739,6 +742,10 @@ export function createBurnFirstNftMigrator({
     const targets = Array.isArray(nftList) && nftList.length
       ? nftList
       : [...allowlistEntries.values()];
+    const limit = Math.max(1, Math.trunc(Number(options.maxBatchSize || maxBatchSize) || DEFAULT_MAX_MIGRATION_BATCH_SIZE));
+    if (targets.length > limit) {
+      throw new Error(`migration_batch_too_large:${targets.length}>${limit}`);
+    }
     const results = [];
     let migratedCount = 0;
     let skippedCount = 0;

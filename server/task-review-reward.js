@@ -722,6 +722,10 @@ export async function processVerificationResponse(row, {
         serviceXWingPublicKey: row.service_xwing_public_key || null,
         amountAtoms: rewardAmountDrops,
         summary: score.reason || "Task Node reward payout",
+        onPrepared: ({ orderHash, lockId }) => updateRewardPaymentGuard({
+          taskId: row.task_id,
+          patch: { lane: "fastpay", order_hash: orderHash, fastpay_lock_id: lockId },
+        }),
       });
       // Paid only on a verified certificate (or a validated fallback); anything else is submit_unknown.
       assertVerifiedFastPayReceipt(fastpayReceipt);

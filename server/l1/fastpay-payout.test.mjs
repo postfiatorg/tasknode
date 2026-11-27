@@ -827,3 +827,37 @@ test("finding 1: the order matches the chain's OwnedTransferOrderV3 signing byte
     /fastpay_owner_signature_invalid/
   );
 });
+
+// Review of PR 450, finding 5: a failure before anything is sent is retryable, not "submit unknown".
+test("finding 5: errors raised before sending carry submissionAttempted:false, and the order hash is reported before sending", async () => {
+  const { submissionDefinitelyNotAttempted } = await import("../task-review-core.js");
+  const signer = generateMlDsa65Keypair(seed32("f5-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f5-recipient"));
+  const kem = generateXWingKeypair(seed32("f5-kem"));
+  const env = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" };
+  const base = { payoutId: "task_f5", recipientAccount: recip.account, recipientPubkeyHex: recip.publicKeyHex, recipientXWingPublicKey: kem.publicKey, amountAtoms: "12000000" };
+  const make = (objects, extra = {}) =>
+    createFastPayPayoutDriver({ ...chainConfig(), store: new InMemoryFastPayPayoutStore(objects), payoutSigner: signer, env, verifyFastPayCertificate: async () => true, submitFastPayOrder: async () => ({ certificateDigest: "c".repeat(96) }), ...extra });
+  const pool = [{ objectId: "aa".repeat(32), valueAtoms: 100_000_000n, version: 3, nonce: 0 }];
+  const cases = [
+    ["S5 no X-Wing key", make(pool), { ...base, recipientXWingPublicKey: undefined }],
+    ["S6 empty pool", make([]), base],
+    ["no recipient public key", make(pool), { ...base, recipientPubkeyHex: "" }],
+  ];
+  for (const [label, driver, input] of cases) {
+    const error = await driver.executePayout(input).then(() => null, (caught) => caught);
+    assert.ok(error, label);
+    assert.equal(submissionDefinitelyNotAttempted(error), true, `${label}: ${error.message}`);
+  }
+  const seen = [];
+  const driver = make(pool, {
+    submitFastPayOrder: async ({ orderHash }) => {
+      assert.deepEqual(seen.map((x) => x.orderHash), [orderHash]);
+      throw new Error("timeout");
+    },
+  });
+  const error = await driver.executePayout({ ...base, onPrepared: async (prepared) => seen.push(prepared) }).then(() => null, (caught) => caught);
+  assert.equal(submissionDefinitelyNotAttempted(error), false);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].lockId.length, 96);
+});

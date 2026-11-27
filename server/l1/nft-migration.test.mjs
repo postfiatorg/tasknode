@@ -539,10 +539,12 @@ test("Dual-chain NFT read model merges legacy + postfiatl1v2 NFTs cleanly with b
   assert.equal(nftMigrationBadge(recordedCard).label, "Recorded");
   assert.equal(nftMigrationBadge(recordedCard).isMigratedLiveNft, false);
 
-  // Unmigrated legacy NFT shows "Not migrated" with canMigrate = true
+  // Unmigrated legacy NFT shows no badge until a migration is open for it (review finding 15)
   const legacyCard = view.allNfts.find((n) => n.nftTokenId === TOKEN_UNMATCHED);
-  assert.equal(nftMigrationBadge(legacyCard).label, "Not migrated");
-  assert.equal(nftMigrationBadge(legacyCard).canMigrate, true);
+  assert.equal(nftMigrationBadge(legacyCard).label, "");
+  assert.equal(nftMigrationBadge(legacyCard).canMigrate, false);
+  assert.equal(nftMigrationBadge({ ...legacyCard, migrationAvailable: true }).label, "Not migrated");
+  assert.equal(nftMigrationBadge({ ...legacyCard, migrationAvailable: true }).canMigrate, true);
 
   // Chain filter returns exact subsets
   const l1Only = buildDualChainProfileNftsView({
@@ -709,6 +711,56 @@ test("finding 11: minted and the used-serial record are written only after the c
     const res3 = await noQuery.migrateBatch(null, {});
     assert.match(res3.results[0].error, /l1_nft_info_query_required/);
     assert.equal(w3.burnCalls, 0);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("findings 13, 14, 15: batch limit and chosen owner, Migrated only when final, no badge without an open migration", async () => {
+  const dc = await import("../../src/features/profile/dual-chain-nfts.js");
+  // 15: a legacy portrait shows no migration badge unless a migration is possible for it.
+  const legacy = dc.mergeDualChainNftList({ legacyNfts: [{ id: "n1", nftTokenId: STOP_TOKEN, status: "minted" }] });
+  assert.equal(dc.nftMigrationBadge(legacy[0]).label, "");
+  assert.equal(dc.nftMigrationBadge(legacy[0]).canMigrate, false);
+  const open = dc.nftMigrationBadge({ ...legacy[0], migrationAvailable: true });
+  assert.equal(open.label, "Not migrated");
+  assert.equal(open.canMigrate, true);
+
+  // 14: a record that only signed a claim (or minted without a final height) is Migrating, not Migrated.
+  const view = (record) =>
+    dc.mergeDualChainNftList({ legacyNfts: [{ id: "n1", nftTokenId: STOP_TOKEN, status: "minted" }], migrationRecords: [{ nftokenId: STOP_TOKEN, targetNftId: "ab".repeat(48), ...record }] })[0];
+  for (const record of [{ status: "claim_signed_and_pinned" }, { status: "old_burned", burnValidated: true }, { status: "minted", burnValidated: true, mintedHeight: 0 }]) {
+    const item = view(record);
+    assert.equal(item.migrationStatus, "migrating", record.status);
+    assert.equal(dc.nftMigrationBadge(item).label, "Migrating");
+    assert.equal(item.chain, dc.CHAIN_LEGACY);
+  }
+  const done = view({ status: "minted", burnValidated: true, mintedHeight: 7 });
+  assert.equal(done.migrationStatus, "migrated");
+  assert.equal(dc.nftMigrationBadge(done).label, "Migrated");
+
+  // 13: a batch has a size limit.
+  const capped = createBurnFirstNftMigrator({
+    allowlist: { entries: [{ nftokenId: STOP_TOKEN, oldOwner: STOP_OWNER }, { nftokenId: TOKEN_2, oldOwner: STOP_OWNER }] },
+    ledgerStore: new FileMigrationLedgerStore(""),
+    migrationIssuerSigner: stopIssuer,
+    claimantSigner: stopClaimant,
+    maxBatchSize: 1,
+  });
+  await assert.rejects(() => capped.migrateBatch(null, { dryRun: true }), /migration_batch_too_large/);
+  assert.equal((await capped.migrateBatch([STOP_TOKEN], { dryRun: true })).summary.total, 1);
+
+  // 13: the script refuses a --new-owner it cannot mint to, instead of silently using another account.
+  const { spawnSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "tn-nft-owner-"));
+  try {
+    const allowlistPath = path.join(tmpDir, "allowlist.json");
+    writeFileSync(allowlistPath, JSON.stringify(stopAllowlist));
+    const script = new URL("../../scripts/nft-burn-migrate.mjs", import.meta.url).pathname;
+    const run = spawnSync(process.execPath, [script, "--allowlist", allowlistPath, "--new-owner", `pf${"1".repeat(40)}`], { encoding: "utf8" });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /new_owner_must_be_claimant_account/);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
