@@ -20,11 +20,33 @@ const protocolVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"
 const scopes = ["tasknode:read", "tasknode:tasks:write", "tasknode:balance:read"];
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-const instructions = `Task Node is the user's task ledger and context-aware second brain.
-- Use tasknode_chat for user-specific judgment (priorities, project direction) instead of guessing; ask the user for irreversible or high-stakes choices.
-- Lifecycle: request -> accept/refuse -> do the work -> initial evidence -> answer the verification request -> reward. Evidence receipts are not completion; only rewardOutcome or a rewarded status is.
+const instructions = `Task Node is the user's task ledger and context-aware second brain. It is a shared, costed board, not a scratchpad: every request spends the user's money and every open task occupies a slot other work cannot use.
+
+HOW TO SIZE A REQUEST
+- Request 3-4 hour blocks of real work. That is the unit. Scope the request up to that size - do not file a 20-minute errand as its own task, and do not file a week-long programme as one.
+- If the work in front of you is small, fold it into a request that covers the whole coherent piece: the fix, its test, and the evidence that it holds.
+- If the work is large, request the first 3-4 hour block of it, not the whole thing. The next block is the next request.
+- One request at a time, for the thing you are about to work on. Never request a batch.
+- Before requesting, call tasknode_list_tasks: if an outstanding task already covers the work, use it. A duplicate request is worse than no request.
+
+HOW MANY TO HOLD
+- Hold ONE task in progress at a time. Finish it, file evidence, then take the next.
+- Never accept in bulk. Accepting thirteen tasks at once is not throughput, it is a queue you cannot serve and it blocks routing for everyone.
+- Capacity is enforced. One active Network Task at a time; finish, refuse, or wait for it to close rather than filing around it.
+
+WHAT A GOOD TASK LOOKS LIKE
+- Scoped so a competent engineer could finish it in one sitting and prove it.
+- Carries enough context to act: repo, file paths, the failing command, what "done" means.
+- Decisions that belong to the operator (money, access tier, shipping) are surfaced in the task, never settled inside it.
+
+LIFECYCLE
+- request -> accept/refuse -> do the work -> initial evidence -> answer the verification request -> reward. Evidence receipts are not completion; only rewardOutcome or a rewarded status is.
 - Before submitting evidence, read the task. Use mode initial_submission when actions.canSubmitInitialEvidence is true and verification_response when actions.canSubmitVerificationEvidence is true; answer currentVerificationRequest exactly.
 - Cite durable artifacts only (PR/commit URLs, file paths, exact commands and results). Never cite localhost URLs and never send secrets.
+- Refuse a task you are not going to do. Leaving it open costs the user a slot and reads as work in flight.
+
+OTHER
+- Use tasknode_chat for user-specific judgment (priorities, project direction) instead of guessing; ask the user for irreversible or high-stakes choices.
 - Context document: read it first, make the smallest durable edit, pass the revision you read, and show the user the diff.`;
 
 const text = (description, extra = {}) => ({ type: "string", description, ...extra });
