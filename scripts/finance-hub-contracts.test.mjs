@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac, generateKeyPairSync, randomBytes, sign as cryptoSign, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA_DIR = path.join(ROOT, "schemas", "finance-hub");
@@ -13,13 +14,19 @@ const sha256Hex = (value) => createHash("sha256").update(value).digest("hex");
 const computeLeaderboardScore = ({ networkTasks = 0, personalTasks = 0, rewards = 0, alignment = 0 } = {}) =>
   Number((networkTasks * 3 + personalTasks * 1 + rewards / 25000 + alignment * 1).toFixed(6));
 
+const compareUtf8Bytes = (a, b) => Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+
+// canonical-json-v1 as defined in docs/specs/finance-hub-contracts-v1.md, "Canonical Signing Input".
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().filter((k) => value[k] !== undefined)
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(",")}}`;
+    return `{${Object.keys(value).filter((k) => value[k] !== undefined).sort(compareUtf8Bytes)
+      .map((k) => `${canonicalJson(k)}:${canonicalJson(value[k])}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  if (typeof value === "string" && value.isWellFormed()) return JSON.stringify(value);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return String(value);
+  if (typeof value === "boolean" || value === null) return String(value);
+  throw new TypeError("canonical-json-v1 cannot encode this value");
 }
 
 function resolveRef(rootSchema, ref) {
@@ -48,10 +55,10 @@ function validateSchema(value, schema, rootSchema = schema, pointer = "$") {
       return [`${pointer}: expected type ${allowed.join("|")}, got ${actual}`];
     }
   }
-  if (Object.hasOwn(schema, "const") && canonicalJson(value) !== canonicalJson(schema.const)) {
+  if (Object.hasOwn(schema, "const") && !isDeepStrictEqual(value, schema.const)) {
     errors.push(`${pointer}: expected const ${JSON.stringify(schema.const)}, got ${JSON.stringify(value)}`);
   }
-  if (Array.isArray(schema.enum) && !schema.enum.some((entry) => canonicalJson(value) === canonicalJson(entry))) {
+  if (Array.isArray(schema.enum) && !schema.enum.some((entry) => isDeepStrictEqual(value, entry))) {
     errors.push(`${pointer}: value ${JSON.stringify(value)} not in enum`);
   }
   if (typeof value === "string") {
@@ -71,13 +78,8 @@ function validateSchema(value, schema, rootSchema = schema, pointer = "$") {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${pointer}: too few items`);
     if (schema.maxItems !== undefined && value.length > schema.maxItems) errors.push(`${pointer}: too many items`);
-    if (schema.uniqueItems) {
-      const seen = new Set();
-      for (const item of value) {
-        const key = canonicalJson(item);
-        if (seen.has(key)) errors.push(`${pointer}: duplicate item`);
-        seen.add(key);
-      }
+    if (schema.uniqueItems && value.some((item, i) => value.findIndex((other) => isDeepStrictEqual(other, item)) !== i)) {
+      errors.push(`${pointer}: duplicate item`);
     }
     if (schema.items) value.forEach((item, i) => errors.push(...validateSchema(item, schema.items, rootSchema, `${pointer}[${i}]`)));
   }
@@ -108,18 +110,40 @@ const FORBIDDEN_PUBLIC_KEYS = new Set([
   "deep_memory", "agent_brief_members",
 ]);
 
+// Model targets, values and estimates. docs/specs/finance-hub-contracts-v1.md lists the same patterns.
+const MODEL_VIEW_PATTERNS = [
+  { name: "price_target_phrase", re: /\b(?:price\s+(?:target|objective)|target\s+price)\b/i },
+  { name: "target_shorthand", re: /\b(?:PT|TP)\s*(?:of|at|is|:|=)?\s*[$€£¥]?\s?\d|\b(?:PT|TP)\b.{0,20}[$€£¥]\s?\d/i },
+  { name: "target_amount", re: /\btargets?\b.{0,20}[$€£¥]\s?\d/i },
+  { name: "scenario_value", re: /\b(?:bull|bear|base)[\s-]case\b.{0,40}[$€£¥]\s?\d|[$€£¥]\s?\d[\d,.]*\s*\(?(?:bull|bear|base)[\s-]case\b/i },
+  { name: "valuation_term", re: /\b(?:fair|intrinsic)[\s-]+value\b|\bDCF\b|\bdiscounted\s+cash[\s-]?flow/i },
+  { name: "value_per_share", re: /\bvalu(?:e|es|ed|ing|ation)\b.{0,40}[$€£¥]\s?\d[\d,.]*\s*(?:per|a|each)\s+(?:share|token|coin|unit)\b/i },
+  { name: "worth_amount", re: /\bworth\s+(?:\w+\s+){0,3}?(?:[$€£¥]\s?\d|\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent))/i },
+  { name: "upside_downside_pct", re: /\b(?:upside|downside)\b(?!\s+risks?\b)[\s:=(]*(?:\w+\s+){0,3}?[+-]?\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent|bps|basis\s+points)|\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent|bps|basis\s+points)\s+(?:of\s+)?(?:\w+\s+)?(?:upside|downside)\b(?!\s+risks?\b)/i },
+  { name: "implied_value", re: /\bimpl(?:y|ies|ied|ying)\b.{0,30}\b(?:upside|downside|valuation|value|price)\b/i },
+  { name: "premium_to_market", re: /\d+(?:\.\d+)?\s?(?:%|percent|per\s?cent)\s+(?:above|below|over|under|higher\s+than|lower\s+than|premium\s+to|discount\s+to)\s+(?:the\s+|its\s+)?(?:(?:current|market|spot|share|stock|token|trading|closing|prevailing)\s+(?:\w+\s+)?(?:price|level|quote)s?|consensus|street|where\s+(?:it|they)\s+trades?)\b/i },
+  { name: "consensus_comparison", re: /\b(?:versus|vs\.?)\s+(?:the\s+)?(?:consensus|street)\b.{0,20}\d/i },
+  { name: "proprietary_model_reference", re: /\bour\s+(?:model|dcf|estimates?|forecasts?|projections?|valuation|numbers|targets?)\b/i },
+  { name: "first_person_estimate", re: /\bwe\s+(?:\w+\s+){0,2}?(?:valu|forecast|estimat|project|expect|target|model|assum|calculat|deriv)\w*\b.{0,80}\d/i },
+  { name: "model_estimate_amount", re: /\b(?:the|this)\s+model\s+(?:\w+\s+){0,2}?(?:valu|forecast|estimat|project|expect|target|assum|calculat|deriv|impl|yield|point)\w*\b.{0,80}[$€£¥]\s?\d/i },
+];
+
+const HTML_PATTERNS = [
+  { name: "html_angle_bracket", re: /[<>]/ },
+  { name: "html_character_reference", re: /&(?:amp;)*(?:lt|gt|#0*6[02]|#x0*3[ce])/i },
+  { name: "event_handler_attribute", re: /(?:^|[\s"'/])on[a-z]+\s*=/i },
+  { name: "script_uri", re: /javascript:/i },
+];
+
 const FORBIDDEN_PUBLIC_PATTERNS = [
-  { name: "price_target_phrase", re: /\b(?:price\s+target|target\s+price)\b/i },
-  { name: "pt_dollar_shorthand", re: /\bPT\s*(?:of|:|=)?\s*\$\s*\d/i },
-  { name: "upside_downside_pct", re: /\b(?:upside|downside)\s+(?:of\s+)?[+-]?\d+(?:\.\d+)?%/i },
-  { name: "proprietary_model_projection", re: /\bour\s+model\s+(?:projects|estimates|forecasts|targets)\b/i },
+  ...MODEL_VIEW_PATTERNS,
   { name: "gated_index_reference", re: /\b(?:ga-models|agent_brief_members)\b/i },
   { name: "private_key_pem", re: /BEGIN\s+[A-Z ]*PRIVATE KEY/ },
   { name: "openai_or_stripe_key", re: /\bsk-(?:live|test|proj)?-?[A-Za-z0-9]{16,}\b/ },
   { name: "github_pat", re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
   { name: "slack_token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: "aws_access_key", re: /\bAKIA[0-9A-Z]{16}\b/ },
-  { name: "raw_html_or_js_uri", re: /<(?:script|iframe|img|svg|object)\b|onerror\s*=|javascript:/i },
+  ...HTML_PATTERNS,
 ];
 
 function scanForPublicLeaks(value, pointer = "$") {
@@ -146,13 +170,15 @@ function scanForPublicLeaks(value, pointer = "$") {
 function buildPublishSigningMessage(payload) {
   const normalizedFiles = [...payload.files]
     .map(({ content_base64: _ignored, ...rest }) => rest)
-    .sort((a, b) => a.path.localeCompare(b.path));
-  const manifestSha256 = sha256Hex(canonicalJson(normalizedFiles));
+    .sort((a, b) => compareUtf8Bytes(a.path, b.path));
+  const canonicalFiles = canonicalJson(normalizedFiles);
+  const manifestSha256 = sha256Hex(canonicalFiles);
   const envelopeWithoutSig = { ...payload, manifest_sha256: manifestSha256, files: normalizedFiles };
   delete envelopeWithoutSig.signature;
-  const payloadSha256 = sha256Hex(canonicalJson(envelopeWithoutSig));
+  const canonicalEnvelope = canonicalJson(envelopeWithoutSig);
+  const payloadSha256 = sha256Hex(canonicalEnvelope);
   const message = ["postfiat.finance-hub.publish.v1", payload.index_id, String(payload.version), payload.nonce, payloadSha256].join("\n");
-  return { manifestSha256, payloadSha256, message };
+  return { canonicalFiles, canonicalEnvelope, manifestSha256, payloadSha256, message };
 }
 
 function signPublishPayload(unsignedPayload, { algorithm, keyId, privateKey, hmacSecret }) {
@@ -198,8 +224,32 @@ function verifyPublishPayload(payload, { keyRing, currentVersion, seenNonces, no
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return { ok: false, error: "signature_invalid" };
   }
 
+  if (new Set(payload.files.map((file) => file.path)).size !== payload.files.length) return { ok: false, error: "duplicate_file_path" };
+  if (payload.files.reduce((sum, file) => sum + file.size_bytes, 0) !== payload.total_bytes) return { ok: false, error: "total_bytes_mismatch" };
+  for (const file of payload.files) {
+    if (file.content_base64 === undefined) continue;
+    const content = Buffer.from(file.content_base64, "base64");
+    if (content.length !== file.size_bytes) return { ok: false, error: "file_size_mismatch" };
+    if (sha256Hex(content) !== file.sha256) return { ok: false, error: "file_hash_mismatch" };
+  }
+
   seenNonces.add(nonceKey);
   return { ok: true };
+}
+
+// Every purpose the server puts in a "Post Fiat Task Node wallet proof" challenge.
+function serverWalletProofPurposes() {
+  const serverDir = path.join(ROOT, "server");
+  const purposes = new Set();
+  for (const name of readdirSync(serverDir, { recursive: true })) {
+    if (!name.endsWith(".js")) continue;
+    const source = readFileSync(path.join(serverDir, name), "utf8");
+    const calls = source.match(/(?<!function )\bcreateWalletChallenge\(/g) || [];
+    const named = [...source.matchAll(/(?<!function )\bcreateWalletChallenge\(\{[^}]*?\bpurpose: "([a-z_]+)"/g)];
+    assert.equal(named.length, calls.length, `${name}: every createWalletChallenge call must name its purpose as a string literal`);
+    for (const [, purpose] of named) purposes.add(purpose);
+  }
+  return [...purposes].sort();
 }
 
 function goldenCoverageManifest() {
@@ -419,6 +469,83 @@ test("agent_brief_public.v1 validates leak-safe briefs and blocks internal targe
     leaked.public_summary = `${valid.public_summary} ${snippet}`;
     assert.ok(scanForPublicLeaks(leaked).length > 0, `leak scanner must catch: ${snippet}`);
   }
+
+  const leaksIn = (sentence) => scanForPublicLeaks({ ...valid, public_summary: `${valid.public_summary} ${sentence}` });
+  for (const [ruleName, sentence] of [
+    ["valuation_term", "Fair value is $240 per share, 42% above the current price."],
+    ["premium_to_market", "Fair value is $240 per share, 42% above the current price."],
+    ["first_person_estimate", "We value the shares at $240, implying 42% upside."],
+    ["target_amount", "12-month target: $240 (base case), $310 (bull case)."],
+    ["target_shorthand", "PT 240, up from 215 after the print."],
+    ["target_shorthand", "TP $240."],
+    ["upside_downside_pct", "Upside is roughly 42 percent from here."],
+    ["model_estimate_amount", "The model points to FY27 EPS of $14.20 versus consensus $12.90."],
+    ["valuation_term", "Our DCF yields $240 per share."],
+    ["premium_to_market", "We forecast FY27 revenue of $212B, 9% above the Street."],
+    ["price_target_phrase", "The price objective moves to a higher level."],
+    ["scenario_value", "Bull case: $310."],
+    ["valuation_term", "Intrinsic value sits well above where the stock trades."],
+    ["value_per_share", "Equity value works out to $310 per share."],
+    ["worth_amount", "The shares look worth about $240 each."],
+    ["worth_amount", "The token looks worth roughly 40% more than it trades for."],
+    ["upside_downside_pct", "The stock offers 42% upside."],
+    ["implied_value", "Implied upside remains large after the print."],
+    ["premium_to_market", "That is 35% below the current share price."],
+    ["consensus_comparison", "FY27 EPS of $14.20 vs. consensus of $12.90."],
+    ["proprietary_model_reference", "On our numbers the stock looks cheap."],
+    ["html_angle_bracket", '<a href="https://x.example" onmouseover="alert(1)">link</a>'],
+    ["html_angle_bracket", "<style>body{display:none}</style>"],
+    ["html_angle_bracket", "<body onload=alert(1)>"],
+    ["html_angle_bracket", "<details open ontoggle=alert(1)>"],
+    ["html_angle_bracket", '<form action="https://evil.example">'],
+    ["html_angle_bracket", '<meta http-equiv="refresh" content="0;url=https://evil.example">'],
+    ["html_character_reference", "&lt;script&gt;alert(1)&lt;/script&gt;"],
+    ["html_character_reference", "&#60;img src=x&#62;"],
+    ["html_character_reference", "&#x3C;svg&#x3E;"],
+    ["html_character_reference", "&amp;lt;script&amp;gt;"],
+    ["event_handler_attribute", 'x" onfocus="alert(1)'],
+    ["script_uri", "javascript:alert(1)"],
+  ]) {
+    assert.ok(leaksIn(sentence).some((leak) => leak.endsWith(`matched ${ruleName}`)), `${ruleName} must refuse: ${sentence}`);
+  }
+  for (const sentence of [
+    "NVIDIA reported revenue of $35.1 billion for the quarter ended October 27, 2024.",
+    "Data center revenue grew 12% year over year.",
+    "The next earnings call is scheduled for February 26, 2027, at 5:00 PM PT.",
+    "Solana is a proof-of-stake network that processes transactions in parallel.",
+    "Gross margin was 74.6% in the latest reported quarter.",
+    "The company declared a quarterly dividend of $0.01 per share.",
+    "Diluted earnings per share were $0.78, up from $0.67 a year earlier.",
+    "The stock closed at $135.40 on November 20, 2026.",
+    "The company was valued at $80 billion in its last private funding round.",
+    "Roughly 1,300 validators secure the network and it handled about 4,000 TPS in public tests.",
+    "It is worth noting that the company reports in U.S. dollars.",
+    "Downside risks named in the annual report include a 25% tariff and export controls.",
+    "Management targets carbon neutrality across its offices by 2030.",
+    "Options markets show implied volatility near 45% ahead of the report.",
+    "Developers report that the model yields 30% faster inference on CUDA.",
+    "AT&T and Verizon are the two largest U.S. wireless carriers.",
+  ]) {
+    assert.deepEqual(leaksIn(sentence), [], `leak scanner must still allow: ${sentence}`);
+  }
+
+  for (const addAngleBracket of [
+    (brief) => { brief.name = "NVIDIA <b>Corporation</b>"; },
+    (brief) => { brief.public_summary = `${brief.public_summary} <em>`; },
+    (brief) => { brief.public_topics[0].title = "Public cloud <GPU> availability"; },
+    (brief) => { brief.public_topics[0].description = `${brief.public_topics[0].description} <br>`; },
+    (brief) => { brief.public_questions[0].prompt = `${brief.public_questions[0].prompt} <i>`; },
+    (brief) => { brief.public_context_links[0].title = "Public filings <a>"; },
+  ]) {
+    const marked = structuredClone(valid);
+    addAngleBracket(marked);
+    assert.ok(validateSchema(marked, schema).length > 0, "schema must refuse < and > in free text");
+  }
+
+  const hubSpec = readFileSync(path.join(ROOT, "docs", "specs", "finance-hub-contracts-v1.md"), "utf8");
+  for (const rule of [...MODEL_VIEW_PATTERNS, ...HTML_PATTERNS]) {
+    assert.ok(hubSpec.includes(`\`${rule.re.source}\``), `contracts doc must list the ${rule.name} pattern`);
+  }
 });
 
 test("publish_payload.v1 verifies Ed25519 & HMAC signatures, replay protection, index isolation, and monotonic rollbacks", () => {
@@ -485,11 +612,68 @@ test("publish_payload.v1 verifies Ed25519 & HMAC signatures, replay protection, 
   traversalAttempt.files[0].path = "../etc/passwd";
   assert.ok(validateSchema(traversalAttempt, schema).length > 0);
 
+  for (const refusedPath of ["hub/.htaccess", ".env", "a//b.json", "a/./b.json", "models/"]) {
+    const attempt = structuredClone(gaSigned);
+    attempt.files[0].path = refusedPath;
+    assert.ok(validateSchema(attempt, schema).length > 0, `schema must refuse path ${refusedPath}`);
+  }
+  for (const allowedPath of ["hub/coverage_manifest.json", "models/NVDA/outputs.v2.json", "assets/_shared/app-main.js"]) {
+    const attempt = structuredClone(gaSigned);
+    attempt.files[0].path = allowedPath;
+    assert.deepEqual(validateSchema(attempt, schema), [], `schema must allow path ${allowedPath}`);
+  }
+
+  const unsafeVersion = { ...structuredClone(gaSigned), version: Number.MAX_SAFE_INTEGER + 1 };
+  assert.ok(validateSchema(unsafeVersion, schema).length > 0);
+
   const expiredSigned = signPublishPayload({
     ...baseUnsigned, version: 44, nonce: "nonce_ga_models_expired_v44_123456",
     issued_at: "2026-11-27T01:00:00Z", expires_at: "2026-11-27T01:05:00Z",
   }, { algorithm: "ed25519", keyId: "ga-models-ed25519-k1", privateKey: edKeys.privateKey });
   assert.equal(verifyPublishPayload(expiredSigned, { keyRing, currentVersion: 43, seenNonces, nowMs }).error, "issued_at_out_of_window");
+
+  const gaSigner = { algorithm: "ed25519", keyId: "ga-models-ed25519-k1", privateKey: edKeys.privateKey };
+  const contentSigned = signPublishPayload({ ...baseUnsigned, version: 45, nonce: "nonce_ga_models_content_v45_123456" }, gaSigner);
+  const swappedContent = structuredClone(contentSigned);
+  swappedContent.files[0].content_base64 = Buffer.alloc(indexHtml.length, "x").toString("base64");
+  assert.equal(verifyPublishPayload(swappedContent, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "file_hash_mismatch");
+  const resizedContent = structuredClone(contentSigned);
+  resizedContent.files[0].content_base64 = Buffer.from("<script>alert(1)</script>", "utf8").toString("base64");
+  assert.equal(verifyPublishPayload(resizedContent, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "file_size_mismatch");
+
+  const wrongTotalSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_total_v45_12345678", total_bytes: indexHtml.length + 1,
+  }, gaSigner);
+  assert.equal(verifyPublishPayload(wrongTotalSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "total_bytes_mismatch");
+
+  const duplicatePathSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_duplicate_v45_1234", total_bytes: indexHtml.length * 2,
+    files: [baseUnsigned.files[0], baseUnsigned.files[0]], render_gate: { ...baseUnsigned.render_gate, file_count: 2 },
+  }, gaSigner);
+  assert.equal(verifyPublishPayload(duplicatePathSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "duplicate_file_path");
+
+  const wrongAlgorithmSigned = signPublishPayload({
+    ...baseUnsigned, version: 45, nonce: "nonce_ga_models_algorithm_v45_1234",
+  }, { algorithm: "hmac-sha256", keyId: "ga-models-ed25519-k1", hmacSecret });
+  assert.equal(verifyPublishPayload(wrongAlgorithmSigned, { keyRing, currentVersion: 44, seenNonces, nowMs }).error, "unknown_or_mismatched_key");
+});
+
+test("canonical-json-v1 reproduces the known-answer vector and refuses values it cannot encode", () => {
+  const vector = JSON.parse(readFileSync(path.join(ROOT, "scripts", "fixtures", "finance-hub-publish-signing-vector.json"), "utf8"));
+  const signing = buildPublishSigningMessage(vector.payload);
+  assert.equal(signing.manifestSha256, vector.manifest_sha256);
+  assert.equal(signing.payloadSha256, vector.payload_sha256);
+  assert.equal(signing.message, vector.signing_message);
+  assert.equal(Buffer.from(signing.canonicalFiles, "utf8").toString("hex"), vector.canonical_files_hex);
+  assert.equal(Buffer.from(signing.canonicalEnvelope, "utf8").toString("hex"), vector.canonical_envelope_hex);
+
+  const reordered = { ...vector.payload, files: [...vector.payload.files].reverse() };
+  assert.equal(buildPublishSigningMessage(reordered).payloadSha256, vector.payload_sha256);
+
+  assert.equal(canonicalJson({ b: null, a: [true, 0] }), '{"a":[true,0],"b":null}');
+  for (const unencodable of [1.5, -1, Number.MAX_SAFE_INTEGER + 1, "\ud800", undefined]) {
+    assert.throws(() => canonicalJson([unencodable]), TypeError);
+  }
 });
 
 test("top30_snapshot.v1 enforces leaderboard formula, tie-breaks, non-validator seats, rank-35 hysteresis, and 7d grace", () => {
@@ -543,6 +727,13 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
     task_transition: "Post Fiat Task Node task transition",
   });
   const ALLOWED_NOSTR_KINDS = new Set([0, 1, 13, 1059, 10050, 22242]);
+  const nostrSpec = readFileSync(path.join(ROOT, "docs", "specs", "nostr-signing-guard-v1.md"), "utf8");
+  const walletProofRow = nostrSpec.split("\n").find((line) => line.startsWith("| `wallet_proof` |"));
+  const WALLET_PROOF_PURPOSES = JSON.parse(walletProofRow.match(/`Purpose:` in `(\[[^\]]*\])`/)[1]);
+  const walletProofChallenge = (proofPurpose) => [
+    "Post Fiat Task Node wallet proof", `Purpose: ${proofPurpose}`, "Account: acct_1",
+    "Challenge: 3f0c2a52-7d1e-4a55-9a43-0d6f5b1c2e90", "Issued: 2026-11-27T01:30:00.000Z", "Expires: 2026-11-27T01:40:00.000Z",
+  ].join("\n");
 
   function evaluateWalletSigningGuard({ purpose, message }) {
     if (!Object.hasOwn(REQUIRED_PREFIX, purpose)) return { ok: false, error: "SIGNING_GUARD_UNKNOWN_PURPOSE" };
@@ -554,7 +745,12 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
     if (purpose !== "nostr_v1_derivation" && message.normalize("NFKC").toLowerCase().includes("task node private messaging identity")) {
       return { ok: false, error: "SIGNING_GUARD_FORBIDDEN_DERIVATION_PREFIX" };
     }
-    return message.startsWith(`${REQUIRED_PREFIX[purpose]}\n`) ? { ok: true } : { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    if (!message.startsWith(`${REQUIRED_PREFIX[purpose]}\n`)) return { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    if (purpose === "wallet_proof") {
+      const proofPurpose = message.split("\n")[1].replace(/^Purpose: /, "");
+      if (!WALLET_PROOF_PURPOSES.includes(proofPurpose)) return { ok: false, error: "SIGNING_GUARD_PREFIX_MISMATCH" };
+    }
+    return { ok: true };
   }
 
   function evaluateNostrEventGuard({ kind, origin, isProduction, relayUrl }) {
@@ -571,6 +767,13 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
   assert.equal(evaluateWalletSigningGuard({ purpose: "collaboration_auth", message: "\uFEFFTask Node private messaging identity\nVersion: 1" }).error, "SIGNING_GUARD_MALFORMED_MESSAGE");
   assert.equal(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: "Post Fiat Task Node wallet proof\nTask Node private messaging identity" }).error, "SIGNING_GUARD_FORBIDDEN_DERIVATION_PREFIX");
 
+  const issuedProofPurposes = serverWalletProofPurposes();
+  assert.deepEqual([...WALLET_PROOF_PURPOSES].sort(), issuedProofPurposes, "the wallet_proof allow-list must equal the purposes the server issues");
+  for (const proofPurpose of issuedProofPurposes) {
+    assert.deepEqual(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: walletProofChallenge(proofPurpose) }), { ok: true }, `guard must accept ${proofPurpose}`);
+  }
+  assert.equal(evaluateWalletSigningGuard({ purpose: "wallet_proof", message: walletProofChallenge("wallet_export") }).error, "SIGNING_GUARD_PREFIX_MISMATCH");
+
   assert.equal(evaluateNostrEventGuard({ kind: 24133, origin: "first_party_ui", isProduction: true }).error, "NOSTR_SIGNING_GUARD_KIND_BLOCKED");
   assert.equal(evaluateNostrEventGuard({ kind: 1, origin: "postMessage:hub-viewer.postfiat.org", isProduction: true }).error, "NOSTR_SIGNING_GUARD_UNTRUSTED_ORIGIN");
   assert.equal(evaluateNostrEventGuard({ kind: 0, origin: "first_party_ui", isProduction: false }).error, "NOSTR_SIGNING_GUARD_NONPROD_KIND0_BLOCKED");
@@ -578,7 +781,6 @@ test("Pillar 6 Nostr browser signing guard policy blocks derivation spoofing and
   assert.deepEqual(evaluateNostrEventGuard({ kind: 22242, origin: "first_party_ui", isProduction: true, relayUrl: "wss://relay.postfiat.org" }), { ok: true });
 
   const hubSpec = readFileSync(path.join(ROOT, "docs", "specs", "finance-hub-contracts-v1.md"), "utf8");
-  const nostrSpec = readFileSync(path.join(ROOT, "docs", "specs", "nostr-signing-guard-v1.md"), "utf8");
   for (const ref of ["coverage_manifest.v1.schema.json", "agent_brief_public.v1.schema.json", "publish_payload.v1.schema.json", "top30_snapshot.v1.schema.json"]) {
     assert.match(hubSpec, new RegExp(ref.replaceAll(".", "\\.")));
   }
