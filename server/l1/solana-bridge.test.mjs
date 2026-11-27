@@ -817,3 +817,26 @@ test('recovery reads the receipt at or after the slot of the nonce read', async 
   await recoverDeposit({ rpc, program }, { nonce, vault_program_id: program, last_valid_block_height: 1, nonce_account: nonceAccount, nonce_value: value });
   assert.deepEqual(reads, [[nonceAccount, 100], [receipt, 150]]);
 });
+
+test('the Solana client moves to the next provider when one is slow, down or refuses a method', async t => {
+  const { solanaRpc } = await import('./solana-vault.js');
+  const seen = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const { method } = JSON.parse(options.body);
+    seen.push(url + ' ' + method);
+    if (url === 'https://first.test') {
+      if (method === 'getEpochInfo') throw new Error('timeout');
+      if (method === 'getTokenAccountsByOwner') return Response.json({ jsonrpc: '2.0', id: 1, error: { code: -32602, message: 'token required' } }, { status: 403 });
+      if (method === 'sendTransaction') return Response.json({ jsonrpc: '2.0', id: 1, error: { message: 'simulation failed' } });
+    }
+    return Response.json({ jsonrpc: '2.0', id: 1, result: method === 'getTokenAccountsByOwner' ? { value: [] } : { epoch: 7 } });
+  });
+  const rpc = solanaRpc('https://first.test, https://second.test');
+  assert.deepEqual(await rpc.getEpochInfo(), { epoch: 7 });
+  assert.deepEqual(await rpc.getTokenAccounts('owner', 'mint'), { value: [] });
+  // A transaction a node examined and refused is not offered to another node.
+  await assert.rejects(rpc.sendTransaction('AA==', {}), /Solana rejected the deposit: simulation failed/);
+  assert.deepEqual(seen, ['https://first.test getEpochInfo', 'https://second.test getEpochInfo',
+    'https://first.test getTokenAccountsByOwner', 'https://second.test getTokenAccountsByOwner', 'https://first.test sendTransaction']);
+  await assert.rejects(solanaRpc('https://first.test').getEpochInfo(), /Solana RPC unavailable/);
+});
