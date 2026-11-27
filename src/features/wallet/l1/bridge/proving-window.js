@@ -72,12 +72,20 @@ export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
   return nowMs < open ? open - nowMs : close - nowMs;
 }
 
-// The monotonic time at which an answer stops permitting a withdrawal: the window's next boundary
-// or the freshness limit, whichever is first, counted from `started`, when its request started, so
-// the time spent delivering or processing the answer never extends it; never without a window.
+// Both browser clocks now: a readiness request takes them when it starts.
+export function clocks() { return { monotonic: monotonicNow(), wall: Date.now() }; }
+// How long an answer permits a withdrawal: the window's next boundary or the freshness limit,
+// whichever is first, counted from `started` (clocks() when its request started), so the time spent
+// delivering or processing the answer never extends it; null (never expires) without a window.
 export function answerExpiry(window, started) {
   const boundary = msUntilBoundary(window);
-  return boundary === null || !Number.isFinite(started) ? Infinity : started + Math.min(boundary, STALE_MS);
+  return boundary === null || !started ? null : { started, limit: Math.min(boundary, STALE_MS) };
+}
+// Whether an answer's authority has ended, the one test of an expiry: as soon as either clock's
+// elapsed time reaches the limit. The monotonic clock can stand still while the machine sleeps; a
+// wall clock moved forward only ends it early, one moved back leaves the monotonic measure in force.
+export function expired(expiry, now = clocks()) {
+  return Boolean(expiry) && (now.monotonic - expiry.started.monotonic >= expiry.limit || now.wall - expiry.started.wall >= expiry.limit);
 }
 // Said when a burn's readiness answer expired before the burn left; nothing was sent.
 export const EXPIRED = "The withdrawal's availability answer expired before the burn was sent, so nothing was burned: review the withdrawal again.";

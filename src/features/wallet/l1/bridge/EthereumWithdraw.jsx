@@ -4,7 +4,7 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { answerExpiry, EXPIRED, monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { answerExpiry, clocks, EXPIRED, expired as hasExpired, monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
@@ -88,7 +88,7 @@ export default function EthereumWithdraw({ client }) {
   // op.expires: when its answer stops permitting a burn, counted from when the request started (see answerExpiry).
   async function operationRead(op) {
     op.made = order.current.begin(); op.carries = false;
-    const started = monotonicNow();
+    const started = clocks();
     try {
       const fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
       op.carries = Boolean(fresh.proving_window); op.expires = answerExpiry(fresh.proving_window, started);
@@ -133,7 +133,7 @@ export default function EthereumWithdraw({ client }) {
     let sent = false, expired = false, expires = approved.expires;
     try {
       // The Review's answer is not trusted past the window's next boundary or once stale: read again.
-      if (guarded && monotonicNow() >= expires) {
+      if (guarded && hasExpired(expires)) {
         const fresh = await operationRead(op);
         if (!still()) return;
         if (fresh === OBSOLETE) throw new Error(CHANGED);
@@ -145,12 +145,12 @@ export default function EthereumWithdraw({ client }) {
         }
         // An answer already expired when it arrives permits nothing.
         expires = op.expires;
-        if (monotonicNow() >= expires) { expired = true; throw new Error(EXPIRED); }
+        if (hasExpired(expires)) { expired = true; throw new Error(EXPIRED); }
       }
       const signed = await client.sign(approved.intent, approved.quote);
       if (!still()) return;  // signed, never sent
       // Checked last before the bytes leave: the operation is current and its answer has not expired.
-      const guard = guarded ? () => (sent = still() && !(expired = monotonicNow() >= expires)) : undefined;
+      const guard = guarded ? () => (sent = still() && !(expired = hasExpired(expires))) : undefined;
       sent = !guard;
       const result = await (guard ? client.submit(signed, { guard }) : client.submit(signed));
       try { localStorage.setItem(key(client), result.txId); } catch { /* tracking still works this session */ }

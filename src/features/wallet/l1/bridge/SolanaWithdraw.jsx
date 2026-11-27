@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { answerExpiry, EXPIRED, monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
+import { answerExpiry, clocks, EXPIRED, expired as hasExpired, monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { changeSlot, checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
@@ -48,8 +48,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
     const n = operation ? order.current.begin() : order.current.next();
     // expires: when this request's answer stops permitting a withdrawal, counted from when the
     // request started (see answerExpiry); the window's display keeps its own arrival anchor.
-    const started = monotonicNow();
-    let carries = false, expires = Infinity;
+    const started = clocks();
+    let carries = false, expires = null;
     const may = () => order.current.apply(n, carries);
     // After every later await of Review and Confirm: still the newest operation, and no newer answer said closed.
     const still = () => order.current.current(n, carries);
@@ -149,7 +149,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
       // An answer already expired when it arrives permits nothing.
-      if (monotonicNow() >= op.expires()) { expired = true; throw OBSOLETE; }
+      if (hasExpired(op.expires())) { expired = true; throw OBSOLETE; }
       await checkRecipient(recipient);
       if (!still()) throw OBSOLETE;
       const current = withdrawalIntent(client, fresh, amount, recipient);
@@ -168,7 +168,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const signed = await client.sign(review.intent, review.quote);
       if (!still()) throw OBSOLETE;  // signed, never sent
       // Checked last before the bytes leave: the operation is current and its answer has not expired.
-      const guard = guarded ? () => (sent = still() && !(expired = monotonicNow() >= op.expires())) : undefined;
+      const guard = guarded ? () => (sent = still() && !(expired = hasExpired(op.expires()))) : undefined;
       sent = !guard;
       const result = await submitBurn(client, signed, storageKey, { mine: () => mine, onSaved: id => { mine = id; }, guard });
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");

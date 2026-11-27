@@ -74,7 +74,7 @@ async function load(dir, name, source) {
 // locks: false is a browser without the Web Locks API.
 async function tab(name, { source, answer = OPEN, saved = null, locks = true } = {}, script) {
   const dir = await mkdtemp(join(tmpdir(), "withdraw-dispatch-")), time = fakeTime(0);
-  const kept = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator") };
+  const kept = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"), now: Date.now };
   const ctl = { answer, hold: null, release: null, connect: null, reject: false, signs: 0 };
   const slot = new Map(saved ? [["fixture", saved]] : []), writes = [], fetched = [], sends = [], listeners = [];
   const held = (value) => { const gate = later(); ctl.hold = null; ctl.release = () => gate.finish(value); return gate.promise; };
@@ -168,13 +168,15 @@ async function tab(name, { source, answer = OPEN, saved = null, locks = true } =
       shape: () => shape(page()),
       // Moves the monotonic clock to `at` without running any timer, as in a throttled tab.
       jump(at) { Object.defineProperty(globalThis, "performance", { configurable: true, writable: true, value: { now: () => at } }); },
+      // Sets the wall clock (Date.now) to `at`, leaving the monotonic clock where it is.
+      wall(at) { Date.now = () => at; },
     };
     const result = await script(api);
     loaded.react.unmount();
     return result;
   } finally {
     time.restore();
-    Object.assign(globalThis, { fetch: kept.fetch, window: kept.window, localStorage: kept.localStorage });
+    Object.assign(globalThis, { fetch: kept.fetch, window: kept.window, localStorage: kept.localStorage }); Date.now = kept.now;
     if (kept.navigator) Object.defineProperty(globalThis, "navigator", kept.navigator); else delete globalThis.navigator;
     await rm(dir, { recursive: true, force: true });
   }
@@ -394,6 +396,56 @@ test("EthereumWithdraw: a Confirm re-read whose answer arrives after the closing
     assert.equal(t.ctl.signs, 0);
     assert.equal(t.mempool(), 0);
     assert.equal(t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false);
+    assert.match(t.text(), EXPIRED);
+  });
+});
+
+// R451-R3-01: the answer is formed at 18:59:58 and the machine sleeps six seconds while the burn
+// waits; the monotonic clock stands still, the wall clock moves on to 19:00:04.
+const AT = Date.UTC(2026, 10, 27, 18, 59, 58);
+for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
+  for (const point of ["readiness", "sign", "connect"]) {
+    test(`${name}: a sleep with the monotonic clock standing still while Confirm waits at ${point} sends nothing`, async () => {
+      await tab(name, { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
+        t.wall(AT); await reviewed(t);
+        // Ethereum reads again in Confirm only once the Review's answer has expired.
+        if (point === "readiness" && name === "EthereumWithdraw") t.jump(2_000);
+        t.ctl.hold = point === "connect" ? "sign" : point; const work = t.confirm(); await settle();
+        const release = t.ctl.release;
+        assert.equal(typeof release, "function", `it waits at ${point}`);
+        if (point === "connect") { t.ctl.connect = later(); release(); await settle(); }
+        const monotonic = performance.now();
+        t.wall(AT + 6_000);
+        assert.equal(performance.now(), monotonic, "the monotonic clock stood still");
+        if (t.ctl.connect) { const connect = t.ctl.connect; t.ctl.connect = null; connect.finish(); } else release();
+        await work; await settle();
+        assert.equal(t.mempool(), 0, "nothing is sent");
+        if (point === "readiness") assert.equal(t.ctl.signs, 0, "nothing is signed");
+        assert.equal(t.slot.has("fixture") || t.slot.has(`l1-withdrawal:fixture:${ADDRESS}`), false, "nothing is marked submitted");
+        assert.match(t.text(), EXPIRED);
+      });
+    });
+  }
+}
+test("EthereumWithdraw: a sleep between Review and Confirm reads readiness again and sends nothing after the closing", async () => {
+  await tab("EthereumWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
+    t.wall(AT); await reviewed(t);
+    const reads = t.fetched.filter((path) => path.endsWith("/readiness")).length;
+    t.wall(AT + 6_000); t.ctl.answer = { ...CLOSED, proving_window: hours(19, 0, 4) };
+    await t.confirm(); await settle();
+    assert.equal(t.fetched.filter((path) => path.endsWith("/readiness")).length, reads + 1, "Confirm reads readiness again");
+    assert.equal(t.ctl.signs, 0);
+    assert.equal(t.mempool(), 0);
+    assert.match(t.text(), /newer closed answer/);
+  });
+});
+test("SolanaWithdraw: a wall clock moved back an hour leaves the monotonic limit in force", async () => {
+  await tab("SolanaWithdraw", { answer: { ...READY, proving_window: hours(18, 59, 58) } }, async (t) => {
+    t.wall(AT); await reviewed(t);
+    t.ctl.hold = "sign"; const work = t.confirm(); await settle();
+    t.wall(AT - 3_600_000); t.jump(6_000); t.ctl.release(); await work; await settle();
+    assert.equal(t.mempool(), 0);
+    assert.equal(t.slot.has("fixture"), false);
     assert.match(t.text(), EXPIRED);
   });
 });
