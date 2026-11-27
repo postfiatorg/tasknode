@@ -2,6 +2,7 @@ import { query, transaction } from "./db/pool.js";
 import { fetchL1Registry, l1RewardEligibility, registeredL1Validator } from "./l1-validator-identity.js";
 import { rewardMonthWindow } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
+import { creditFromFeedRow, l1AccessRow, l1UptimeFeedConfig } from "./l1-validator-access.js";
 
 export async function grantL1ValidatorReward(binding, month, { registryOptions, now = new Date() } = {}) {
   const end = rewardMonthWindow(month, now);
@@ -12,7 +13,16 @@ export async function grantL1ValidatorReward(binding, month, { registryOptions, 
   // stored identity and actual observed daily vote counts at the grant boundary.
   const registry = await fetchL1Registry(registryOptions);
   const registered = registeredL1Validator(registry, { validatorId: current.validator_id, publicKey: current.ml_dsa_public_key, chainId: current.chain_id });
-  const evidence = l1RewardEligibility(registered, end);
+  let evidence = l1RewardEligibility(registered, end);
+  // With the signed feed enforced, the credit follows the feed: the row two
+  // observers agreed on, read within the last hour. Otherwise the rule of
+  // before applies unchanged.
+  if (l1UptimeFeedConfig().enforced) {
+    const row = await l1AccessRow(current);
+    const fromFeed = creditFromFeedRow(row, now);
+    evidence = { ...evidence, eligible: fromFeed.eligible, eligibilityReason: fromFeed.reason,
+      policy: "l1-uptime-feed-v1", source: "postfiat-validator-uptime-v1", feedRow: row };
+  }
   if (!evidence.eligible) return false;
   const key = `validator-reward:l1-devnet:${current.chain_id}:${current.validator_id}:${month}`;
   return transaction(async client => {
