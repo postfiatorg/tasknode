@@ -4,7 +4,7 @@
 // from b24a7c1 (the transport before the proving-window feature).
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,6 @@ import { CHAIN_ID, GENESIS_HASH, PROTOCOL_VERSION } from './utils.js';
 import { RpcClient } from './rpc-client.js';
 import { TxBuilder } from './tx-builder.js';
 
-const BASELINE = 'b24a7c1dde0e5f6f7d0b8783621f99373b466870';
 const here = new URL('.', import.meta.url);
 const address = 'pf' + '1'.repeat(40), TX = 'e'.repeat(96);
 const intent = { kind: 'asset', operation: { operation: 'vault_bridge_burn_to_redeem', owner: address, amount_atoms: 1 } };
@@ -23,7 +22,7 @@ function later() { let finish; const promise = new Promise(resolve => { finish =
 
 // b24a7c1's rpc-client.js and tx-builder.js, with their other imports pointed at today's modules.
 async function baseline(dir) {
-  const show = name => execFileSync('git', ['show', `${BASELINE}:src/features/wallet/l1/lib/${name}`], { cwd: new URL('../../../../..', here), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const show = name => readFileSync(new URL(`../baseline-b24a7c1/${name}.txt`, here), 'utf8');
   const point = code => code.replace(/from '\.\/(custody-boundary|vault|utils)\.js'/g, (whole, name) => `from '${new URL(`${name}.js`, here).href}'`);
   await writeFile(join(dir, 'rpc-client.js'), point(show('rpc-client.js')));
   await writeFile(join(dir, 'tx-builder.js'), point(show('tx-builder.js')));

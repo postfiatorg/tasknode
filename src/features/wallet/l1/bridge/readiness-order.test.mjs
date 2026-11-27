@@ -4,7 +4,6 @@
 // receives a window behaves as origin/main's component.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,12 +54,8 @@ function shape(node) {
   return { type: typeof node.type === "function" ? node.type.name : node.type, props };
 }
 
-// The comparison baseline: the last commit before the proving-window feature (origin/main now contains it).
-const BASELINE = "b24a7c1dde0e5f6f7d0b8783621f99373b466870";
-function mainSource(name) {
-  try { return execFileSync("git", ["show", `${BASELINE}:src/features/wallet/l1/bridge/${name}.jsx`], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
-  catch { return null; }
-}
+// The comparison baseline: the screen at b24a7c1, the last commit before the proving-window feature.
+const mainSource = (name) => readFile(new URL(`../baseline-b24a7c1/${name}.jsx.txt`, here), "utf8");
 const current = (name) => readFile(new URL(`${name}.jsx`, here), "utf8");
 
 // The screen's real source, with React, the UI kit and the relay replaced; everything else is the real module.
@@ -226,9 +221,8 @@ test("the order consults nothing until a window is involved: every completion ap
 // Without a window in any answer, each screen makes the same requests in the same order, sets the
 // same timers and listeners and shows the same thing as origin/main's component.
 async function same(name, answers, run) {
-  const main = mainSource(name);
   const now = await browser(name, await current(name), structuredClone(answers), run);
-  if (main) assert.deepEqual(now, await browser(name, main, structuredClone(answers), run));
+  assert.deepEqual(now, await browser(name, await mainSource(name), structuredClone(answers), run));
   return now;
 }
 const MODES = [["ready", READY], ["refused", { ok: true, ready: false, build_id: "dev", message: "closed" }], ["failed", new Error("offline")]];

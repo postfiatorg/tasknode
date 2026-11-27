@@ -4,7 +4,6 @@
 // of the complete pass (27 November 2026), and a whole Confirm without a window against b24a7c1.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +14,6 @@ import { RpcClient } from "../lib/rpc-client.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH, PROTOCOL_VERSION } from "../lib/utils.js";
 
-const BASELINE = "b24a7c1dde0e5f6f7d0b8783621f99373b466870";
 const here = new URL(".", import.meta.url);
 const real = (path) => new URL(path, here).href;
 const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((resolve) => setImmediate(resolve)); };
@@ -55,7 +53,8 @@ function shape(node) {
 }
 function later() { let finish; const promise = new Promise((resolve) => { finish = resolve; }); return { promise, finish }; }
 const button = (tree, label) => find(tree, (node) => node.type === "button" && node.props.children === label);
-const baseline = (name) => execFileSync("git", ["show", `${BASELINE}:src/features/wallet/l1/bridge/${name}.jsx`], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+// The screen at b24a7c1, the last commit before the proving-window feature.
+const baseline = (name) => readFile(new URL(`../baseline-b24a7c1/${name}.jsx.txt`, here), "utf8");
 
 async function load(dir, name, source) {
   let code = (await transformWithOxc(source, `${name}.jsx`, { jsx: { runtime: "automatic" } })).code;
@@ -369,7 +368,7 @@ for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
     });
     const now = await run();
     assert.equal(now.sends.filter((method) => method.startsWith("mempool_")).length, 1);
-    assert.deepEqual(now, await run(baseline(name)));
+    assert.deepEqual(now, await run(await baseline(name)));
   });
 }
 
@@ -383,7 +382,7 @@ test("SolanaWithdraw without a window, intended difference from b24a7c1: a burn 
     t.ctl.release(); await work; await settle();
     return { stored: t.slot.get("fixture"), notice: t.text().includes(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${TX}`) };
   });
-  assert.deepEqual(await run(baseline("SolanaWithdraw")), { stored: TX, notice: false }, "b24a7c1 overwrote the other tab's id with its own");
+  assert.deepEqual(await run(await baseline("SolanaWithdraw")), { stored: TX, notice: false }, "b24a7c1 overwrote the other tab's id with its own");
   assert.deepEqual(await run(), { stored: OTHER, notice: true }, "the branch keeps it and shows this burn id");
 });
 test("SolanaWithdraw without a window, intended difference from b24a7c1: \"I verified that no burn was accepted\" keeps a burn id another tab saved since", async () => {
@@ -393,6 +392,6 @@ test("SolanaWithdraw without a window, intended difference from b24a7c1: \"I ver
     await button(t.page(), "I verified that no burn was accepted").props.onClick(); await settle();
     return { stored: t.slot.get("fixture") ?? null, tracking: t.text().includes(`tracking ${OTHER}`) };
   });
-  assert.deepEqual(await run(baseline("SolanaWithdraw")), { stored: null, tracking: false }, "b24a7c1 cleared the other tab's id");
+  assert.deepEqual(await run(await baseline("SolanaWithdraw")), { stored: null, tracking: false }, "b24a7c1 cleared the other tab's id");
   assert.deepEqual(await run(), { stored: OTHER, tracking: true }, "the branch keeps it and tracks it");
 });

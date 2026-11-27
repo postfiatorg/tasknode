@@ -2,7 +2,6 @@
 // sets the same timers and listeners and shows the same text as on origin/main.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -72,10 +71,8 @@ async function run(source, review) {
   } finally { time.restore(); await rm(dir, { recursive: true, force: true }); }
 }
 
-function mainSource() {
-  try { return execFileSync("git", ["show", "b24a7c1dde0e5f6f7d0b8783621f99373b466870:src/features/wallet/l1/bridge/EthereumWithdraw.jsx"], { cwd: new URL("../../../../..", here), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
-  catch { return null; }
-}
+// The screen at b24a7c1, the last commit before the proving-window feature.
+const mainSource = () => readFile(new URL("../baseline-b24a7c1/EthereumWithdraw.jsx.txt", here), "utf8");
 
 const REVIEWS = [
   ["a returned refusal", { ok: true, ready: false, message: "payout service is closed" }],
@@ -89,7 +86,6 @@ for (const [name, review] of REVIEWS) {
     assert.deepEqual([now.asked, now.timeouts, now.intervals, now.listeners], [["/withdrawals/readiness", "/withdrawals/readiness"], 0, 0, 0]);
     assert.match(now.reviewed, /Withdrawals ready/);
     assert.doesNotMatch(now.reviewed, /Withdrawals are paused|Withdrawals unavailable/);
-    const main = mainSource();
-    if (main) assert.deepEqual(now, await run(main, review));
+    assert.deepEqual(now, await run(await mainSource(), review));
   });
 }
