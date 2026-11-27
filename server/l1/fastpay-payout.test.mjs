@@ -12,6 +12,7 @@ import {
   computeMessageAadContext,
   computeRawCidV1,
   decodeAnyPointerMemo,
+  decodeEnvelopeRaw,
   decodeLegacyPointerV4,
   decodePointerV5,
   decodeRewardNotice,
@@ -930,4 +931,9 @@ test("v5 pointer decoding enforces the same canonical representation as encoding
   assert.deepEqual(encodePointerV5(decodePointerV5(canonical)), canonical);
   assert.throws(() => decodePointerV5(Buffer.alloc(257)), /exceeds_256/);
   assert.throws(() => decodePointerV5(Buffer.concat([canonical, Buffer.of(88, 1)])), /noncanonical/);
+});
+
+test("the outer envelope rejects unknown fields and enforces the raw byte ceiling", () => {
+  assert.throws(() => decodeEnvelopeRaw(Buffer.from("f00101", "hex")), /unknown_envelope_field/);
+  assert.throws(() => decodeEnvelopeRaw(Buffer.alloc(1_048_577)), /envelope_too_large/);
 });

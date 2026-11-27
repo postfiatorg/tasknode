@@ -577,6 +577,7 @@ export function encodeEnvelope({
 
 export function decodeEnvelopeRaw(bufOrHex) {
   const raw = toBytes(bufOrHex);
+  if (raw.length > MAX_SINGLE_ENVELOPE_BYTES) throw new Error("envelope_too_large");
   const out = {
     version: 0,
     headerBytes: Buffer.alloc(0),
@@ -594,6 +595,7 @@ export function decodeEnvelopeRaw(bufOrHex) {
     else if (fieldNum === 5) out.signatureAlgorithm = Number(value);
     else if (fieldNum === 6) out.senderPubkey = Buffer.from(value);
     else if (fieldNum === 7) out.signature = Buffer.from(value);
+    else throw new Error("unknown_envelope_field");
   }
   return out;
 }
