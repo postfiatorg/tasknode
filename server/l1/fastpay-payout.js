@@ -746,7 +746,7 @@ export function createFastPayPayoutDriver({
           cid: persisted.cid,
           originalOrderHash: persisted.orderHash,
         });
-        if (fallbackRes?.validated !== true || !safeText(fallbackRes?.txHash, 128) || fallbackRes?.ok === false) {
+        if (fallbackRes?.validated !== true || !/^[0-9a-f]{96}$/i.test(fallbackRes?.txHash || "") || fallbackRes?.ok === false) {
           throw unverifiedError("consensus_fallback_not_validated");
         }
         const receipt = {

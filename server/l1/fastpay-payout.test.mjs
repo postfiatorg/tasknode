@@ -684,7 +684,7 @@ test("finding 2: the fallback is off by default and pays by consensus only after
       verifyFastPayLockCancellation,
       submitConsensusFallback: async (p) => {
         paid.push(p.amountAtoms);
-        return { txHash: "cc".repeat(32), validated: true };
+        return { txHash: "cc".repeat(48), validated: true };
       },
     };
     // First attempt: the submission times out and nothing is known; the order stays persisted.
@@ -902,4 +902,21 @@ test("fee pricing accounts for the 96-byte recovery.lock_id across 512-byte fee 
       `padLen=${padLen} finalLen=${finalLen} mod512=${finalLen % 512} fee=${chainOrder.fee} < min=${expectedMin}`
     );
   }
+});
+
+test("payment reference uses SHA3-384 for each present chain identifier", async () => {
+  const { encodeFastPayPaymentRef, decodeFastPayPaymentRef } = await import("./message-protocol.js");
+  for (const field of ["orderHash", "certificateDigest", "txHash"]) {
+    const bytes = Buffer.alloc(48, 21);
+    assert.deepEqual(decodeFastPayPaymentRef(encodeFastPayPaymentRef({ [field]: bytes }))[field], bytes);
+    assert.throws(() => encodeFastPayPaymentRef({ [field]: Buffer.alloc(32) }), /invalid_chain_hash/);
+  }
+  assert.deepEqual(encodeFastPayPaymentRef({}), Buffer.alloc(0));
+});
+
+test("v5 pointer decoding enforces the same canonical representation as encoding", () => {
+  const canonical = encodePointerV5({ flags: POINTER_FLAG.PUBLIC, target: POINTER_TARGET.INLINE, inlinePayload: Buffer.of(1) });
+  assert.deepEqual(encodePointerV5(decodePointerV5(canonical)), canonical);
+  assert.throws(() => decodePointerV5(Buffer.alloc(257)), /exceeds_256/);
+  assert.throws(() => decodePointerV5(Buffer.concat([canonical, Buffer.of(88, 1)])), /noncanonical/);
 });

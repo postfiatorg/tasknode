@@ -234,6 +234,7 @@ export function encodePointerV5({
 
 export function decodePointerV5(bufOrHex) {
   const raw = toBytes(bufOrHex);
+  if (raw.length > MAX_PAYMENT_MEMO_DATA_BYTES) throw new Error("pointer_v5_exceeds_256_bytes");
   const out = {
     version: "v5",
     cidBin: Buffer.alloc(0),
@@ -262,7 +263,7 @@ export function decodePointerV5(bufOrHex) {
     else if (fieldNum === 9) out.inlinePayload = Buffer.from(value);
     else if (fieldNum === 10) out.schemaName = value.toString("utf8");
   }
-  validatePointerFlags(out.flags);
+  if (!encodePointerV5(out).equals(raw)) throw new Error("noncanonical_pointer_v5");
   out.kindLabel = CONTENT_KIND_BY_VALUE[out.kind] || String(out.kind);
   out.cidBinHex = out.cidBin.toString("hex");
   if (out.cidBin.length === 36) out.cid = cidBinToMultibase(out.cidBin);
@@ -337,14 +338,23 @@ export function decodeAnyPointerMemo(memo = {}) {
   return null;
 }
 
+function chainHashBytes(value) {
+  if (value == null || value === "") return Buffer.alloc(0);
+  if (typeof value === "string" && !/^[0-9a-f]{96}$/i.test(value)) throw new Error("invalid_chain_hash");
+  if (typeof value !== "string" && !(value instanceof Uint8Array)) throw new Error("invalid_chain_hash");
+  const bytes = toBytes(value);
+  if (bytes.length && bytes.length !== 48) throw new Error("invalid_chain_hash");
+  return bytes;
+}
+
 export function encodeFastPayPaymentRef(ref = null) {
   if (!ref) return Buffer.alloc(0);
   return Buffer.concat([
     pbVarint(1, ref.lane || 0),
     pbString(2, ref.chainId || ref.chain_id || ""),
-    pbBytes(3, ref.orderHash || ref.order_hash),
-    pbBytes(4, ref.certificateDigest || ref.certificate_digest),
-    pbBytes(5, ref.txHash || ref.tx_hash),
+    pbBytes(3, chainHashBytes(ref.orderHash || ref.order_hash)),
+    pbBytes(4, chainHashBytes(ref.certificateDigest || ref.certificate_digest)),
+    pbBytes(5, chainHashBytes(ref.txHash || ref.tx_hash)),
     pbString(6, ref.assetId || ref.asset_id || ""),
     pbString(7, ref.payerAccount || ref.payer_account || ""),
     pbString(8, ref.payeeAccount || ref.payee_account || ""),
@@ -371,9 +381,9 @@ export function decodeFastPayPaymentRef(buf) {
   for (const { fieldNum, value } of decodeWireFields(buf)) {
     if (fieldNum === 1) out.lane = Number(value);
     else if (fieldNum === 2) out.chainId = value.toString("utf8");
-    else if (fieldNum === 3) out.orderHash = Buffer.from(value);
-    else if (fieldNum === 4) out.certificateDigest = Buffer.from(value);
-    else if (fieldNum === 5) out.txHash = Buffer.from(value);
+    else if (fieldNum === 3) out.orderHash = chainHashBytes(value);
+    else if (fieldNum === 4) out.certificateDigest = chainHashBytes(value);
+    else if (fieldNum === 5) out.txHash = chainHashBytes(value);
     else if (fieldNum === 6) out.assetId = value.toString("utf8");
     else if (fieldNum === 7) out.payerAccount = value.toString("utf8");
     else if (fieldNum === 8) out.payeeAccount = value.toString("utf8");
@@ -691,9 +701,10 @@ export function signEnvelopeMlDsa65({
 // Verifies CID / metadata_hash and ML-DSA-65 signature over exact raw bytes BEFORE decoding.
 export function verifyEnvelopeRaw(
   rawEnvelopeBytes,
-  { expectedCidBin = null, expectedMetadataHashSha3_384 = "", expectedSenderAccount = "", expectedSenderPubkeyHex = "" } = {}
+  { expectedCidBin = null, expectedMetadataHashSha3_384 = "", expectedChainId = "", expectedSenderAccount = "", expectedSenderPubkeyHex = "" } = {}
 ) {
   const raw = toBytes(rawEnvelopeBytes);
+  if (raw.length > MAX_SINGLE_ENVELOPE_BYTES) return { ok: false, reason: "envelope_too_large" };
   const cid = computeRawCidV1(raw);
   const metadataHashSha3_384 = sha3_384Bytes(raw).toString("hex");
   if (expectedCidBin && Buffer.compare(cid.cidBin, toBytes(expectedCidBin)) !== 0) {
@@ -735,7 +746,8 @@ export function verifyEnvelopeRaw(
     return { ok: false, reason: "invalid_ml_dsa_65_signature", derivedAccount, senderPubkeyHex, cid, metadataHashSha3_384 };
   }
   const header = decodeMessageHeader(envelope.headerBytes);
-  if (header.senderAccount && header.senderAccount !== derivedAccount) {
+  if (expectedChainId && expectedChainId !== header.chainId) return { ok: false, reason: "chain_id_mismatch" };
+  if (header.senderAccount !== derivedAccount) {
     return { ok: false, reason: "header_sender_account_mismatch", derivedAccount, senderPubkeyHex, header, cid, metadataHashSha3_384 };
   }
   return {
@@ -822,8 +834,8 @@ export async function encryptPrivateEnvelope({
   });
 }
 
-export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingSecretKey, recipientXWingPublicKey } = {}) {
-  const verified = verifyEnvelopeRaw(rawEnvelopeBytes);
+export async function decryptPrivateEnvelope({ rawEnvelopeBytes, recipientXWingSecretKey, recipientXWingPublicKey, expectedChainId, expectedSenderAccount, expectedCidBin } = {}) {
+  const verified = verifyEnvelopeRaw(rawEnvelopeBytes, { expectedChainId, expectedSenderAccount, expectedCidBin });
   if (!verified.ok) throw new Error(`envelope_verification_failed:${verified.reason}`);
   await sodium.ready;
   const encHeader = decodeXWingEncryptionHeader(verified.envelope.encryptionHeaderBytes);
