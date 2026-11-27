@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { accessDecisions, creditFromFeedRow, l1UptimeFeedConfig, refreshL1ValidatorAccess } from "../server/l1-validator-access.js";
+import { accessDecisions, creditFromFeedRow, feedAllowsNewBindings, l1UptimeFeedConfig, refreshL1ValidatorAccess,
+  requireFeedForNewBinding } from "../server/l1-validator-access.js";
 import { verifyUptimeFeed } from "../server/l1-uptime-feed.js";
 
 const load = name => JSON.parse(readFileSync(new URL(`./fixtures/l1-uptime-feed/${name}`, import.meta.url), "utf8"));
@@ -107,4 +108,25 @@ test("refresh: a bad, stale or unreachable feed changes nothing", async () => {
   const down = await refreshL1ValidatorAccess({ env: enforced, now, db, fetchImpl: async () => { throw new Error("connect refused"); } });
   assert.equal(down.status, "feed_unavailable");
   assert.equal(writes(db), 0);
+});
+
+test("a new binding waits while the feed is indeterminate", async () => {
+  const [a, b, c] = keyset.observers.map(observer => observer.observer_id);
+  const at = seconds => ({ last_observed_at: `${new Date(now.getTime() - seconds * 1000).toISOString().slice(0, 19)}Z` });
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: b, ...at(3500) }], keyset, now), true);
+  // One fresh observer is not a quorum; an old attestation does not count; neither does an unpinned observer.
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }], keyset, now), false);
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: b, ...at(3700) }], keyset, now), false);
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: "somebody-else", ...at(60) }], keyset, now), false);
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: a, ...at(90) }], keyset, now), false);
+  assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(-600) }, { observer_id: c, ...at(-600) }], keyset, now), false);
+
+  const rows = fresh => async () => ({ rows: fresh ? [{ observer_id: a, ...at(60) }, { observer_id: c, ...at(120) }] : [{ observer_id: a, ...at(60) }] });
+  const enforced = env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" });
+  await requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true) });
+  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(false) }),
+    error => error.status === 503 && error.message === "l1_uptime_feed_indeterminate");
+  // Without enforcement nothing is asked and nothing is refused.
+  await requireFeedForNewBinding({ env: env(), now, queryImpl: async () => { throw new Error("must not be asked"); } });
+  await requireFeedForNewBinding({ env: {}, now, queryImpl: async () => { throw new Error("must not be asked"); } });
 });

@@ -139,6 +139,30 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
   });
 }
 
+/**
+ * Whether a new validator may be bound now. The contract blocks new bindings
+ * while the feed is indeterminate: at least two pinned observers must have had
+ * an attestation accepted within the last hour.
+ */
+export function feedAllowsNewBindings(observerRows, keyset, now = new Date()) {
+  const pinned = new Set(keyset.observers.map(observer => observer.observer_id));
+  const fresh = observerRows.filter(row => pinned.has(row.observer_id) &&
+    new Date(now).getTime() - Date.parse(row.last_observed_at) <= 3600000 &&
+    Date.parse(row.last_observed_at) - new Date(now).getTime() <= 60000);
+  return new Set(fresh.map(row => row.observer_id)).size >= 2;
+}
+
+/** Throws 503 when enforcement is on and the feed is indeterminate. Does nothing otherwise. */
+export async function requireFeedForNewBinding({ env = process.env, now = new Date(), queryImpl = query } = {}) {
+  const config = l1UptimeFeedConfig(env);
+  if (!config.enforced) return;
+  const rows = (await queryImpl(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
+    [config.keyset.keyset_id])).rows;
+  if (!feedAllowsNewBindings(rows, config.keyset, now)) {
+    throw Object.assign(new Error("l1_uptime_feed_indeterminate"), { status: 503 });
+  }
+}
+
 /** The stored row for a binding, for the dashboard and for the credit. */
 export async function l1AccessRow(binding, queryImpl = query) {
   const row = (await queryImpl(`SELECT * FROM l1_validator_access WHERE network=$1 AND chain_id=$2 AND validator_id=$3

@@ -92,6 +92,10 @@ enforcement off again stops further changes; it does not restore a suspended
 binding. To restore one by hand:
 `UPDATE validator_bindings SET access_suspended_at=NULL WHERE id=...`.
 
-Not in this release: the block on new bindings while the feed is
-indeterminate, one credit per operator across both chains, and the directory
-of validators.
+With enforcement on, a new L1 validator is bound only while the feed is
+determinate: two pinned observers with an attestation accepted in the last
+hour. Otherwise the bind answers 503 `l1_uptime_feed_indeterminate` and the
+operator tries again later.
+
+Not in this release: one credit per operator across both chains, and the
+directory of validators.
