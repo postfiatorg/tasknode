@@ -4,15 +4,14 @@ import { listValidatorBindings } from "./repositories/validator-bindings.js";
 import { activeBlacklistEntry } from "./value-accountability.js";
 import { fetchL1Registry, l1RewardEligibility, registeredL1Validator } from "./l1-validator-identity.js";
 import { loadLatestTop30Snapshot, lookupTop30Entitlement } from "./finance-hub-top30.js";
+import { buildGoodbriefSrcDoc } from "../shared/goodbrief-srcdoc.js";
 
 export const FINANCE_HUB_TIER = "finance_hub";
 export const LEGACY_VALIDATOR_TIER = "validator";
 export const PUBLIC_SAFE_TIER = "public_safe";
 export const FINANCE_HUB_PROTECTED_INDICES = new Set(["ga-models", "goodbrief"]);
 
-export const GOODBRIEF_SANDBOX_ATTR = "allow-scripts";
-export const GOODBRIEF_SRCDOC_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'";
+export { GOODBRIEF_SANDBOX_ATTR, GOODBRIEF_SRCDOC_CSP } from "../shared/goodbrief-srcdoc.js";
 
 const VALIDATOR_GRACE_MS = 14 * 86_400_000;
 const VALIDATOR_RAMP_IN_MS = 30 * 86_400_000;
@@ -541,37 +540,14 @@ function escapeAttr(value = "") {
 
 /**
  * Prepares Goodbrief HTML for rendering inside `<iframe sandbox="allow-scripts">`
- * via `srcdoc` with zero network exfiltration (`connect-src 'none'`) and zero
- * origin access (no `allow-same-origin`).
+ * via `srcdoc`: a code-built head carries the zero-exfiltration policy, the
+ * untrusted markup goes into the body, and a visible watermark footer follows it.
  */
 export function prepareGoodbriefSrcDoc(rawHtml = "", { watermarkId = "", title = "Goodbrief" } = {}) {
-  let html = String(rawHtml || "");
-  // Strip dangerous tags that could redirect, nest frames, or attempt external fetches.
-  html = html
-    .replace(/<base\b[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy["']?[^>]*>/gi, "")
-    .replace(/<script\b[^>]*\bsrc\s*=[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<link\b[^>]*\bhref\s*=\s*["']?https?:[^>]*>/gi, "")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed\b[^>]*>/gi, "");
-
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(GOODBRIEF_SRCDOC_CSP)}">`;
-  const wmMeta = watermarkId ? `<meta name="pf-fh-wm" content="${escapeAttr(watermarkId)}">` : "";
-  const wmFooter = watermarkId
+  const footer = watermarkId
     ? `<div data-pf-fh-wm="${escapeAttr(watermarkId)}" style="margin-top:24px;padding-top:10px;border-top:1px solid rgba(128,128,128,.2);font:11px/1.4 monospace;opacity:.45;user-select:none;">Post Fiat Finance Hub · ${escapeAttr(watermarkId)}</div>`
     : "";
-
-  if (/<head[^>]*>/i.test(html)) {
-    html = html.replace(/<head([^>]*)>/i, `<head$1>${cspMeta}${wmMeta}`);
-    if (wmFooter) {
-      html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${wmFooter}</body>`) : `${html}${wmFooter}`;
-    }
-    return html;
-  }
-
-  return `<!doctype html><html><head><meta charset="utf-8">${cspMeta}${wmMeta}<title>${escapeAttr(title)}</title></head><body>${html}${wmFooter}</body></html>`;
+  return buildGoodbriefSrcDoc(rawHtml, { watermarkId, title, footer });
 }
 
 /**

