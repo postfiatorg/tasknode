@@ -107,33 +107,17 @@ export function canResolveTaskAccountingHarvest({ session = null, profile = {}, 
   );
 }
 
+// Founder authority comes only from exact configured account ids. Display names
+// and handles are chosen by each account, so they never grant it.
 export async function hiveGovernanceFounderAccess(session = null, { env = process.env } = {}) {
   if (!session?.accountId) {
     return { ok: false, status: 401, error: "hive_governance_login_required", message: "Sign in before managing governance sessions." };
   }
-  const profile = await getAccountIdentityProfile({ accountId: session.accountId }) || {};
-  const allowedAccounts = new Set([
-    ...normalizedList(env.TASKNODE_GOVERNANCE_FOUNDER_ACCOUNT_IDS || ""),
-    ...normalizedList(env.TASKNODE_HIVE_BRAIN_OPERATOR_ACCOUNT_IDS || ""),
-  ]);
-  const accountId = String(session.accountId || "").trim().toLowerCase();
-  if (allowedAccounts.has(accountId)) {
-    return { ok: true, profile };
-  }
-  const allowedHandles = new Set([
-    ...normalizedList(env.TASKNODE_GOVERNANCE_FOUNDER_HANDLES || "goodalexander"),
-    ...normalizedList(env.TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES || ""),
-  ]);
-  const handleCandidates = [
-    profile.hiveHandle,
-    profile.handle,
-    profile.publicDisplayName,
-    profile.displayName,
-    session.hiveHandle,
-    session.displayName,
-  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
-  if (handleCandidates.some((handle) => allowedHandles.has(handle))) {
-    return { ok: true, profile };
+  const founderAccountIds = new Set(
+    String(env.TASKNODE_GOVERNANCE_FOUNDER_ACCOUNT_IDS || "").split(",").map((item) => item.trim()).filter(Boolean)
+  );
+  if (founderAccountIds.has(String(session.accountId).trim())) {
+    return { ok: true };
   }
   return {
     ok: false,
