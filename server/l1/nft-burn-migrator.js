@@ -176,7 +176,7 @@ function validateOldBurnProof({ burnProof, expectedOldOwner, expectedNftokenId, 
     throw new Error("old_chain_burn_account_mismatch");
   }
   const burnedTokenId = normalizeTokenId(burnProof.nftokenId || burnProof.NFTokenID);
-  if (burnedTokenId && burnedTokenId !== expectedNftokenId) {
+  if (!burnedTokenId || burnedTokenId !== expectedNftokenId) {
     throw new Error("old_chain_burn_token_id_mismatch");
   }
   const memoClaimHash = safeText(burnProof.claimHashHex || burnProof.memoClaimHashHex, 128).toLowerCase();
@@ -193,6 +193,26 @@ function validateOldBurnProof({ burnProof, expectedOldOwner, expectedNftokenId, 
     claimHashHex: memoClaimHash,
   };
 }
+
+// The chain must show the new NFT with the expected owner, issuer and metadata hash
+// at a final height; returns the failure reason, or "" when it does.
+function l1NftInfoMismatch(info, { owner, issuer, metadataHash }) {
+  if (!info || typeof info !== "object") return "not_found";
+  if (info.final !== true && info.finalized !== true) return "not_final";
+  const height = Number(info.height ?? info.block_height ?? info.mintedHeight ?? info.minted_height ?? 0);
+  if (!(height > 0)) return "no_final_height";
+  if (safeText(info.owner, 120) !== owner) return "owner_mismatch";
+  if (safeText(info.issuer, 120) !== issuer) return "issuer_mismatch";
+  const hash = safeText(info.metadata_hash || info.metadataHash, 200).toLowerCase();
+  if (!metadataHash || hash !== String(metadataHash).toLowerCase()) return "metadata_hash_mismatch";
+  return "";
+}
+
+function l1NftInfoHeight(info) {
+  return Number(info?.height ?? info?.block_height ?? info?.mintedHeight ?? info?.minted_height ?? 0);
+}
+
+export const DEFAULT_MAX_MIGRATION_BATCH_SIZE = 25;
 
 // Burn-First Idempotent Batch Migrator (Pillar 4 Section 2):
 // Enforces:
@@ -213,12 +233,14 @@ export function createBurnFirstNftMigrator({
   newOwnerAccount = "",
   pinRawBlock,
   burnOldChainNft,
+  findOldChainBurn = null,
   verifyOldChainBurn,
   queryL1NftInfo = null,
   queryL1UsedSerial = null,
   mintL1Nft,
   anchorPinOnlyProvenance = null,
   policyOverrides = {},
+  maxBatchSize = DEFAULT_MAX_MIGRATION_BATCH_SIZE,
 } = {}) {
   if (!ledgerStore) throw new Error("migration_ledger_store_required");
   if (!migrationIssuerSigner?.publicKey || !migrationIssuerSigner?.secretKey) {
@@ -381,27 +403,54 @@ export function createBurnFirstNftMigrator({
     }
     if (typeof queryL1NftInfo === "function") {
       const existingOnChain = await queryL1NftInfo(targetNftId).catch(() => null);
-      if (existingOnChain) {
-        // Even if the NFT was later burned on postfiatl1v2, record tombstone and NEVER re-mint!
+      if (existingOnChain?.burned) {
+        // Burned on postfiatl1v2 after its mint: record the tombstone and NEVER re-mint.
         ledgerStore.recordUsedSerial(targetNftId, {
           nftokenId: tokenId,
           migratedSerial: migratedSerial.toString(),
-          mintedHeight: Number(existingOnChain.mintedHeight || 0),
+          mintedHeight: l1NftInfoHeight(existingOnChain),
+        });
+        return {
+          ok: true,
+          skipped: true,
+          reason: "nft_serial_already_used_after_burn",
+          nftokenId: tokenId,
+          targetNftId,
+          migratedSerial: migratedSerial.toString(),
+        };
+      }
+      if (existingOnChain) {
+        const known = ledgerStore.getItem(tokenId);
+        const mismatch = l1NftInfoMismatch(existingOnChain, {
+          owner: resolvedNewOwner,
+          issuer: migrationIssuerAccount,
+          metadataHash: known?.metadataHash || "",
+        });
+        if (mismatch) {
+          return { ok: false, skipped: false, nftokenId: tokenId, targetNftId, error: `l1_nft_info_mismatch:${mismatch}` };
+        }
+        ledgerStore.recordUsedSerial(targetNftId, {
+          nftokenId: tokenId,
+          migratedSerial: migratedSerial.toString(),
+          mintedHeight: l1NftInfoHeight(existingOnChain),
+          mintTxHash: known?.mintTxHash || "",
         });
         ledgerStore.saveItem(tokenId, {
+          ...known,
           status: "minted",
           targetNftId,
           migratedSerial: migratedSerial.toString(),
           migrationIssuerAccount,
           targetCollectionId,
           newOwnerAccount: resolvedNewOwner,
-          metadataUri: existingOnChain.metadata_uri || existingOnChain.metadataUri || "",
+          mintedHeight: l1NftInfoHeight(existingOnChain),
+          metadataUri: existingOnChain.metadata_uri || existingOnChain.metadataUri || known?.metadataUri || "",
           metadataHash: existingOnChain.metadata_hash || existingOnChain.metadataHash || "",
         });
         return {
           ok: true,
           skipped: true,
-          reason: existingOnChain.burned ? "nft_serial_already_used_after_burn" : "already_minted_onchain",
+          reason: "already_minted_onchain",
           nftokenId: tokenId,
           targetNftId,
           migratedSerial: migratedSerial.toString(),
@@ -424,6 +473,9 @@ export function createBurnFirstNftMigrator({
         policy,
       };
     }
+
+    // The mint is confirmed by reading the chain, so the read must exist before anything is burned.
+    if (typeof queryL1NftInfo !== "function") throw new Error("l1_nft_info_query_required");
 
     // Load any existing checkpoint for partial-failure resume!
     let item = ledgerStore.getItem(tokenId) || {
@@ -489,36 +541,49 @@ export function createBurnFirstNftMigrator({
     }
 
     // 4. Step B: Burn old-chain NFT FIRST with claim_hash in memo, then validate burn via history RPC.
+    // A stop at any point resumes without loss: a durable burn_intent precedes the burner, an
+    // old-chain look-up for this burn precedes every burn call, and a saved burn hash is never re-burned.
     if (!item.burnTxHash || item.burnValidated !== true) {
+      if (typeof findOldChainBurn !== "function") throw new Error("old_chain_burn_lookup_required");
+      const burnQuery = {
+        nftokenId: tokenId,
+        oldOwner: allowed.oldOwner,
+        expectedOldOwner: allowed.oldOwner,
+        claimHashHex: item.claimHashHex,
+        expectedClaimHashHex: item.claimHashHex,
+      };
+      const lookUp = async (txHash) => {
+        const verified = txHash && typeof verifyOldChainBurn === "function"
+          ? await verifyOldChainBurn({ ...burnQuery, txHash })
+          : null;
+        return verified || findOldChainBurn(burnQuery);
+      };
       let rawBurn = null;
-      if (item.burnTxHash && typeof verifyOldChainBurn === "function") {
-        rawBurn = await verifyOldChainBurn({
-          txHash: item.burnTxHash,
-          nftokenId: tokenId,
-          expectedOldOwner: allowed.oldOwner,
-          expectedClaimHashHex: item.claimHashHex,
-        });
+      if (item.burnTxHash || item.status === "burn_submitted") {
+        // The burner already answered for this item: look up only, never burn again.
+        rawBurn = await lookUp(item.burnTxHash);
       } else {
-        if (typeof burnOldChainNft !== "function") throw new Error("old_chain_burn_fn_required");
-        const burnSubmitted = await burnOldChainNft({
-          nftokenId: tokenId,
-          oldOwner: allowed.oldOwner,
-          claimHashHex: item.claimHashHex,
-          claimCid: item.claimCid,
-        });
-        item = ledgerStore.saveItem(tokenId, {
-          ...item,
-          status: "burn_submitted",
-          burnTxHash: safeText(burnSubmitted?.txHash, 128),
-        });
-        rawBurn = typeof verifyOldChainBurn === "function"
-          ? await verifyOldChainBurn({
-              txHash: item.burnTxHash,
-              nftokenId: tokenId,
-              expectedOldOwner: allowed.oldOwner,
-              expectedClaimHashHex: item.claimHashHex,
-            })
-          : burnSubmitted;
+        rawBurn = await findOldChainBurn(burnQuery);
+        if (!rawBurn) {
+          if (typeof burnOldChainNft !== "function") throw new Error("old_chain_burn_fn_required");
+          item = ledgerStore.saveItem(tokenId, {
+            ...item,
+            status: "burn_intent",
+            burnIntentAt: new Date().toISOString(),
+          });
+          const burnSubmitted = await burnOldChainNft({
+            nftokenId: tokenId,
+            oldOwner: allowed.oldOwner,
+            claimHashHex: item.claimHashHex,
+            claimCid: item.claimCid,
+          });
+          item = ledgerStore.saveItem(tokenId, {
+            ...item,
+            status: "burn_submitted",
+            burnTxHash: safeText(burnSubmitted?.txHash, 128),
+          });
+          rawBurn = await lookUp(item.burnTxHash);
+        }
       }
       const verifiedBurn = validateOldBurnProof({
         burnProof: rawBurn,
@@ -627,8 +692,21 @@ export function createBurnFirstNftMigrator({
       issuer_burnable: false,
     };
     const minted = await mintL1Nft(mintTxPayload);
+    if (!minted || minted.ok === false || minted.accepted === false || minted.error) {
+      throw new Error(`l1_nft_mint_refused:${safeText(minted?.error || minted?.reason || "no_answer", 120)}`);
+    }
     const mintTxHash = safeText(minted?.txHash || minted?.tx_hash, 128);
-    const mintedHeight = Number(minted?.blockHeight || minted?.block_height || 0);
+    item = ledgerStore.saveItem(tokenId, { ...item, status: "mint_submitted", mintTxHash });
+
+    // Record `minted` and the permanent tombstone only once the chain shows the expected NFT at a final height.
+    const mintedInfo = await queryL1NftInfo(targetNftId).catch(() => null);
+    const mintMismatch = l1NftInfoMismatch(mintedInfo, {
+      owner: resolvedNewOwner,
+      issuer: migrationIssuerAccount,
+      metadataHash: item.metadataHash,
+    });
+    if (mintMismatch) throw new Error(`l1_nft_mint_not_confirmed:${mintMismatch}`);
+    const mintedHeight = l1NftInfoHeight(mintedInfo);
 
     ledgerStore.recordUsedSerial(targetNftId, {
       nftokenId: tokenId,
@@ -664,6 +742,10 @@ export function createBurnFirstNftMigrator({
     const targets = Array.isArray(nftList) && nftList.length
       ? nftList
       : [...allowlistEntries.values()];
+    const limit = Math.max(1, Math.trunc(Number(options.maxBatchSize || maxBatchSize) || DEFAULT_MAX_MIGRATION_BATCH_SIZE));
+    if (targets.length > limit) {
+      throw new Error(`migration_batch_too_large:${targets.length}>${limit}`);
+    }
     const results = [];
     let migratedCount = 0;
     let skippedCount = 0;

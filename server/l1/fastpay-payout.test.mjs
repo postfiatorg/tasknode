@@ -41,6 +41,20 @@ function seed32(label) {
   return createHash("sha256").update(label, "utf8").digest();
 }
 
+// The chain identity and recovery window a driver needs to build an OwnedTransferOrderV3.
+function chainConfig() {
+  return {
+    fastpayDomain: {
+      schema: "postfiat-owned-certificate-domain-v2",
+      chain_id: "postfiat-wan-devnet-2",
+      genesis_hash: "11".repeat(48),
+      protocol_version: 1,
+      registry_id: "22".repeat(48),
+    },
+    fastpayRecoveryWindow: async () => ({ committee_epoch: 2, valid_from_height: 1900, expires_at_height: 2000, recovery_closes_at_height: 2100 }),
+  };
+}
+
 test("Contract C1 frozen hex vectors match byte-for-byte (V1, V2B, V3, V4, V5, V8 serial)", () => {
   // V1_POINTER_V5_PUBLIC_TEXT
   const v1CidBinHex = "015512202acc209da9af312de8e9d20175c075a22b31b329a3e6d856dec9cf66436d523d";
@@ -249,6 +263,7 @@ test("FastPay payout driver enforces feature flag, records order_hash, and guara
   const submittedOrderHashes = [];
 
   const disabledDriver = createFastPayPayoutDriver({
+    ...chainConfig(),
     store,
     payoutSigner,
     submitFastPayOrder: async () => ({ certificateDigest: "cert" }),
@@ -259,6 +274,7 @@ test("FastPay payout driver enforces feature flag, records order_hash, and guara
       disabledDriver.executePayout({
         payoutId: "task-disabled",
         recipientAccount: recipient.account,
+        recipientPubkeyHex: recipient.publicKeyHex,
         recipientXWingPublicKey: recipientKem.publicKey,
         amountAtoms: 10_000_000n,
       }),
@@ -266,9 +282,11 @@ test("FastPay payout driver enforces feature flag, records order_hash, and guara
   );
 
   const driver = createFastPayPayoutDriver({
+    ...chainConfig(),
     store,
     payoutSigner,
     env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true" },
+    verifyFastPayCertificate: async ({ certificateDigest }) => certificateDigest === "d".repeat(96),
     pinEnvelope: async ({ cid }) => {
       pinCalls += 1;
       return { ok: true, cid };
@@ -330,6 +348,7 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
   let fallbackCountA = 0;
   let seenOrderHashA = "";
   const driverA = createFastPayPayoutDriver({
+    ...chainConfig(),
     store: storeA,
     payoutSigner,
     env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true" },
@@ -340,8 +359,9 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
     },
     queryFastPayOrder: async (orderHash) => {
       assert.equal(orderHash, seenOrderHashA);
-      return { confirmed: true, certificateDigest: "a".repeat(96), blockHeight: 999 };
+      return { confirmed: true, orderHash, certificateDigest: "a".repeat(96), blockHeight: 999 };
     },
+    verifyFastPayCertificate: async ({ certificateDigest }) => certificateDigest === "a".repeat(96),
     submitConsensusFallback: async () => {
       fallbackCountA += 1;
       return { txHash: "fallback_should_not_run" };
@@ -351,6 +371,7 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
   const recovered = await driverA.executePayout({
     payoutId: "task-timeout-already-certified",
     recipientAccount: recipient.account,
+    recipientPubkeyHex: recipient.publicKeyHex,
     recipientXWingPublicKey: recipientKem.publicKey,
     amountAtoms: 10_000_000n,
   });
@@ -360,45 +381,39 @@ test("Crash recovery resubmits exact order_hash without equivocation and only fa
   assert.equal(submitCountA, 1);
   assert.equal(fallbackCountA, 0);
 
-  // Scenario B: FastPay confirmed never_certified -> releases object & falls back cleanly to payment_v2, idempotent on retry
+  // Scenario B: one "never certified" answer is not a proof the lock is cancelled (review finding 2):
+  // nothing is paid by consensus and the leased object stays out of the pool.
   const storeB = new InMemoryFastPayPayoutStore([{ objectId: "obj_b", valueAtoms: 200_000_000n, nonce: 2 }]);
   let fallbackCountB = 0;
   const driverB = createFastPayPayoutDriver({
+    ...chainConfig(),
     store: storeB,
     payoutSigner,
-    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true" },
+    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "true", TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "true" },
     submitFastPayOrder: async () => {
       throw new Error("fastpay_quorum_unreachable");
     },
     queryFastPayOrder: async () => ({ confirmed: false, certified: false, reason: "never_certified" }),
     submitConsensusFallback: async ({ cid }) => {
       fallbackCountB += 1;
-      return { txHash: "b".repeat(96), feeAtoms: "25", cid };
+      return { txHash: "b".repeat(96), feeAtoms: "25", cid, validated: true };
     },
   });
 
-  const fallbackRes = await driverB.executePayout({
-    payoutId: "task-fallback-001",
-    recipientAccount: recipient.account,
-    recipientXWingPublicKey: recipientKem.publicKey,
-    amountAtoms: 10_000_000n,
-  });
-  assert.equal(fallbackRes.lane, "consensus_pft");
-  assert.equal(fallbackRes.fallbackFromFastPay, true);
-  assert.equal(fallbackRes.badge, TASK_REWARD_BADGE_LABEL);
-  assert.equal(fallbackCountB, 1);
-  // Leased object was released cleanly!
-  assert.equal(storeB.pool.get("obj_b").leasedBy, null);
-
-  // Retrying after consensus fallback is idempotent (zero double-pay!)
-  const replayB = await driverB.executePayout({
-    payoutId: "task-fallback-001",
-    recipientAccount: recipient.account,
-    recipientXWingPublicKey: recipientKem.publicKey,
-    amountAtoms: 10_000_000n,
-  });
-  assert.equal(replayB.idempotentReplay, true);
-  assert.equal(fallbackCountB, 1);
+  await assert.rejects(
+    () =>
+      driverB.executePayout({
+        payoutId: "task-fallback-001",
+        recipientAccount: recipient.account,
+        recipientPubkeyHex: recipient.publicKeyHex,
+        recipientXWingPublicKey: recipientKem.publicKey,
+        amountAtoms: 10_000_000n,
+      }),
+    /fastpay_quorum_unreachable/
+  );
+  assert.equal(fallbackCountB, 0);
+  assert.equal(storeB.getPayout("task-fallback-001").status, "submit_unknown");
+  assert.equal(storeB.pool.get("obj_b").leasedBy, "task-fallback-001");
 });
 
 test("Unified reward history & L1 history projection seamlessly read FastPay v5 and legacy v4 rewards", async () => {
@@ -553,4 +568,338 @@ test("Unified reward history & L1 history projection seamlessly read FastPay v5 
   assert.equal(v4Outcome.pointerVersion, "v4");
   assert.equal(v4Outcome.paymentTxHash, "LEGACY_TX_HASH");
   assert.equal(computeRawCidV1(built.rawEnvelopeBytes).multibaseCid, built.cid);
+});
+
+// Review of PR 450, finding 3: only a verified result is recorded as paid.
+test("finding 3: a refusal, an answer without a certificate, or a bare confirmed:true is never recorded as paid", async () => {
+  const fp = await import("./fastpay-payout.js");
+  const signer = generateMlDsa65Keypair(seed32("f3-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f3-recipient"));
+  const kem = generateXWingKeypair(seed32("f3-kem"));
+  const env = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" };
+  const OBJ = "aa".repeat(32);
+  const base = {
+    payoutId: "task_f3",
+    taskId: "task_f3",
+    recipientAccount: recip.account,
+    recipientPubkeyHex: recip.publicKeyHex,
+    recipientXWingPublicKey: kem.publicKey,
+    amountAtoms: "12000000",
+  };
+  const verifyFastPayCertificate = async ({ orderHash, certificateDigest }) =>
+    certificateDigest === "c".repeat(96) && orderHash.length === 96;
+  const run = async (hooks) => {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: OBJ, valueAtoms: 100_000_000n, version: 3, nonce: 0 }]);
+    const driver = createFastPayPayoutDriver({ ...chainConfig(), store, payoutSigner: signer, env, verifyFastPayCertificate, ...hooks });
+    let result = null;
+    let error = null;
+    try {
+      result = await driver.executePayout(base);
+    } catch (caught) {
+      error = caught;
+    }
+    return { store, result, error, record: store.getPayout("task_f3") };
+  };
+
+  // S1 of the review: a refusal resolved instead of thrown.
+  const refused = await run({ submitFastPayOrder: async () => ({ ok: false, accepted: false, error: "InsufficientFee" }) });
+  assert.equal(refused.result, null);
+  assert.match(refused.error.message, /fastpay_unverified_result/);
+  assert.equal(refused.record.status, "submit_unknown");
+  assert.equal(refused.store.pool.get(OBJ).leasedBy, "task_f3");
+
+  // An answer with no certificate.
+  const empty = await run({ submitFastPayOrder: async () => ({}) });
+  assert.equal(empty.record.status, "submit_unknown");
+  assert.equal(empty.result, null);
+
+  // A certificate the verifier does not accept.
+  const forged = await run({ submitFastPayOrder: async () => ({ certificateDigest: "d".repeat(96) }) });
+  assert.equal(forged.record.status, "submit_unknown");
+
+  // The query is not trusted on confirmed === true alone.
+  const bareQuery = await run({
+    submitFastPayOrder: async () => {
+      throw new Error("timeout");
+    },
+    queryFastPayOrder: async () => ({ confirmed: true }),
+  });
+  assert.equal(bareQuery.record.status, "submit_unknown");
+  assert.equal(bareQuery.result, null);
+
+  // A confirmed record for another order hash is not this payout.
+  const otherHash = await run({
+    submitFastPayOrder: async () => {
+      throw new Error("timeout");
+    },
+    queryFastPayOrder: async () => ({ confirmed: true, orderHash: "f".repeat(96), certificateDigest: "c".repeat(96), blockHeight: 9 }),
+  });
+  assert.equal(otherHash.record.status, "submit_unknown");
+
+  // A verified certificate is recorded as paid.
+  const good = await run({ submitFastPayOrder: async () => ({ certificateDigest: "c".repeat(96), blockHeight: 9 }) });
+  assert.equal(good.error, null);
+  assert.equal(good.result.ok, true);
+  assert.equal(good.result.verified, true);
+  assert.equal(good.record.status, "confirmed");
+
+  // The reward path refuses a receipt that is not verified.
+  assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "" }), /fastpay_receipt_not_verified/);
+  assert.throws(() => fp.assertVerifiedFastPayReceipt({ ok: true, lane: "fastpay", certificateDigest: "c".repeat(96) }), /fastpay_receipt_not_verified/);
+  assert.doesNotThrow(() => fp.assertVerifiedFastPayReceipt(good.result));
+});
+
+// Review of PR 450, finding 2: the consensus fallback is off by default and pays only after a proved cancel.
+test("finding 2: the fallback is off by default and pays by consensus only after the FastPay lock is proved cancelled", async () => {
+  const fp = await import("./fastpay-payout.js");
+  assert.equal(fp.isFastPayConsensusFallbackEnabled({}), false);
+  assert.equal(fp.isFastPayConsensusFallbackEnabled({ TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "1" }), true);
+
+  const signer = generateMlDsa65Keypair(seed32("f2-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f2-recipient"));
+  const kem = generateXWingKeypair(seed32("f2-kem"));
+  const OBJ = "aa".repeat(32);
+  const base = {
+    payoutId: "task_f2",
+    taskId: "task_f2",
+    recipientAccount: recip.account,
+    recipientPubkeyHex: recip.publicKeyHex,
+    recipientXWingPublicKey: kem.publicKey,
+    amountAtoms: "12000000",
+  };
+  const timeout = async () => {
+    throw new Error("timeout");
+  };
+
+  async function scenario({ env, answer, verifyFastPayLockCancellation = async () => true }) {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: OBJ, valueAtoms: 100_000_000n, version: 3, nonce: 0 }]);
+    const paid = [];
+    const hooks = {
+      ...chainConfig(),
+      store,
+      payoutSigner: signer,
+      env,
+      submitFastPayOrder: timeout,
+      verifyFastPayCertificate: async () => false,
+      verifyFastPayLockCancellation,
+      submitConsensusFallback: async (p) => {
+        paid.push(p.amountAtoms);
+        return { txHash: "cc".repeat(32), validated: true };
+      },
+    };
+    // First attempt: the submission times out and nothing is known; the order stays persisted.
+    await assert.rejects(() => fp.createFastPayPayoutDriver({ ...hooks, queryFastPayOrder: async () => null }).executePayout(base));
+    const record = store.getPayout("task_f2");
+    const lockId = record.lockId || "ab".repeat(48);
+    if (!record.lockId) store.savePayout("task_f2", { ...record, lockId, objectVersion: 3 });
+    const driver = fp.createFastPayPayoutDriver({ ...hooks, queryFastPayOrder: async () => answer(lockId) });
+    let result = null;
+    let error = null;
+    try {
+      result = await driver.executePayout(base);
+    } catch (caught) {
+      error = caught;
+    }
+    return { store, paid, result, error, lockId };
+  }
+
+  const on = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1", TASKNODE_FASTPAY_CONSENSUS_FALLBACK_ENABLED: "1" };
+  const neverCertified = () => ({ certified: false, reason: "never_certified" });
+
+  // S2 of the review: one "never certified" answer is not a proof; nothing is paid and the object stays leased.
+  const s2 = await scenario({ env: on, answer: neverCertified });
+  assert.equal(s2.paid.length, 0);
+  assert.ok(s2.error);
+  assert.equal(s2.store.getPayout("task_f2").status, "submit_unknown");
+  assert.equal(s2.store.leaseObject({ payoutId: "task_next", minAtoms: 1n }), null);
+
+  // With the fallback switch unset, even a proved cancel pays nothing by another lane.
+  const cancelled = (lockId, version = 4, kind = "cancelled_fence") => ({
+    certified: false,
+    reason: "never_certified",
+    cancellation: { kind, lockId, recoveredObject: { objectId: OBJ, version, valueAtoms: "100000000" } },
+  });
+  const defaultOff = await scenario({ env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" }, answer: (l) => cancelled(l) });
+  assert.equal(defaultOff.paid.length, 0);
+
+  // A cancel for another lock, at the same version, or not accepted by the verifier is not a proof.
+  assert.equal((await scenario({ env: on, answer: () => cancelled("cd".repeat(48)) })).paid.length, 0);
+  assert.equal((await scenario({ env: on, answer: (l) => cancelled(l, 3) })).paid.length, 0);
+  assert.equal((await scenario({ env: on, answer: (l) => cancelled(l), verifyFastPayLockCancellation: async () => false })).paid.length, 0);
+
+  // A proved cancel (fence or recovery certificate): one payment, and the object returns at its post-cancel version.
+  for (const kind of ["cancelled_fence", "recovery_certificate"]) {
+    const proved = await scenario({ env: on, answer: (l) => cancelled(l, 4, kind) });
+    assert.equal(proved.error, null);
+    assert.deepEqual(proved.paid, ["12000000"]);
+    assert.equal(proved.result.lane, "consensus_pft");
+    assert.equal(proved.result.verified, true);
+    const back = proved.store.pool.get(OBJ);
+    assert.equal(back.leasedBy, null);
+    assert.equal(back.version, 4);
+  }
+});
+
+// Review of PR 450, finding 1: the driver builds, hashes, prices and signs the chain's OwnedTransferOrderV3.
+// The vector was printed by Rust (Train A 1d41d5bf4), not by this JavaScript.
+test("finding 1: the order matches the chain's OwnedTransferOrderV3 signing bytes, digest, lock id, fee and owner signature", async () => {
+  const fp = await import("./fastpay-payout.js");
+  const { readFileSync } = await import("node:fs");
+  const vector = JSON.parse(readFileSync(new URL("./fixtures/fastpay-owned-transfer-v3-vector.json", import.meta.url), "utf8"));
+  const order = vector.order_json;
+
+  const preimage = fp.fastpayTransferLockPreimageV1(order);
+  assert.equal(preimage.length, vector.lock_preimage_len);
+  assert.equal(fp.fastpayTransferLockIdV1(order), vector.lock_id);
+  const signing = fp.ownedTransferV3SigningBytes(order);
+  assert.equal(signing.length, vector.signing_bytes_len);
+  assert.equal(signing.subarray(0, 200).toString("hex"), vector.signing_bytes_head_hex);
+  assert.equal(signing.subarray(signing.length - 200).toString("hex"), vector.signing_bytes_tail_hex);
+  assert.equal(fp.fastpayTransferOrderDigestV3(order), vector.order_digest);
+  assert.equal(computeFastPayOrderHash(order), vector.order_digest);
+  assert.equal(
+    fastpayMinimumFeeAtoms({ weightBytes: signing.length, inputsConsumed: 1, outputsCreated: 2 }),
+    BigInt(vector.minimum_fee_atoms)
+  );
+
+  // The Task Node's ML-DSA wallet code derives the same owner key and accepts Rust's owner signature.
+  const owner = generateMlDsa65Keypair(Buffer.from(vector.owner_seed_hex, "hex"));
+  assert.equal(owner.publicKeyHex, vector.owner_pubkey_hex);
+  const rustSigned = { order, owner_pubkey_hex: vector.owner_pubkey_hex, owner_signature_hex: vector.owner_signature_hex };
+  assert.equal(fp.verifyOwnedTransferV3Signature(rustSigned), true);
+  assert.equal(fp.verifyOwnedTransferV3Signature({ ...rustSigned, order: { ...order, fee: order.fee + 1 } }), false);
+  const signed = fp.signOwnedTransferOrderV3(order, owner);
+  assert.equal(fp.verifyOwnedTransferV3Signature(signed), true);
+  assert.deepEqual(Object.keys(signed), ["order", "owner_pubkey_hex", "owner_signature_hex"]);
+
+  // The driver submits exactly this shape, with order_hash as the chain computes it and the fee on the real length.
+  const recip = generateMlDsa65Keypair(seed32("f1-recipient"));
+  const kem = generateXWingKeypair(seed32("f1-kem"));
+  const store = new InMemoryFastPayPayoutStore([{ objectId: "aa".repeat(32), valueAtoms: 100_000_000n, version: 3, nonce: 0 }]);
+  let sent = null;
+  const driver = createFastPayPayoutDriver({
+    store,
+    payoutSigner: owner,
+    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" },
+    fastpayDomain: order.domain,
+    fastpayRecoveryWindow: async () => ({ committee_epoch: 2, valid_from_height: 1900, expires_at_height: 2000, recovery_closes_at_height: 2100 }),
+    verifyFastPayCertificate: async () => true,
+    submitFastPayOrder: async (x) => {
+      sent = x;
+      return { certificateDigest: "c".repeat(96) };
+    },
+  });
+  const paid = await driver.executePayout({
+    payoutId: "task_f1",
+    recipientAccount: recip.account,
+    recipientPubkeyHex: recip.publicKeyHex,
+    recipientXWingPublicKey: kem.publicKey,
+    amountAtoms: "12000000",
+  });
+  const chainOrder = sent.signedOrder.order;
+  assert.deepEqual(Object.keys(chainOrder), ["domain", "recovery", "inputs", "outputs", "fee", "nonce", "memos"]);
+  assert.deepEqual(chainOrder.inputs, [{ id: "aa".repeat(32), version: 3 }]);
+  assert.equal(chainOrder.outputs[0].owner_pubkey_hex, recip.publicKeyHex);
+  assert.ok(chainOrder.outputs.every((out) => out.asset === "PFT" && !("owner_account" in out)));
+  assert.equal(chainOrder.recovery.lock_id, fp.fastpayTransferLockIdV1(chainOrder));
+  assert.equal(sent.orderHash, fp.fastpayTransferOrderDigestV3(chainOrder));
+  assert.equal(paid.orderHash, sent.orderHash);
+  assert.equal(store.getPayout("task_f1").lockId, chainOrder.recovery.lock_id);
+  const len = fp.ownedTransferV3SigningBytes(chainOrder).length;
+  assert.equal(BigInt(chainOrder.fee), fastpayMinimumFeeAtoms({ weightBytes: len, inputsConsumed: 1, outputsCreated: chainOrder.outputs.length }));
+  assert.equal(BigInt(chainOrder.outputs[0].value + chainOrder.outputs[1].value + chainOrder.fee), 100_000_000n);
+  assert.equal(fp.verifyOwnedTransferV3Signature(sent.signedOrder), true);
+
+  // No owner signature, no submission.
+  const unsigned = createFastPayPayoutDriver({
+    store: new InMemoryFastPayPayoutStore([{ objectId: "aa".repeat(32), valueAtoms: 100_000_000n, version: 3, nonce: 0 }]),
+    payoutSigner: owner,
+    env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" },
+    fastpayDomain: order.domain,
+    fastpayRecoveryWindow: async () => ({ committee_epoch: 2, valid_from_height: 1900, expires_at_height: 2000, recovery_closes_at_height: 2100 }),
+    signOwnedTransferOrder: async (o) => ({ order: o, owner_pubkey_hex: owner.publicKeyHex, owner_signature_hex: "" }),
+    submitFastPayOrder: async () => {
+      throw new Error("must_not_submit_unsigned");
+    },
+  });
+  await assert.rejects(
+    () => unsigned.executePayout({ payoutId: "task_f1u", recipientAccount: recip.account, recipientPubkeyHex: recip.publicKeyHex, recipientXWingPublicKey: kem.publicKey, amountAtoms: "12000000" }),
+    /fastpay_owner_signature_invalid/
+  );
+});
+
+// Review of PR 450, finding 5: a failure before anything is sent is retryable, not "submit unknown".
+test("finding 5: errors raised before sending carry submissionAttempted:false, and the order hash is reported before sending", async () => {
+  const { submissionDefinitelyNotAttempted } = await import("../task-review-core.js");
+  const signer = generateMlDsa65Keypair(seed32("f5-payout"));
+  const recip = generateMlDsa65Keypair(seed32("f5-recipient"));
+  const kem = generateXWingKeypair(seed32("f5-kem"));
+  const env = { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" };
+  const base = { payoutId: "task_f5", recipientAccount: recip.account, recipientPubkeyHex: recip.publicKeyHex, recipientXWingPublicKey: kem.publicKey, amountAtoms: "12000000" };
+  const make = (objects, extra = {}) =>
+    createFastPayPayoutDriver({ ...chainConfig(), store: new InMemoryFastPayPayoutStore(objects), payoutSigner: signer, env, verifyFastPayCertificate: async () => true, submitFastPayOrder: async () => ({ certificateDigest: "c".repeat(96) }), ...extra });
+  const pool = [{ objectId: "aa".repeat(32), valueAtoms: 100_000_000n, version: 3, nonce: 0 }];
+  const cases = [
+    ["S5 no X-Wing key", make(pool), { ...base, recipientXWingPublicKey: undefined }],
+    ["S6 empty pool", make([]), base],
+    ["no recipient public key", make(pool), { ...base, recipientPubkeyHex: "" }],
+  ];
+  for (const [label, driver, input] of cases) {
+    const error = await driver.executePayout(input).then(() => null, (caught) => caught);
+    assert.ok(error, label);
+    assert.equal(submissionDefinitelyNotAttempted(error), true, `${label}: ${error.message}`);
+  }
+  const seen = [];
+  const driver = make(pool, {
+    submitFastPayOrder: async ({ orderHash }) => {
+      assert.deepEqual(seen.map((x) => x.orderHash), [orderHash]);
+      throw new Error("timeout");
+    },
+  });
+  const error = await driver.executePayout({ ...base, onPrepared: async (prepared) => seen.push(prepared) }).then(() => null, (caught) => caught);
+  assert.equal(submissionDefinitelyNotAttempted(error), false);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].lockId.length, 96);
+});
+
+// Second-reader fix: recovery.lock_id is 96 hex chars once populated, so buildOrder() must
+// price signing bytes with a 96-char placeholder to avoid 1-atom under-calculation near 512B boundaries.
+test("fee pricing accounts for the 96-byte recovery.lock_id across 512-byte fee boundaries", async () => {
+  const fp = await import("./fastpay-payout.js");
+  const owner = generateMlDsa65Keypair(seed32("boundary-owner"));
+  const recip = generateMlDsa65Keypair(seed32("boundary-recip"));
+  const kem = generateXWingKeypair(seed32("boundary-kem"));
+  for (let padLen = 0; padLen < 120; padLen += 1) {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: "bb".repeat(32), valueAtoms: 100_000_000n, version: 1, nonce: 0 }]);
+    let sent = null;
+    const driver = createFastPayPayoutDriver({
+      ...chainConfig(),
+      store,
+      payoutSigner: owner,
+      env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" },
+      verifyFastPayCertificate: async () => true,
+      submitFastPayOrder: async (x) => {
+        sent = x;
+        return { certificateDigest: "d".repeat(96) };
+      },
+    });
+    await driver.executePayout({
+      payoutId: `p_${"x".repeat(padLen)}`,
+      recipientAccount: recip.account,
+      recipientPubkeyHex: recip.publicKeyHex,
+      recipientXWingPublicKey: kem.publicKey,
+      amountAtoms: "5000000",
+    });
+    const chainOrder = sent.signedOrder.order;
+    const finalLen = fp.ownedTransferV3SigningBytes(chainOrder).length;
+    const expectedMin = fastpayMinimumFeeAtoms({
+      weightBytes: finalLen,
+      inputsConsumed: chainOrder.inputs.length,
+      outputsCreated: chainOrder.outputs.length,
+    });
+    assert.ok(
+      BigInt(chainOrder.fee) >= expectedMin,
+      `padLen=${padLen} finalLen=${finalLen} mod512=${finalLen % 512} fee=${chainOrder.fee} < min=${expectedMin}`
+    );
+  }
 });

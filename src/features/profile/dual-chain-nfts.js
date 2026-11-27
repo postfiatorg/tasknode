@@ -4,6 +4,7 @@ export const CHAIN_L1V2 = "postfiatl1v2";
 export const MIGRATION_STATUS = Object.freeze({
   NOT_MIGRATED: "not_migrated",
   MIGRATED: "migrated",
+  MIGRATING: "migrating",
   RECORDED: "recorded",
   NATIVE_L1: "native_l1",
   STUDIO: "studio",
@@ -66,6 +67,7 @@ export function nftMigrationStatus(nft = {}) {
     return MIGRATION_STATUS.RECORDED;
   }
   if (explicit === MIGRATION_STATUS.MIGRATED) return MIGRATION_STATUS.MIGRATED;
+  if (explicit === MIGRATION_STATUS.MIGRATING) return MIGRATION_STATUS.MIGRATING;
   if (explicit === MIGRATION_STATUS.NATIVE_L1) return MIGRATION_STATUS.NATIVE_L1;
   if (explicit === MIGRATION_STATUS.NOT_MIGRATED) return MIGRATION_STATUS.NOT_MIGRATED;
   if (explicit === MIGRATION_STATUS.STUDIO) return MIGRATION_STATUS.STUDIO;
@@ -116,14 +118,27 @@ export function nftMigrationBadge(nft = {}) {
       isMigratedLiveNft: false,
     };
   }
-  if (status === MIGRATION_STATUS.NOT_MIGRATED) {
+  if (status === MIGRATION_STATUS.MIGRATING) {
     return {
       status,
-      label: "Not migrated",
+      label: "Migrating",
       tone: "legacy",
       chain: CHAIN_LEGACY,
       chainLabel: "Legacy chain",
-      canMigrate: true,
+      canMigrate: false,
+      isMigratedLiveNft: false,
+    };
+  }
+  if (status === MIGRATION_STATUS.NOT_MIGRATED) {
+    // No badge and no action until a migration is actually open for this NFT.
+    const available = nft.migrationAvailable === true;
+    return {
+      status,
+      label: available ? "Not migrated" : "",
+      tone: "legacy",
+      chain: CHAIN_LEGACY,
+      chainLabel: "Legacy chain",
+      canMigrate: available,
       isMigratedLiveNft: false,
     };
   }
@@ -213,6 +228,11 @@ export function mergeDualChainNftList({
       migrationsByTokenId.set(tokenId, record);
     }
   }
+  // Migrated only when both steps are final: a validated old-chain burn and a mint at a final height.
+  const migrationIsFinal = (record) =>
+    safeText(record.status, 40).toLowerCase() === "minted" &&
+    (record.burnValidated === true || record.burn_validated === true) &&
+    Number(record.mintedHeight ?? record.minted_height ?? 0) > 0;
 
   const provenanceByTokenId = new Map();
   for (const record of Array.isArray(provenanceRecords) ? provenanceRecords : []) {
@@ -253,6 +273,16 @@ export function mergeDualChainNftList({
   for (const legacyRaw of legacyList) {
     const tokenId = normalizeTokenId(legacyRaw.nftTokenId || legacyRaw.nftoken_id || legacyRaw.tokenId);
     if (tokenId && consumedLegacyTokens.has(tokenId)) continue;
+
+    if (tokenId && migrationsByTokenId.has(tokenId) && !migrationIsFinal(migrationsByTokenId.get(tokenId))) {
+      merged.push({
+        ...legacyRaw,
+        nftTokenId: tokenId,
+        chain: CHAIN_LEGACY,
+        migrationStatus: MIGRATION_STATUS.MIGRATING,
+      });
+      continue;
+    }
 
     if (tokenId && migrationsByTokenId.has(tokenId)) {
       const mig = migrationsByTokenId.get(tokenId);
@@ -316,7 +346,9 @@ export function filterDualChainNfts(nfts = [], filter = "all") {
   return list.filter((nft) => {
     const status = nftMigrationStatus(nft);
     if (filter === "l1v2") return status === MIGRATION_STATUS.MIGRATED || status === MIGRATION_STATUS.NATIVE_L1;
-    if (filter === "legacy") return status === MIGRATION_STATUS.NOT_MIGRATED || status === MIGRATION_STATUS.RECORDED;
+    if (filter === "legacy") {
+      return status === MIGRATION_STATUS.NOT_MIGRATED || status === MIGRATION_STATUS.MIGRATING || status === MIGRATION_STATUS.RECORDED;
+    }
     return status === filter;
   });
 }
@@ -342,7 +374,7 @@ export function dualChainNftCounts(nfts = []) {
     } else if (status === MIGRATION_STATUS.NATIVE_L1) {
       counts.nativeL1 += 1;
       counts.l1v2 += 1;
-    } else if (status === MIGRATION_STATUS.NOT_MIGRATED) {
+    } else if (status === MIGRATION_STATUS.NOT_MIGRATED || status === MIGRATION_STATUS.MIGRATING) {
       counts.notMigrated += 1;
       counts.legacy += 1;
     } else if (status === MIGRATION_STATUS.RECORDED) {

@@ -75,6 +75,9 @@ async function main() {
   const targetChainId = argValue("target-chain-id", allowlist.targetChainId || DEFAULT_L1_CHAIN_ID);
   const targetCollectionId = argValue("collection-id", allowlist.targetCollectionId || DEFAULT_OFFICIAL_COLLECTION_ID);
 
+  if (execute && !ledgerPath) {
+    throw new Error("execute_requires_ledger_path: a durable --ledger file is required with --execute");
+  }
   if (!dryRun) {
     throw new Error(
       "live_chain_execute_requires_injected_rpc_and_wallet_signers: pass --dry-run to preview or invoke createBurnFirstNftMigrator() with live old-chain burn + postfiatl1v2 mint transports"
@@ -85,6 +88,10 @@ async function main() {
   const migrationIssuerSigner = keypairFromSeedHexOrEnv("TASKNODE_NFT_MIGRATION_ISSUER_SEED", "dry-run-migration-issuer");
   const claimantSigner = keypairFromSeedHexOrEnv("TASKNODE_NFT_CLAIMANT_SEED", "dry-run-claimant");
   const newOwnerAccount = argValue("new-owner", claimantSigner.account);
+  // The migrator mints only to the claimant who signs the claim; refuse any other owner.
+  if (newOwnerAccount !== claimantSigner.account) {
+    throw new Error(`new_owner_must_be_claimant_account: --new-owner ${newOwnerAccount} is not the claimant ${claimantSigner.account}`);
+  }
 
   const migrator = createBurnFirstNftMigrator({
     allowlist,
@@ -94,7 +101,7 @@ async function main() {
     targetCollectionId,
     migrationIssuerSigner,
     claimantSigner,
-    newOwnerAccount: newOwnerAccount === claimantSigner.account ? newOwnerAccount : claimantSigner.account,
+    newOwnerAccount,
   });
 
   const report = await migrator.migrateBatch(null, { mode, dryRun: true });

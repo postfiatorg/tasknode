@@ -35,6 +35,19 @@ import {
   nftMigrationBadge,
 } from "./dual-chain-nfts.js";
 
+// The old chain as the migrator's look-up sees it: burns by token and claim-hash memo.
+function oldChainBurnStub() {
+  const burns = [];
+  return {
+    record(burn) {
+      burns.push(burn);
+      return burn;
+    },
+    find: async ({ nftokenId, claimHashHex }) =>
+      burns.find((burn) => burn.nftokenId === nftokenId && burn.claimHashHex === claimHashHex) || null,
+  };
+}
+
 function seed32(label) {
   return createHash("sha256").update(label, "utf8").digest();
 }
@@ -170,6 +183,7 @@ test("Burn-first batch migrator enforces official policy, burns before minting, 
     let mintCalls = 0;
 
     const ledgerStore = new FileMigrationLedgerStore(ledgerPath);
+    const oldChain = oldChainBurnStub();
     const migrator = createBurnFirstNftMigrator({
       allowlist: frozen.allowlist,
       allowlistCid: frozen.allowlistCid,
@@ -184,15 +198,16 @@ test("Burn-first batch migrator enforces official policy, burns before minting, 
       burnOldChainNft: async ({ nftokenId, oldOwner, claimHashHex }) => {
         burnCalls += 1;
         steps.push(`burn:${nftokenId}`);
-        return {
+        return oldChain.record({
           txHash: `BURN_${nftokenId.slice(-8)}`,
           account: oldOwner,
           nftokenId,
           claimHashHex,
           ledgerIndex: 1250000 + burnCalls,
           validated: true,
-        };
+        });
       },
+      findOldChainBurn: oldChain.find,
       verifyOldChainBurn: async ({ txHash, nftokenId, expectedOldOwner, expectedClaimHashHex }) => {
         steps.push(`verify_burn:${nftokenId}`);
         return {
@@ -232,7 +247,7 @@ test("Burn-first batch migrator enforces official policy, burns before minting, 
         assert.ok(decodedMeta.origin.burnTx.startsWith("BURN_"));
         assert.ok(decodedMeta.origin.claimCid?.multibaseCid);
 
-        mintedOnChain.set(payload.nft_id, { ...payload, burned: false, mintedHeight: 5000 + mintCalls });
+        mintedOnChain.set(payload.nft_id, { ...payload, burned: false, final: true, mintedHeight: 5000 + mintCalls });
         return { txHash: `L1_MINT_${mintCalls}`, blockHeight: 5000 + mintCalls };
       },
     });
@@ -324,6 +339,13 @@ test("Partial-failure resume recovers cleanly after burn without re-burning and 
 
     // Run 1: TOKEN_1 succeeds; TOKEN_2 burns cleanly then crashes during L1 mint!
     const ledger1 = new FileMigrationLedgerStore(ledgerPath);
+    const oldChain = oldChainBurnStub();
+    const l1Chain = new Map();
+    const l1Mint = (payload, n) => {
+      l1Chain.set(payload.nft_id, { ...payload, final: true, height: 8000 + n });
+      return { txHash: `MINT_${n}`, blockHeight: 8000 + n };
+    };
+    const queryL1NftInfo = async (nftId) => l1Chain.get(nftId) || null;
     const migrator1 = createBurnFirstNftMigrator({
       allowlist: frozen.allowlist,
       ledgerStore: ledger1,
@@ -332,12 +354,14 @@ test("Partial-failure resume recovers cleanly after burn without re-burning and 
       pinRawBlock: async () => {},
       burnOldChainNft: async ({ nftokenId, oldOwner, claimHashHex }) => {
         burnCountByToken[nftokenId] += 1;
-        return { txHash: `BURN_${nftokenId.slice(-4)}`, account: oldOwner, nftokenId, claimHashHex, ledgerIndex: 1200001, validated: true };
+        return oldChain.record({ txHash: `BURN_${nftokenId.slice(-4)}`, account: oldOwner, nftokenId, claimHashHex, ledgerIndex: 1200001, validated: true });
       },
-      mintL1Nft: async () => {
+      findOldChainBurn: oldChain.find,
+      queryL1NftInfo,
+      mintL1Nft: async (payload) => {
         mintAttempts += 1;
         if (mintAttempts === 2) throw new Error("l1_rpc_transient_outage");
-        return { txHash: `MINT_${mintAttempts}`, blockHeight: 8000 + mintAttempts };
+        return l1Mint(payload, mintAttempts);
       },
     });
 
@@ -361,9 +385,11 @@ test("Partial-failure resume recovers cleanly after burn without re-burning and 
         burnCountByToken[nftokenId] += 1;
         throw new Error("must_not_reburn_already_burned_nft");
       },
-      mintL1Nft: async () => {
+      findOldChainBurn: oldChain.find,
+      queryL1NftInfo,
+      mintL1Nft: async (payload) => {
         mintAttempts += 1;
-        return { txHash: `MINT_${mintAttempts}`, blockHeight: 8000 + mintAttempts };
+        return l1Mint(payload, mintAttempts);
       },
     });
 
@@ -377,20 +403,24 @@ test("Partial-failure resume recovers cleanly after burn without re-burning and 
     // Adversarial: forged burn_tx.account != old_owner is rejected before mint!
     const forgedLedger = new FileMigrationLedgerStore("");
     let forgedMintCalls = 0;
+    const forgedChain = oldChainBurnStub();
     const forgedMigrator = createBurnFirstNftMigrator({
       allowlist: frozen.allowlist,
       ledgerStore: forgedLedger,
       migrationIssuerSigner: migrationIssuer,
       claimantSigner: founder,
       pinRawBlock: async () => {},
-      burnOldChainNft: async ({ nftokenId, claimHashHex }) => ({
-        txHash: "FORGED_BURN",
-        account: "rAttackerWalletNotOwner",
-        nftokenId,
-        claimHashHex,
-        ledgerIndex: 1200010,
-        validated: true,
-      }),
+      burnOldChainNft: async ({ nftokenId, claimHashHex }) =>
+        forgedChain.record({
+          txHash: "FORGED_BURN",
+          account: "rAttackerWalletNotOwner",
+          nftokenId,
+          claimHashHex,
+          ledgerIndex: 1200010,
+          validated: true,
+        }),
+      findOldChainBurn: forgedChain.find,
+      queryL1NftInfo: async () => null,
       mintL1Nft: async () => {
         forgedMintCalls += 1;
         return { txHash: "NEVER" };
@@ -509,10 +539,12 @@ test("Dual-chain NFT read model merges legacy + postfiatl1v2 NFTs cleanly with b
   assert.equal(nftMigrationBadge(recordedCard).label, "Recorded");
   assert.equal(nftMigrationBadge(recordedCard).isMigratedLiveNft, false);
 
-  // Unmigrated legacy NFT shows "Not migrated" with canMigrate = true
+  // Unmigrated legacy NFT shows no badge until a migration is open for it (review finding 15)
   const legacyCard = view.allNfts.find((n) => n.nftTokenId === TOKEN_UNMATCHED);
-  assert.equal(nftMigrationBadge(legacyCard).label, "Not migrated");
-  assert.equal(nftMigrationBadge(legacyCard).canMigrate, true);
+  assert.equal(nftMigrationBadge(legacyCard).label, "");
+  assert.equal(nftMigrationBadge(legacyCard).canMigrate, false);
+  assert.equal(nftMigrationBadge({ ...legacyCard, migrationAvailable: true }).label, "Not migrated");
+  assert.equal(nftMigrationBadge({ ...legacyCard, migrationAvailable: true }).canMigrate, true);
 
   // Chain filter returns exact subsets
   const l1Only = buildDualChainProfileNftsView({
@@ -521,4 +553,215 @@ test("Dual-chain NFT read model merges legacy + postfiatl1v2 NFTs cleanly with b
     filter: "l1v2",
   });
   assert.equal(l1Only.nfts.length, 2);
+});
+
+// Review of PR 450, findings 10 and 11: a stub old chain and a stub postfiatl1v2 for stop-and-resume scenarios.
+const STOP_TOKEN = "000800006203F49C21D5D6E022CB16DE3538F248662FC73C29ABA6A900000001";
+const STOP_OWNER = "rOldOwner11111111111111111111111";
+const stopAllowlist = { cutoffLedgerIndex: 1000, entries: [{ nftokenId: STOP_TOKEN, oldOwner: STOP_OWNER, mintLedgerIndex: 10, imageCid: "bafkreihash" }] };
+const stopIssuer = generateMlDsa65Keypair(seed32("review-issuer"));
+const stopClaimant = generateMlDsa65Keypair(seed32("review-claimant"));
+class StopProcess extends Error {}
+
+function stopWorld() {
+  return { old: new Map([[STOP_TOKEN, STOP_OWNER]]), burns: new Map(), l1: new Map(), pendingBurns: false, burnCalls: 0, mintCalls: 0 };
+}
+
+function stopMigrator(w, file, opts = {}) {
+  return createBurnFirstNftMigrator({
+    allowlist: stopAllowlist,
+    ledgerStore: new FileMigrationLedgerStore(file),
+    migrationIssuerSigner: stopIssuer,
+    claimantSigner: stopClaimant,
+    pinRawBlock: async () => ({}),
+    burnOldChainNft: async ({ nftokenId, oldOwner, claimHashHex }) => {
+      w.burnCalls += 1;
+      if (opts.checkIntent) opts.intentSeen = new FileMigrationLedgerStore(file).getItem(nftokenId)?.status;
+      if (w.old.get(nftokenId) !== oldOwner) throw new Error("tecNO_ENTRY: no such NFT for this owner");
+      w.old.delete(nftokenId);
+      const txHash = `B${w.burns.size}`.padEnd(64, "0");
+      w.burns.set(txHash, { account: oldOwner, nftokenId, claimHashHex, ledgerIndex: 1500 });
+      if (opts.stopAfterBurn) throw new StopProcess("process stopped after burn applied");
+      return { txHash, validated: !w.pendingBurns, account: oldOwner, nftokenId, claimHashHex };
+    },
+    findOldChainBurn: async ({ nftokenId, oldOwner, claimHashHex }) => {
+      if (w.pendingBurns) return null;
+      for (const [txHash, burn] of w.burns) {
+        if (burn.nftokenId === nftokenId && burn.account === oldOwner && burn.claimHashHex === claimHashHex) {
+          return { validated: true, txHash, ...burn };
+        }
+      }
+      return null;
+    },
+    verifyOldChainBurn: opts.noVerify
+      ? undefined
+      : async ({ txHash }) => {
+          const burn = w.burns.get(txHash);
+          return burn && !w.pendingBurns ? { validated: true, txHash, ...burn } : null;
+        },
+    queryL1NftInfo: async (id) => {
+      const nft = w.l1.get(id);
+      if (!nft) return null;
+      return { nft_id: id, owner: opts.wrongOwner ? "pf".padEnd(42, "0") : nft.owner, issuer: nft.issuer, metadata_hash: nft.metadata_hash, final: !opts.notFinal, height: 7 };
+    },
+    mintL1Nft: async (p) => {
+      w.mintCalls += 1;
+      if (opts.mintRefuses) return { ok: false, error: "nft_mint refused" };
+      if (w.l1.has(p.nft_id)) throw new Error("duplicate nft_id");
+      w.l1.set(p.nft_id, { ...p });
+      return { txHash: "M".padEnd(64, "0"), blockHeight: 7 };
+    },
+  });
+}
+
+test("finding 10: a stop at any burn step loses nothing, and the burner is never called twice for one NFT", async () => {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "tn-nft-stop-"));
+  try {
+    const cases = [
+      ["B stop after the burn applied, before its hash was saved", { stopAfterBurn: true }],
+      ["D no verify hook, stop after the burn applied", { stopAfterBurn: true, noVerify: true }],
+      ["D2 no verify hook, the first burn answer not yet validated", { noVerify: true, pending: true }],
+    ];
+    for (const [label, opts] of cases) {
+      const w = stopWorld();
+      const file = path.join(tmpDir, `${label[0]}${label[1]}.json`);
+      w.pendingBurns = Boolean(opts.pending);
+      const runOpts = { ...opts, checkIntent: true };
+      const first = await stopMigrator(w, file, runOpts).migrateBatch(null, {});
+      assert.equal(first.ok, false, label);
+      assert.equal(runOpts.intentSeen, "burn_intent", `${label}: burn_intent is durable before the burner runs`);
+      w.pendingBurns = false;
+      const rerun = await stopMigrator(w, file, { ...opts, stopAfterBurn: false }).migrateBatch(null, {});
+      assert.equal(rerun.ok, true, `${label}: ${rerun.results[0].error || ""}`);
+      assert.equal(w.old.has(STOP_TOKEN), false, label);
+      assert.equal(w.l1.size, 1, `${label}: minted once`);
+      assert.equal(w.burnCalls, 1, `${label}: one burn call`);
+      assert.equal(new FileMigrationLedgerStore(file).getItem(STOP_TOKEN).status, "minted", label);
+    }
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("finding 10: --execute needs a ledger path", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "tn-nft-script-"));
+  try {
+    const allowlistPath = path.join(tmpDir, "allowlist.json");
+    writeFileSync(allowlistPath, JSON.stringify(stopAllowlist));
+    const script = new URL("../../scripts/nft-burn-migrate.mjs", import.meta.url).pathname;
+    const run = spawnSync(process.execPath, [script, "--allowlist", allowlistPath, "--execute"], { encoding: "utf8" });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /execute_requires_ledger_path/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("finding 11: minted and the used-serial record are written only after the chain confirms the new NFT at a final height", async () => {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "tn-nft-mint-"));
+  try {
+    // G of the review: the mint hook resolves with a refusal.
+    const w = stopWorld();
+    const file = path.join(tmpDir, "g.json");
+    const refused = await stopMigrator(w, file, { mintRefuses: true }).migrateBatch(null, {});
+    assert.equal(refused.ok, false);
+    let ledger = new FileMigrationLedgerStore(file);
+    assert.notEqual(ledger.getItem(STOP_TOKEN).status, "minted");
+    assert.deepEqual(ledger.snapshot().used_nft_serials, {});
+    const rerun = await stopMigrator(w, file, {}).migrateBatch(null, {});
+    assert.equal(rerun.ok, true);
+    assert.equal(w.l1.size, 1);
+    ledger = new FileMigrationLedgerStore(file);
+    assert.equal(ledger.getItem(STOP_TOKEN).status, "minted");
+    assert.equal(ledger.getItem(STOP_TOKEN).mintedHeight, 7);
+    assert.equal(Object.keys(ledger.snapshot().used_nft_serials).length, 1);
+
+    // The chain answers with another owner, or not yet at a final height: fail closed.
+    for (const opts of [{ wrongOwner: true }, { notFinal: true }]) {
+      const w2 = stopWorld();
+      const file2 = path.join(tmpDir, `${Object.keys(opts)[0]}.json`);
+      const res = await stopMigrator(w2, file2, opts).migrateBatch(null, {});
+      assert.equal(res.ok, false, JSON.stringify(opts));
+      const store = new FileMigrationLedgerStore(file2);
+      assert.notEqual(store.getItem(STOP_TOKEN).status, "minted");
+      assert.deepEqual(store.snapshot().used_nft_serials, {});
+      // Once the chain shows the expected NFT at a final height, a re-run records it without a second mint.
+      const healed = await stopMigrator(w2, file2, {}).migrateBatch(null, {});
+      assert.equal(healed.ok, true, healed.results[0].error);
+      assert.equal(w2.mintCalls, 1);
+      assert.equal(new FileMigrationLedgerStore(file2).getItem(STOP_TOKEN).status, "minted");
+    }
+
+    // The info query is required: without it nothing is burned.
+    const w3 = stopWorld();
+    const noQuery = createBurnFirstNftMigrator({
+      allowlist: stopAllowlist,
+      ledgerStore: new FileMigrationLedgerStore(path.join(tmpDir, "noquery.json")),
+      migrationIssuerSigner: stopIssuer,
+      claimantSigner: stopClaimant,
+      burnOldChainNft: async () => {
+        w3.burnCalls += 1;
+        return {};
+      },
+      findOldChainBurn: async () => null,
+      mintL1Nft: async () => ({ txHash: "M" }),
+    });
+    const res3 = await noQuery.migrateBatch(null, {});
+    assert.match(res3.results[0].error, /l1_nft_info_query_required/);
+    assert.equal(w3.burnCalls, 0);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("findings 13, 14, 15: batch limit and chosen owner, Migrated only when final, no badge without an open migration", async () => {
+  const dc = await import("../../src/features/profile/dual-chain-nfts.js");
+  // 15: a legacy portrait shows no migration badge unless a migration is possible for it.
+  const legacy = dc.mergeDualChainNftList({ legacyNfts: [{ id: "n1", nftTokenId: STOP_TOKEN, status: "minted" }] });
+  assert.equal(dc.nftMigrationBadge(legacy[0]).label, "");
+  assert.equal(dc.nftMigrationBadge(legacy[0]).canMigrate, false);
+  const open = dc.nftMigrationBadge({ ...legacy[0], migrationAvailable: true });
+  assert.equal(open.label, "Not migrated");
+  assert.equal(open.canMigrate, true);
+
+  // 14: a record that only signed a claim (or minted without a final height) is Migrating, not Migrated.
+  const view = (record) =>
+    dc.mergeDualChainNftList({ legacyNfts: [{ id: "n1", nftTokenId: STOP_TOKEN, status: "minted" }], migrationRecords: [{ nftokenId: STOP_TOKEN, targetNftId: "ab".repeat(48), ...record }] })[0];
+  for (const record of [{ status: "claim_signed_and_pinned" }, { status: "old_burned", burnValidated: true }, { status: "minted", burnValidated: true, mintedHeight: 0 }]) {
+    const item = view(record);
+    assert.equal(item.migrationStatus, "migrating", record.status);
+    assert.equal(dc.nftMigrationBadge(item).label, "Migrating");
+    assert.equal(item.chain, dc.CHAIN_LEGACY);
+  }
+  const done = view({ status: "minted", burnValidated: true, mintedHeight: 7 });
+  assert.equal(done.migrationStatus, "migrated");
+  assert.equal(dc.nftMigrationBadge(done).label, "Migrated");
+
+  // 13: a batch has a size limit.
+  const capped = createBurnFirstNftMigrator({
+    allowlist: { entries: [{ nftokenId: STOP_TOKEN, oldOwner: STOP_OWNER }, { nftokenId: TOKEN_2, oldOwner: STOP_OWNER }] },
+    ledgerStore: new FileMigrationLedgerStore(""),
+    migrationIssuerSigner: stopIssuer,
+    claimantSigner: stopClaimant,
+    maxBatchSize: 1,
+  });
+  await assert.rejects(() => capped.migrateBatch(null, { dryRun: true }), /migration_batch_too_large/);
+  assert.equal((await capped.migrateBatch([STOP_TOKEN], { dryRun: true })).summary.total, 1);
+
+  // 13: the script refuses a --new-owner it cannot mint to, instead of silently using another account.
+  const { spawnSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "tn-nft-owner-"));
+  try {
+    const allowlistPath = path.join(tmpDir, "allowlist.json");
+    writeFileSync(allowlistPath, JSON.stringify(stopAllowlist));
+    const script = new URL("../../scripts/nft-burn-migrate.mjs", import.meta.url).pathname;
+    const run = spawnSync(process.execPath, [script, "--allowlist", allowlistPath, "--new-owner", `pf${"1".repeat(40)}`], { encoding: "utf8" });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /new_owner_must_be_claimant_account/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
