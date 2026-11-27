@@ -1,11 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { msUntilBoundary, provingWindowText, readinessAnswer, readinessRefusal, received, STALE_MS, waitText, windowTextAt } from "./proving-window.js";
+import { answerExpiry, expired, msUntilBoundary, provingWindowText, readinessAnswer, readinessRefusal, received, STALE_MS, waitText, windowTextAt } from "./proving-window.js";
 
 const at = (hour, minute) => ({ opens_utc: "17:00", closes_utc: "19:00", open_minute: 1020, close_minute: 1140,
   now_unix_ms: Date.UTC(2026, 10, 26, hour, minute) });
 const zagreb = { timeZone: "Europe/Zagreb" };
 const SCREENS = [["deposit", "Deposits are"], ["withdrawal", "Withdrawals are"]];
+
+test("an answer's authority ends when either clock reaches the limit, or a clock reads earlier than at the start or not at all", () => {
+  const expiry = answerExpiry(at(18, 59), { monotonic: 1_000, wall: 5_000 }), limit = 60_000;
+  assert.deepEqual(expiry, { started: { monotonic: 1_000, wall: 5_000 }, limit });
+  assert.equal(expired(expiry, { monotonic: 1_000, wall: 5_000 }), false);
+  assert.equal(expired(expiry, { monotonic: 1_000 + limit - 1, wall: 5_000 + limit - 1 }), false);
+  assert.equal(expired(expiry, { monotonic: 1_000 + limit, wall: 5_000 }), true);
+  assert.equal(expired(expiry, { monotonic: 1_000, wall: 5_000 + limit }), true);
+  assert.equal(expired(expiry, { monotonic: 1_000, wall: 4_999 }), true, "a wall clock moved back");
+  assert.equal(expired(expiry, { monotonic: 999, wall: 5_000 }), true, "a monotonic reading earlier than its start");
+  for (const bad of [NaN, undefined, Infinity]) assert.equal(expired(expiry, { monotonic: bad, wall: 5_000 }), true);
+  assert.equal(answerExpiry(undefined, { monotonic: 0, wall: 0 }), null);
+  assert.equal(expired(null, { monotonic: -1, wall: NaN }), false, "no window: never expires");
+});
 
 test("closed outside the window: the daily hours, local hours and the time to the next opening", () => {
   for (const [kind, what] of SCREENS) {

@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Card } from "../ui.jsx";
-import EthereumWithdraw from "./EthereumWithdraw.jsx";
 import { savedBurn, solanaOffered, trackingKey } from "./solana-offer.js";
 
+// Both screens load as their own chunks, which keeps the bridge chunk within its size budget; the
+// Ethereum pane mounts (hidden) with the bridge page as before, so its reads start as soon as it loads.
+const EthereumWithdraw = lazy(() => import("./EthereumWithdraw.jsx"));
 const SolanaWithdraw = lazy(() => import("./SolanaWithdraw.jsx"));
+const checking = <p role="status">Checking availability…</p>;
 
 export default function Withdraw({ client }) {
   const key = trackingKey(client);
@@ -27,7 +30,7 @@ export default function Withdraw({ client }) {
         </label>)}
       </div>
     </Card>}
-    <div className="l1-source-pane" hidden={destination !== "Ethereum"}><EthereumWithdraw client={client} /></div>
-    {offered && visitedSolana && <div className="l1-source-pane" hidden={destination !== "Solana"}><Suspense fallback={<p role="status">Checking availability…</p>}><SolanaWithdraw client={client} storageKey={key} /></Suspense></div>}
+    <div className="l1-source-pane" hidden={destination !== "Ethereum"}><Suspense fallback={checking}><EthereumWithdraw client={client} /></Suspense></div>
+    {offered && visitedSolana && <div className="l1-source-pane" hidden={destination !== "Solana"}><Suspense fallback={checking}><SolanaWithdraw client={client} storageKey={key} /></Suspense></div>}
   </>;
 }

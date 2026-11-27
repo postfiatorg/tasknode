@@ -99,14 +99,15 @@ export class TxBuilder {
     this.#signed.set(handle, { method, params: { [field]: JSON.stringify(signed) } });
     return handle;
   }
-  async submit(handle, { timeoutMs = 30000, pollMs = 1000, onTxId } = {}) {
+  // guard (optional): see RpcClient.call; a refused guard means the transaction was never sent.
+  async submit(handle, { timeoutMs = 30000, pollMs = 1000, onTxId, guard } = {}) {
     this.assertCurrent();
     const signed = this.#signed.get(handle);
     if (!signed) throw new Error('Signed transaction is stale or already submitted');
     this.#signed.delete(handle); // Never replay automatically after transport uncertainty.
     // Allow finality plus bounded read-only recovery after a proxy error. This
     // handle has already been consumed; neither layer retries the submission.
-    const result = rpcResult(await this.rpc.call(signed.method, signed.params, 180000));
+    const result = rpcResult(await (guard ? this.rpc.call(signed.method, signed.params, 180000, guard) : this.rpc.call(signed.method, signed.params, 180000)));
     const txId = result?.tx_id;
     if (typeof txId !== 'string' || !txId) throw new Error('Submission returned no transaction id; check activity before retrying');
     onTxId?.(txId); // Let the caller keep the id before the receipt wait, which can time out.
