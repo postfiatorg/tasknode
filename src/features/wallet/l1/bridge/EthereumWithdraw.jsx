@@ -4,12 +4,22 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { monotonicNow, msUntilBoundary, readinessAnswer, readinessOrder, readinessRefusal, STALE_MS, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
 // Thrown by a Review that a newer answer or operation superseded: it stops without a message.
 const OBSOLETE = Error("superseded");
+// Said when a Review or Confirm read twice and each read was superseded by a newer answer.
+const CHANGED = "Withdrawal availability changed while it was checked. Review the withdrawal again.";
+// Whether a Review's answer, advanced by the time since it arrived, has passed the window's next
+// boundary or gone stale: Confirm then reads readiness again instead of trusting it.
+function outdated(approved) {
+  const boundary = msUntilBoundary(approved.window);
+  if (boundary === null || !Number.isFinite(approved.at)) return false;
+  const age = monotonicNow() - approved.at;
+  return age >= boundary || age >= STALE_MS;
+}
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
 const STAGES = { queued: "Waiting to start", reading: "Reading your burn from the network", catching_up: "Bringing the Ethereum checker up to date", proving: "Building the withdrawal proof", paying: "Sending USDC on Ethereum", paid: "USDC paid", failed: "Stopped" };
@@ -79,51 +89,76 @@ export default function EthereumWithdraw({ client }) {
   const to = recipient.trim().toLowerCase();
   const validTo = /^0x[0-9a-f]{40}$/.test(to);
   const tooMuch = atoms && held !== null && atoms > held;
+  // One readiness read of a Review or Confirm, as a new operation (op.made). Once this screen has
+  // applied a window, its answer, also a refusal, replaces the stored one through the same ordering;
+  // an answer older than one already applied is not written and comes back as OBSOLETE. A screen
+  // that never had a window keeps its earlier readiness.
+  async function operationRead(op) {
+    op.made = order.current.begin(); op.carries = false;
+    try {
+      const fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
+      op.carries = Boolean(fresh.proving_window); op.at = monotonicNow();
+      return (order.current.seen || op.carries) && !store(op.made, op.carries, () => readinessAnswer(fresh), Boolean(fresh.ready)) ? OBSOLETE : fresh;
+    } catch (failure) {
+      op.carries = Boolean(failure.payload?.proving_window);
+      if ((order.current.seen || op.carries) && !store(op.made, op.carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous), false)) return OBSOLETE;
+      throw failure;
+    }
+  }
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
-    // Once this screen has applied a window, a fresh readiness answer, also a refusal, replaces the
-    // stored one through the same ordering, and the operation goes on after each await only while it
-    // is current (order.current). A screen that never had a window keeps its earlier readiness.
-    const made = order.current.begin();
-    let carries = false;
-    const still = () => order.current.current(made, carries);
+    // The operation goes on after each await only while it is current (order.current).
+    const op = { made: 0, carries: false };
+    const still = () => order.current.current(op.made, op.carries);
     try {
-      let fresh;
-      try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
-      catch (failure) {
-        carries = Boolean(failure.payload?.proving_window);
-        if ((order.current.seen || carries) && !store(made, carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous), false)) throw OBSOLETE;
-        throw failure;
-      }
-      carries = Boolean(fresh.proving_window);
-      if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh), Boolean(fresh.ready))) throw OBSOLETE;
+      let fresh = await operationRead(op);
+      // Only a newer open answer superseded the read: read once more instead of dropping the Review.
+      if (fresh === OBSOLETE && still()) fresh = await operationRead(op);
       if (!still()) throw OBSOLETE;
+      if (fresh === OBSOLETE) throw new Error(CHANGED);
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
       const quote = await client.quote(intent);
       if (!still()) throw OBSOLETE;
-      setReview({ intent, quote, atoms, to, made, carries });
+      setReview({ intent, quote, atoms, to, made: op.made, carries: op.carries, window: fresh.proving_window, at: op.at });
     } catch (failure) { if (failure !== OBSOLETE && still()) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   async function confirm() {
     if (!review || busy) return;
     // Confirm goes on with the Review's operation: it stops quietly once that is no longer current.
     const approved = review; setReview(null);
-    const still = () => order.current.current(approved.made, approved.carries);
+    const op = { made: approved.made, carries: approved.carries };
+    const still = () => order.current.current(op.made, op.carries);
     if (!still()) return;
     setBusy(true); setError("");
+    // Once a window is involved, the transport asks this operation once more, after its connection is
+    // established and just before the burn leaves; without one the burn counts as sent from here, as before.
+    const guarded = order.current.seen || op.carries;
     let sent = false;
     try {
+      // The Review's answer is not trusted past the window's next boundary or once stale: read again.
+      if (guarded && outdated(approved)) {
+        const fresh = await operationRead(op);
+        if (!still()) return;
+        if (fresh === OBSOLETE) throw new Error(CHANGED);
+        if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
+        const { operation } = approved.intent;
+        if (["issuer", "asset_id", "bucket_id", "epoch", "reserve_packet_hash"].some(field => fresh[field] !== operation[field])
+            || operation.destination_ref !== `${fresh.destination_prefix}${approved.to}` || approved.atoms > BigInt(fresh.bucket_outstanding_atoms)) {
+          throw new Error("The reserve changed. Review the withdrawal again.");
+        }
+      }
       const signed = await client.sign(approved.intent, approved.quote);
       if (!still()) return;  // signed, never sent
-      sent = true;
-      const result = await client.submit(signed);
+      const guard = guarded ? () => (sent = still()) : undefined;
+      sent = !guard;
+      const result = await (guard ? client.submit(signed, { guard }) : client.submit(signed));
       try { localStorage.setItem(key(client), result.txId); } catch { /* tracking still works this session */ }
       setJob(null); setBurn(result.txId); setAmount("");
       await bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: result.txId }) });
       void refresh();
-    } catch (failure) { if (sent || still()) setError(plainError(failure.message)); } finally { setBusy(false); }
+    } catch (failure) { if (sent || (failure.code !== "l1_not_dispatched" && still())) setError(plainError(failure.message)); } finally { setBusy(false); }
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
