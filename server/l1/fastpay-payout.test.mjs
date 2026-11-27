@@ -861,3 +861,45 @@ test("finding 5: errors raised before sending carry submissionAttempted:false, a
   assert.equal(seen.length, 1);
   assert.equal(seen[0].lockId.length, 96);
 });
+
+// Second-reader fix: recovery.lock_id is 96 hex chars once populated, so buildOrder() must
+// price signing bytes with a 96-char placeholder to avoid 1-atom under-calculation near 512B boundaries.
+test("fee pricing accounts for the 96-byte recovery.lock_id across 512-byte fee boundaries", async () => {
+  const fp = await import("./fastpay-payout.js");
+  const owner = generateMlDsa65Keypair(seed32("boundary-owner"));
+  const recip = generateMlDsa65Keypair(seed32("boundary-recip"));
+  const kem = generateXWingKeypair(seed32("boundary-kem"));
+  for (let padLen = 0; padLen < 120; padLen += 1) {
+    const store = new InMemoryFastPayPayoutStore([{ objectId: "bb".repeat(32), valueAtoms: 100_000_000n, version: 1, nonce: 0 }]);
+    let sent = null;
+    const driver = createFastPayPayoutDriver({
+      ...chainConfig(),
+      store,
+      payoutSigner: owner,
+      env: { TASKNODE_FASTPAY_PAYOUTS_ENABLED: "1" },
+      verifyFastPayCertificate: async () => true,
+      submitFastPayOrder: async (x) => {
+        sent = x;
+        return { certificateDigest: "d".repeat(96) };
+      },
+    });
+    await driver.executePayout({
+      payoutId: `p_${"x".repeat(padLen)}`,
+      recipientAccount: recip.account,
+      recipientPubkeyHex: recip.publicKeyHex,
+      recipientXWingPublicKey: kem.publicKey,
+      amountAtoms: "5000000",
+    });
+    const chainOrder = sent.signedOrder.order;
+    const finalLen = fp.ownedTransferV3SigningBytes(chainOrder).length;
+    const expectedMin = fastpayMinimumFeeAtoms({
+      weightBytes: finalLen,
+      inputsConsumed: chainOrder.inputs.length,
+      outputsCreated: chainOrder.outputs.length,
+    });
+    assert.ok(
+      BigInt(chainOrder.fee) >= expectedMin,
+      `padLen=${padLen} finalLen=${finalLen} mod512=${finalLen % 512} fee=${chainOrder.fee} < min=${expectedMin}`
+    );
+  }
+});

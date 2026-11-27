@@ -532,7 +532,8 @@ export function createFastPayPayoutDriver({
         const recoveryBase = {
           schema: FASTPAY_ORDER_RECOVERY_SCHEMA_V1,
           committee_epoch: Number(window?.committee_epoch || 0),
-          lock_id: "",
+          // Fixed 96-hex SHA3-384 placeholder so buildOrder() prices the real final signing-byte length.
+          lock_id: "00".repeat(48),
           valid_from_height: Number(window?.valid_from_height || 0),
           expires_at_height: Number(window?.expires_at_height || 0),
           recovery_closes_at_height: Number(window?.recovery_closes_at_height || 0),
