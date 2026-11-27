@@ -372,3 +372,27 @@ for (const name of ["SolanaWithdraw", "EthereumWithdraw"]) {
     assert.deepEqual(now, await run(baseline(name)));
   });
 }
+
+// The one intended difference from b24a7c1 without a window, for every user: a tab no longer
+// overwrites or clears a withdrawal record another tab saved.
+test("SolanaWithdraw without a window, intended difference from b24a7c1: a burn id another tab saves during the receipt wait is kept", async () => {
+  const run = (source) => tab("SolanaWithdraw", { source, answer: READY }, async (t) => {
+    await reviewed(t);
+    t.ctl.hold = "receipt"; const work = t.confirm(); await settle();
+    t.otherTab(OTHER);
+    t.ctl.release(); await work; await settle();
+    return { stored: t.slot.get("fixture"), notice: t.text().includes(`Another tab saved a different withdrawal here. Copy this burn ID to track its payout: ${TX}`) };
+  });
+  assert.deepEqual(await run(baseline("SolanaWithdraw")), { stored: TX, notice: false }, "b24a7c1 overwrote the other tab's id with its own");
+  assert.deepEqual(await run(), { stored: OTHER, notice: true }, "the branch keeps it and shows this burn id");
+});
+test("SolanaWithdraw without a window, intended difference from b24a7c1: \"I verified that no burn was accepted\" keeps a burn id another tab saved since", async () => {
+  const run = (source) => tab("SolanaWithdraw", { source, answer: READY, saved: "submitting" }, async (t) => {
+    await t.mount();
+    t.otherTab(OTHER, false);
+    await button(t.page(), "I verified that no burn was accepted").props.onClick(); await settle();
+    return { stored: t.slot.get("fixture") ?? null, tracking: t.text().includes(`tracking ${OTHER}`) };
+  });
+  assert.deepEqual(await run(baseline("SolanaWithdraw")), { stored: null, tracking: false }, "b24a7c1 cleared the other tab's id");
+  assert.deepEqual(await run(), { stored: OTHER, tracking: true }, "the branch keeps it and tracks it");
+});
