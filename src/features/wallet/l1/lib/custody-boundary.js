@@ -29,6 +29,8 @@ const PRIVATE_KEY_PATTERNS = Object.freeze([
   /(^|_)spend_authorization_key$/,
   /(^|_)spend_key$/,
   /(^|_)spending_key$/,
+  /(^|_)viewing_key$/,
+  /(^|_)witness$/,
 ]);
 
 const registeredSecretValues = new Set();
