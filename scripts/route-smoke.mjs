@@ -18,7 +18,7 @@ const routes = [
   { hash: "#wallet", labels: ["Available balance", "PFT", "Activity"] },
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
-  { hash: "#hive", labels: ["Hive", "Active projects", "Routing feed", "Allotted operators", "Hive Context"] },
+  { hash: "#hive", labels: ["Hive", "Active projects", "Wanted", "Shipped", "Allotted operators", "Hive Context"] },
   { hash: "#directory", labels: ["Directory", "Leaderboard", "operators"] },
   { hash: "#profile", labels: ["Daily airdrop", "Profile picture", "PFT earned"] },
   { hash: "#memory", labels: ["Memory"] },

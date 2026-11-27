@@ -35,6 +35,9 @@ test("allocation status actually calls its reader after discovering existing tab
 
 test("secretary uses the hourly scan even when an unchanged memo is months old", async (t) => {
   delete process.env.TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS;
+  // The memo worker is off by default since 2026-11-25; this covers it when enabled.
+  process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED = "true";
+  t.after(() => { delete process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED; });
   t.mock.method(pg.Pool.prototype, "query", async (sql) => {
     if (sql.includes("FROM board_manager_leases")) return { rows: [lease] };
     if (sql.includes("SELECT id, project_id")) return { rows: [{ id: "memo", project_id: "board", generated_at: "2026-07-24T00:00:00Z" }] };

@@ -86,7 +86,7 @@ export function trackRecurringBlockers(previous = {}, round) {
   for (const duty of round?.duties_json || []) {
     const result = round.results_json?.[duty.id];
     if (!result || result.outcome === "completed") continue;
-    // Routing is an invitation: declining it is never a blocker.
+    // Only progress duties (reviews, verifications, chat escalations) can stall.
     if (!PROGRESS_DUTY_TYPES.has(duty.type)) continue;
     const key = blockerKey(duty);
     const prior = previous?.[key];
@@ -170,6 +170,16 @@ export async function superviseOnce() {
       const openFile = path.join(stateDir, `${agent.alias}.roundopen.json`);
       const lastOpen = read(openFile);
       const holdOff = lastOpen && ["backoff", "quiet"].includes(lastOpen.state) && Date.now() - Date.parse(lastOpen.at) < ROUND_OPEN_HOLDOFF_MS;
+      if (!holdOff) {
+        // Wanted items reserved for a preferred owner are routed by the server,
+        // one per call, before the manager's round (operator decision 2026-11-25).
+        try {
+          const preferred = await remote(["route-preferred", ...agent.boards]);
+          if (preferred?.routed) log({ alias: agent.alias, event: "wanted_preferred_routed", ...preferred.routed });
+        } catch (error) {
+          log({ alias: agent.alias, event: "wanted_preferred_route_failed", error: String(error?.message || error).slice(0, 300) });
+        }
+      }
       round = holdOff ? null : await remote(["round-open", ...agent.boards]);
       if (!holdOff) save(openFile, { at: new Date().toISOString(), state: round?.state || "" });
       pending = round?.id && round.state === "pending" ? { id: round.id, attempts: 0 } : null;

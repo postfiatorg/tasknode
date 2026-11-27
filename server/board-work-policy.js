@@ -1,22 +1,18 @@
-// What the board manager may pay for (operator scope, 2026-11-15).
+// What the board manager may pay for (operator decisions 2026-11-15 and
+// 2026-11-25). One table answers three questions: which boards take new work,
+// which kinds of work each board takes, and what proof a payment needs. Every
+// task also has to come from an open item on the board's Wanted list.
 //
-// One table answers three questions that used to live in separate places:
-// which boards take new work, which kinds of work each board takes, and what
-// proof a payment needs. Work that is not listed here is not routed.
+//   Layer 1           L1 code changes, L1 code reviews, new validators running.
+//   Task Node         Task Node code changes; reproduced bugs that end in a fix.
+//   Corbanu Terminal  Corbanu Terminal code changes and reproduced bugs.
+//   Trading           actionable trading information; spreading goodalexander
+//                     trade ideas and research.
+//   Media             explaining and promoting Post Fiat, hype content,
+//                     community; bug reports on public surfaces.
 //
-//   Community & Promotion  education and onboarding posts about Post Fiat,
-//                          Task Node and Discord; amplification of
-//                          goodalexander content; community events.
-//   PostfiatL1V2           merged code changes and code reviews of the L1.
-//   Task Node Fixes        merged Task Node pull requests; reproduced bug
-//                          reports on Task Node.
-//   (Community & Promotion also takes reproduced bug reports on the Post Fiat
-//   website and blog, the goodalexander site and other public surfaces.)
-//   Capital Markets        actionable alpha and amplification of existing
-//                          goodalexander research. High bar, no busywork.
-//
-// PF Terminal and AI Layer 1 Governance are closed to new tasks. Work already
-// offered or accepted there is still reviewed and paid under its own terms.
+// AI Layer 1 Governance is closed to new tasks; its in-flight work is still
+// reviewed and paid under its own terms. Board ids predate the names.
 
 const CODE_CHANGE = ["code_task", "core_repo_work", "private_repo_code", "capability_gating_task"];
 const POSTS = ["amplification", "amplification_x", "public_announcement", "article_distribution", "medium_article"];
@@ -28,23 +24,28 @@ const POSTS = ["amplification", "amplification_x", "public_announcement", "artic
 const REVIEWS = ["code_review", "expert_review"];
 // Bug reports on public surfaces: a reproduced defect filed as a public issue.
 const QA = ["qa_report", "product_qa", "repro_packet"];
+// A new validator, paid when it is running and listed on the network.
+const VALIDATORS = ["validator_setup"];
 
 export const BOARD_WORK_POLICY = Object.freeze({
   board_community_promotion: { open: true, workTypes: [...POSTS, ...QA] },
-  board_postfiat_l1v2: { open: true, workTypes: [...CODE_CHANGE, ...REVIEWS] },
+  board_postfiat_l1v2: { open: true, workTypes: [...CODE_CHANGE, ...REVIEWS, ...VALIDATORS] },
   board_tasknode_fixes: { open: true, workTypes: [...CODE_CHANGE, ...QA] },
   board_capital_markets: { open: true, workTypes: ["domain_analysis", ...POSTS] },
-  board_pf_terminal: { open: false, workTypes: [] },
+  board_pf_terminal: { open: true, workTypes: [...CODE_CHANGE, ...QA] },
   board_ai_l1_governance: { open: false, workTypes: [] },
 });
 
 // Posts, reviews and research are paid on public proof. Everything else,
 // including every task issued before this policy, keeps the merged pull
 // request rule it was offered under.
-export const PUBLIC_PROOF_WORK_TYPES = Object.freeze(new Set([...POSTS, ...REVIEWS, "domain_analysis"]));
+export const PUBLIC_PROOF_WORK_TYPES = Object.freeze(new Set([...POSTS, ...REVIEWS, ...VALIDATORS, "domain_analysis"]));
 
+// Worded so it never trips the content policy's audit-document rule: the
+// 2026-11-15 wording ("post, review, bug report ...") did, and every post and
+// trading task failed generation until 2026-11-25.
 export const PUBLIC_PROOF_REQUIREMENT_TEXT =
-  "Payment requirement: this task pays only for public proof you produced after this task was created. Submit the link to the published post, review, bug report, event page or research note, from the account linked to your Task Node profile. A draft, a private document, a screenshot without a public link, or work that already paid another task is not evidence and will not be paid.";
+  "Payment requirement: this task pays only for public proof you produced after this task was created. Submit the public link to what you published (the post, thread, video, article, event page or validator listing) from the account linked to your Task Node profile. A draft, a private file, a screenshot without a public link, or work already paid by another task is not proof and is not paid.";
 
 function clean(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -62,8 +63,13 @@ export function boardOpenForNewWork(boardId = "") {
 
 // A bug report is paid on the public issue, on the boards that take QA today.
 // QA tasks issued earlier on other boards keep their merged pull request terms.
+// On the code boards (Task Node, Corbanu Terminal) testing pays only when it
+// ends in a merged fix (operator decision 2026-11-25); elsewhere a reproduced
+// public issue is the proof.
+const QA_ENDS_IN_PR_BOARDS = new Set(["board_tasknode_fixes", "board_pf_terminal"]);
 function qaOnOpenBoard({ boardId = "", workType = "" } = {}) {
   const policy = boardWorkPolicy(boardId);
+  if (QA_ENDS_IN_PR_BOARDS.has(String(boardId || "").trim())) return false;
   return QA.includes(clean(workType)) && Boolean(policy?.open) && policy.workTypes.includes(clean(workType));
 }
 

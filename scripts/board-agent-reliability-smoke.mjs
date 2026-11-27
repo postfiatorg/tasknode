@@ -17,7 +17,10 @@ try {
   // A board can still be restricted to named assignees; no production board is today.
   await query(`UPDATE network_projects SET metadata_json=jsonb_set(coalesce(metadata_json,'{}'::jsonb),'{routing_constraints,assignable_handles}','["goodalexander"]'::jsonb,true) WHERE id='board_tasknode_fixes'`);
   try {
-    await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",need:"Fixture task",assigneeHandle:"ineligible-fixture"}), {status:422, message: /board_routing_constraint/});
+    // Every task needs an open Wanted item (2026-11-25).
+    await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",need:"Fixture task"}), {status:422, message: /wanted_item_required/});
+    await query("INSERT INTO board_wanted_items(id,board_id,title,why,source_url,work_type) VALUES($1,'board_tasknode_fixes','Fixture need','Fixture reason.','https://example.com/need','code_task')", [`${id}_wanted`]);
+    await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",wantedId:`${id}_wanted`,need:"Fixture task",assigneeHandle:"ineligible-fixture"}), {status:422, message: /board_routing_constraint/});
   } finally {
     await query(`UPDATE network_projects SET metadata_json=metadata_json #- '{routing_constraints,assignable_handles}' WHERE id='board_tasknode_fixes'`);
   }
@@ -37,7 +40,7 @@ try {
   } }), { message: "simulated_crash_before_receipt_commit" });
   assert.equal((await query("SELECT count(*)::int n FROM bm_audit_log WHERE actor=$1", [id])).rows[0].n, 1);
   assert.equal((await query("SELECT 1 FROM board_agent_commands WHERE credential_id=$1 AND request_key='rollback'", [id])).rowCount, 0);
-  const duties = [{ type: "routing_due", board_id: board, task_id: "" }, { type: "review_due", board_id: board, task_id: "fixture_task" }];
+  const duties = [{ type: "wanted_open", board_id: board, task_id: "", wanted_id: "wanted_reliability_fixture" }, { type: "review_due", board_id: board, task_id: "fixture_task" }];
   const computeDuties = async () => ({ duties });
   const scoped = (key, dispatch) => executeBoardAgentCommand({ token, payload: { requestKey: key, argv: ["fixture", key] } }, { dispatch });
   const opened = await scoped("open-round", () => openAgentRound([board], { computeDuties }));

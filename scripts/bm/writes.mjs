@@ -102,7 +102,11 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   const normalizedDecision = ["reward", "partial_reward", "reject"].includes(decision)
     ? decision
     : "";
-  if (!normalizedDecision) throw new Error("decision must be reward|partial_reward|reject");
+  if (!normalizedDecision) {
+    throw Object.assign(new Error(
+      `review needs --decision reward|partial_reward|reject. Use: review ${taskId} --decision reward --pft <amount> --reason "<why>" --feedback "<note to contributor>"`
+    ), { status: 400 });
+  }
   await requireBoardEvidence(taskId, { review: true });
   if (normalizedDecision !== "reject") {
     // Operator policy: network tasks are paid only for a PR merged into the
@@ -212,13 +216,57 @@ async function boardRoutingConstraints(boardId) {
   return result.rows[0]?.metadata_json?.routing_constraints || {};
 }
 
+// An item with a preferred owner goes to that owner whenever they can take it:
+// a free slot and a verified badge for the work type (operator decision
+// 2026-11-25; the manager offered the founder's governance items to others).
+// Open items naming this account as preferred owner (any board).
+async function openPreferredItemCount(accountId) {
+  const result = await query(`SELECT board_id FROM board_wanted_items WHERE status='open' AND preferred_account_id=$1`, [accountId]);
+  if (!result.rows.length) return 0;
+  const { listWantedItems } = await import("../../server/board-wanted.js");
+  const items = await listWantedItems([...new Set(result.rows.map((row) => row.board_id))]);
+  return items.filter((item) => item.state === "open" && item.preferredAccountId === accountId).length;
+}
+
+async function assertPreferredOwnerServed({ item, accountId }) {
+  const preferred = safeText(item?.preferredAccountId, 180);
+  if (preferred !== accountId) {
+    // Slots held for this account's own preferred items are not given away.
+    const reserved = await openPreferredItemCount(accountId);
+    if (reserved > 0) {
+      const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+      const capacity = await getNetworkTaskCapacityState({ accountId }).catch(() => null);
+      if (capacity && Number(capacity.freeSlots || 0) <= reserved) {
+        throw Object.assign(new Error(
+          `slots_reserved: ${accountId} has ${capacity.freeSlots} free slot(s) held for ${reserved} open Wanted item(s) that name them as preferred owner. Pick another contributor.`
+        ), { status: 409 });
+      }
+    }
+  }
+  if (!preferred || preferred === accountId) return;
+  const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+  const { explainNetworkTaskCandidateEligibility } = await import("../../server/repositories/network-tasks.js");
+  const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+  const verdict = await explainNetworkTaskCandidateEligibility({ accountId: preferred }).catch(() => null);
+  if (!verdict?.eligible) return;
+  const capacity = await getNetworkTaskCapacityState({ accountId: preferred, walletAddress: verdict.walletAddress || "" }).catch(() => null);
+  if (!(capacity?.freeSlots > 0)) return;
+  const workType = item.workType || "code_task";
+  const projection = await networkBadgeProjectionForAccount({ accountId: preferred, walletAddress: verdict.walletAddress || "" }).catch(() => null);
+  if (!(projection?.verifiedBadges || []).some((badge) => (badge.allowedWorkTypes || []).includes(workType))) return;
+  throw Object.assign(new Error(
+    `wanted_item_reserved: ${item.id} is reserved for its preferred owner ${preferred} (wallet ${verdict.walletAddress}), who has a free slot and a fitting badge. Create it for them: --account ${preferred} --wallet ${verdict.walletAddress}`
+  ), { status: 409 });
+}
+
 export async function taskCreate({
   boardId,
   accountId,
   wallet,
   need,
   reason = "Board manager routed a project-linked network task.",
-  workType = "code_task",
+  workType = "",
+  wantedId = "",
   requiredBadge = "",
   badgeCap = 0,
   rewardMin = 0,
@@ -232,10 +280,27 @@ export async function taskCreate({
   // band (0-1 PFT) instead of the contributor floor. Only refer-* set this.
   operatorDuty = false,
 }) {
-  if (!boardId || !accountId || !wallet || !safeText(need)) {
-    throw new Error("taskCreate requires boardId, accountId, wallet, need");
+  if (!boardId || !accountId || !wallet) {
+    throw Object.assign(new Error("taskCreate requires boardId, accountId, wallet"), { status: 400 });
   }
   assertBoardAgentScope(boardId);
+  // Every contributor task comes from an open Wanted item (2026-11-25). The
+  // item supplies the reason the task exists and its source link; one item has
+  // one live task. Operator referrals (refer-merge, refer-badge) are duties.
+  let wantedItem = null;
+  // --retry-failed without --wanted only re-queues an existing failed job for
+  // the same need (legacy jobs predate the Wanted list); it cannot create new
+  // work: with no matching failed job the engine refuses it.
+  if (!operatorDuty && !(retryFailed === true && !wantedId)) {
+    const { assertWantedItemOpen, wantedTaskNeed } = await import("../../server/board-wanted.js");
+    wantedItem = await assertWantedItemOpen({ wantedId, boardId });
+    await assertPreferredOwnerServed({ item: wantedItem, accountId });
+    need = wantedTaskNeed(wantedItem, need);
+    workType = workType || wantedItem.workType || "code_task";
+    if (!Number(rewardMax) && wantedItem.rewardPft > 0) rewardMax = wantedItem.rewardPft;
+  }
+  workType = workType || "code_task";
+  if (!safeText(need)) throw Object.assign(new Error("taskCreate requires need"), { status: 400 });
   // Scope is checked before anything else so a dry run fails the same way.
   const { assertBoardAcceptsWork } = await import("../../server/board-work-policy.js");
   assertBoardAcceptsWork({ boardId, workType, operatorDuty });
@@ -250,6 +315,20 @@ export async function taskCreate({
         `board_routing_constraint: this board is assignable only to ${allowedHandles.join(", ")} (pass --assignee-handle)`
       ), { status: 422 });
     }
+  }
+  // Pick the contributor's verified badge that allows this work type when the
+  // manager did not name one, so a fitting assignment is not refused on
+  // missing metadata.
+  if (!requiredBadge && !operatorDuty) {
+    const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+    const projection = await networkBadgeProjectionForAccount({ accountId, walletAddress: wallet });
+    const fitting = (projection?.verifiedBadges || []).find((badge) => (badge.allowedWorkTypes || []).includes(workType));
+    if (!fitting) {
+      throw Object.assign(new Error(
+        `no_badge_for_work_type: ${accountId} has no verified badge that allows ${workType} (has: ${(projection?.verifiedBadgeIds || []).join(", ") || "none"}). Pick another contributor or work type.`
+      ), { status: 422 });
+    }
+    requiredBadge = fitting.badgeId;
   }
   const budget = await boardBudgetStatus(boardId);
   if (!budget.configured) throw new Error("board_budget_missing; run migrations");
@@ -349,11 +428,15 @@ export async function taskCreate({
     sourcePacket,
     dryRun: !execute,
   });
+  if (execute && wantedItem && actionResult?.result?.executed) {
+    const { attachWantedRun } = await import("../../server/board-wanted.js");
+    await attachWantedRun({ wantedId: wantedItem.id, runId });
+  }
   await appendBmAudit({
     actor: boardAgentActor(),
     boardId,
     command: "task_create",
-    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
+    args: { accountId, wallet, wantedId: wantedItem?.id || "", need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
     result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "", rewardBandClampedFrom: effectiveBand.clampedFrom || null },
   });
   // The command reports the band the offer will advertise and, when it differs
@@ -645,4 +728,48 @@ export async function writeHandoff({ boardId }) {
     result: { file },
   });
   return { file };
+}
+
+// Hands each open Wanted item with a preferred owner to that owner when they
+// can take it: eligible, a free slot, a badge for the work type. Deterministic;
+// runs when a manager round opens, so the founder's items do not depend on the
+// manager's judgment (2026-11-25: the manager skipped them three rounds running).
+// Routes at most one item per call: each call is its own command transaction,
+// so one failing item cannot roll back or block the others.
+export async function routePreferredWantedItems(boardIds = []) {
+  const { listWantedItems } = await import("../../server/board-wanted.js");
+  const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+  const { explainNetworkTaskCandidateEligibility } = await import("../../server/repositories/network-tasks.js");
+  const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+  const { boardWorkPolicy } = await import("../../server/board-work-policy.js");
+  const skipped = [];
+  for (const item of await listWantedItems(boardIds)) {
+    // Three automatic attempts at most; after that the manager rewrites it.
+    if (item.state !== "open" || !item.preferredAccountId || item.attempts >= 3) continue;
+    if (!boardWorkPolicy(item.boardId)?.open) continue;
+    const verdict = await explainNetworkTaskCandidateEligibility({ accountId: item.preferredAccountId }).catch(() => null);
+    if (!verdict?.eligible || !verdict.walletAddress) continue;
+    const capacity = await getNetworkTaskCapacityState({ accountId: item.preferredAccountId, walletAddress: verdict.walletAddress }).catch(() => null);
+    if (!(capacity?.freeSlots > 0)) continue;
+    const projection = await networkBadgeProjectionForAccount({ accountId: item.preferredAccountId, walletAddress: verdict.walletAddress }).catch(() => null);
+    if (!(projection?.verifiedBadges || []).some((badge) => (badge.allowedWorkTypes || []).includes(item.workType || "code_task"))) continue;
+    let result;
+    try {
+      result = await taskCreate({
+        boardId: item.boardId,
+        accountId: item.preferredAccountId,
+        wallet: verdict.walletAddress,
+        wantedId: item.id,
+        need: "",
+        reason: "Wanted item routed to its preferred owner.",
+        execute: true,
+      });
+    } catch (error) {
+      // Validation refusals happen before any write; try the next item.
+      skipped.push({ wantedId: item.id, error: error.message });
+      continue;
+    }
+    return { routed: { wantedId: item.id, accountId: item.preferredAccountId, runId: result.runId, executed: Boolean(result.actionResult?.result?.executed) }, skipped };
+  }
+  return { routed: null, skipped };
 }

@@ -3,7 +3,10 @@ name: board-tasknode-fixes
 description: Board context for the Task Node Fixes board manager. Use together with the board-manager skill when operating board_tasknode_fixes - defects and hardening for the Task Node app, fixed through merged pull requests to the public repository.
 ---
 
-# Task Node Fixes Board
+# Task Node Board
+
+> Public name since 2026-11-25: **Task Node**. Every task comes from this board's Wanted list (`bm wanted board_tasknode_fixes`). Testing is paid only when it ends in a merged fix (operator decision 2026-11-25); a bug report alone is not paid here.
+
 
 Board id: `board_tasknode_fixes`. You track defects and hardening work on the Task Node app itself. The repository is public (`postfiatorg/tasknode`). Route fixes to contributors with a verified `core_contributor` badge using `--work-type code_task`; payment requires a pull request merged into `main`. Only goodalexander merges and deploys: when a pull request is ready, use `refer-merge`.
 

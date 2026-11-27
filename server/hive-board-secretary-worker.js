@@ -62,7 +62,8 @@ function projectLimit(env = process.env) {
 
 function workerEnabled(env = process.env) {
   return (
-    env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED !== "false" &&
+    // Off unless explicitly enabled: its memo is no longer shown (2026-11-25).
+    env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED === "true" &&
     databaseEnabled() &&
     hiveBoardSecretaryProviderConfigured(env)
   );
