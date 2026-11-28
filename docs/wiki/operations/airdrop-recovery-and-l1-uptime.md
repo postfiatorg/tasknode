@@ -65,7 +65,7 @@ probe record is not consulted.
 | --- | --- |
 | `TASKNODE_L1_UPTIME_FEED_URL` | HTTPS URL of the bundled feed. |
 | `TASKNODE_L1_UPTIME_FEED_KEYSET_JSON` | The pinned `postfiat.observer_keyset.v1`: chain and the three observer keys. Installed by the operator, never taken from the feed. |
-| `TASKNODE_L1_UPTIME_FEED_ENFORCED` | `true` to act on the feed. Unset or anything else: the feed is read and stored, and nothing is enforced. |
+| `TASKNODE_L1_UPTIME_FEED_ENFORCED` | `true` to act on the feed. Unset or anything else: the feed is read and stored, and nothing is enforced. `true` without the URL or the keyset is an error: the worker does not start, and binds and credits fail. |
 
 With the URL and the keyset set, the `validator_research` worker reads the feed
 every five minutes (`server/l1-validator-access.js`), verifies the three
@@ -79,22 +79,30 @@ With enforcement on:
 - a validator the feed calls `revoked` has its binding suspended
   (`validator_bindings.access_suspended_at`). A suspended binding opens neither
   the Finance Hub nor the research API, and the account's research API keys are
-  revoked unless it holds another binding with access;
+  revoked unless it holds another binding with access. That is decided once
+  per read, after every binding of the account has been settled;
 - a suspended binding is restored when the feed gives access again; the
   operator creates new research API keys;
 - `lapsed` (the 14 days of grace) keeps access and pauses the credit;
 - the monthly credit is granted only when the stored row is from a feed read
-  within the last hour and says `reward_eligible`.
+  within the last hour and says `reward_eligible`, the latest read of the
+  feed verified, and the binding is not suspended. All three are checked again
+  inside the transaction that writes the ledger entry, under a lock shared
+  with the refresh.
 
-Nothing changes when the feed cannot be fetched, is refused, has fewer than
-two attestations that count, or has no agreed row for a validator. Turning
+No existing access changes when the feed cannot be fetched, is refused, has
+fewer than two attestations that count, or has no agreed row for a validator.
+What that read decided is recorded in `l1_uptime_feed_state`, and from then
+until a read verifies again there are no new bindings and no new credit: the
+last good data does not authorize new actions. Turning
 enforcement off again stops further changes; it does not restore a suspended
 binding. To restore one by hand:
 `UPDATE validator_bindings SET access_suspended_at=NULL WHERE id=...`.
 
 With enforcement on, a new L1 validator is bound only while the feed is
-determinate: two pinned observers with an attestation accepted in the last
-hour. Otherwise the bind answers 503 `l1_uptime_feed_indeterminate` and the
+determinate: the latest read verified within the last hour, and two pinned
+observers have an attestation accepted in the last hour. A validator the feed
+has revoked is bound suspended. Otherwise the bind answers 503 `l1_uptime_feed_indeterminate` and the
 operator tries again later.
 
 Not in this release: one credit per operator across both chains, and the

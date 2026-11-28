@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { createValidatorChallenge, findRegisteredValidator, validatorError, verifyRegisteredValidatorProof } from "../validator-identity.js";
 import { L1_NETWORK, verifyRegisteredL1Proof } from "../l1-validator-identity.js";
-import { requireFeedForNewBinding } from "../l1-validator-access.js";
+import { l1UptimeFeedConfig, requireFeedForNewBinding } from "../l1-validator-access.js";
 
 const bindingFields = "id, account_id, master_public_key, network, bound_at, chain_id, validator_id, ml_dsa_public_key, access_suspended_at";
 
@@ -75,8 +75,19 @@ export async function bindValidator({ accountId, masterPublicKey, signingPublicK
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING ${bindingFields}`,
       [`vb_${randomUUID()}`, accountId, masterPublicKey || null, registered.network, signature, challenge, signingPublicKey || null, manifest || null,
         registered.chainId || null, validatorId || null, mlDsaPublicKey || null, l1 ? JSON.stringify(registered.registryEvidence) : null]);
-      if (onBound) await onBound(client, result.rows[0]);
-      return result.rows[0];
+      let bound = result.rows[0];
+      // A new binding starts where the feed says its validator stands: one the
+      // feed has revoked is bound and suspended, not bound with access until
+      // the next read.
+      if (l1 && l1UptimeFeedConfig().enforced) {
+        const suspended = await client.query(`UPDATE validator_bindings SET access_suspended_at=now() WHERE id=$1
+          AND EXISTS(SELECT 1 FROM l1_validator_access a WHERE a.network=$2 AND a.chain_id=$3 AND a.validator_id=$4
+            AND a.ml_dsa_public_key=$5 AND NOT a.finance_hub_access) RETURNING ${bindingFields}`,
+        [bound.id, bound.network, bound.chain_id, bound.validator_id, bound.ml_dsa_public_key]);
+        if (suspended.rowCount) bound = suspended.rows[0];
+      }
+      if (onBound) await onBound(client, bound);
+      return bound;
     });
   } catch (error) {
     if (error.code === "23505") throw validatorError("validator_already_bound", 409);
