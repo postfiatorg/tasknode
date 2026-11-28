@@ -8,7 +8,12 @@
 // Three rules from the contract hold here whatever else happens:
 //   - an indeterminate feed (fewer than two attestations count) changes nothing;
 //   - a validator without a quorum changes nothing;
-//   - new credit is granted only on a determinate feed.
+//   - new credit and new bindings follow the latest read, not the last good
+//     one: after a read that was indeterminate, rejected or unreachable there
+//     are none until a read verifies again.
+//
+// A refresh and a credit never interleave: both take the same advisory lock
+// inside their transaction.
 //
 // Off by default. TASKNODE_L1_UPTIME_FEED_URL and
 // TASKNODE_L1_UPTIME_FEED_KEYSET_JSON switch the reading on;
@@ -23,10 +28,14 @@ const MAX_FEED_BYTES = 16 * 1024 * 1024;
 export function l1UptimeFeedConfig(env = process.env) {
   const url = env.TASKNODE_L1_UPTIME_FEED_URL || "";
   const keysetJson = env.TASKNODE_L1_UPTIME_FEED_KEYSET_JSON || "";
+  const enforced = env.TASKNODE_L1_UPTIME_FEED_ENFORCED === "true";
+  // Enforcement asked for without a feed to enforce is a mistake, never "off".
+  if (enforced && (!url || !keysetJson)) {
+    throw new Error("TASKNODE_L1_UPTIME_FEED_ENFORCED=true needs TASKNODE_L1_UPTIME_FEED_URL and TASKNODE_L1_UPTIME_FEED_KEYSET_JSON");
+  }
   if (!url || !keysetJson) return { configured: false, enforced: false };
   if (!url.startsWith("https://")) throw new Error("TASKNODE_L1_UPTIME_FEED_URL must be https");
-  return { configured: true, url, keyset: validateKeyset(JSON.parse(keysetJson)),
-    enforced: env.TASKNODE_L1_UPTIME_FEED_ENFORCED === "true" };
+  return { configured: true, url, keyset: validateKeyset(JSON.parse(keysetJson)), enforced };
 }
 
 export async function fetchUptimeFeed(url, fetchImpl = fetch) {
@@ -76,20 +85,42 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
   db = { query, transaction, enabled: databaseEnabled } } = {}) {
   const config = l1UptimeFeedConfig(env);
   if (!config.configured || !db.enabled()) return { status: "not_configured" };
+  const keysetId = config.keyset.keyset_id;
   const accepted = (await db.query(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
-    [config.keyset.keyset_id])).rows;
+    [keysetId])).rows;
+  // What this read decided is recorded whatever it is. A later decision is never replaced by an earlier one.
+  const decide = (run, status, reason = null) => run(`INSERT INTO l1_uptime_feed_state(keyset_id,status,reason,decided_at)
+    VALUES($1,$2,$3,$4) ON CONFLICT (keyset_id) DO UPDATE SET status=EXCLUDED.status, reason=EXCLUDED.reason,
+      decided_at=EXCLUDED.decided_at, updated_at=now() WHERE l1_uptime_feed_state.decided_at <= EXCLUDED.decided_at`,
+  [keysetId, status, reason, new Date(now).toISOString()]);
   let result;
   try {
     result = verifyUptimeFeed(await fetchUptimeFeed(config.url, fetchImpl), { keyset: config.keyset, now,
       lastAccepted: Object.fromEntries(accepted.map(row => [row.observer_id, row.last_observed_at])) });
   } catch (error) {
-    return { status: error instanceof FeedRejected ? "feed_rejected" : "feed_unavailable", reason: error.message };
+    const status = error instanceof FeedRejected ? "feed_rejected" : "feed_unavailable";
+    await decide(db.query, status, error.message);
+    return { status, reason: error.message };
   }
-  if (result.indeterminate) return { status: "indeterminate", rejectedObservers: result.rejectedObservers };
+  if (result.indeterminate) {
+    await decide(db.query, "indeterminate");
+    return { status: "indeterminate", rejectedObservers: result.rejectedObservers };
+  }
 
   const chain = config.keyset.chain;
   const observedAt = Object.values(result.accepted).sort().at(-1);
   return db.transaction(async client => {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [feedLockKey(keysetId)]);
+    // The feed was checked against watermarks read before this transaction.
+    // Another refresh may have moved them since: an attestation older than
+    // the one stored is not applied.
+    const stored = new Map((await client.query(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers
+      WHERE keyset_id=$1`, [keysetId])).rows.map(row => [row.observer_id, row.last_observed_at]));
+    for (const [observerId, at] of Object.entries(result.accepted)) {
+      if (stored.has(observerId) && Date.parse(at) < Date.parse(stored.get(observerId))) return { status: "superseded" };
+    }
+    // Likewise a decision later than this read: this read has been overtaken.
+    if (!(await decide(client.query.bind(client), "applied")).rowCount) return { status: "superseded" };
     for (const [observerId, at] of Object.entries(result.accepted)) {
       await client.query(`INSERT INTO l1_uptime_feed_observers(keyset_id,observer_id,last_observed_at) VALUES($1,$2,$3)
         ON CONFLICT (keyset_id,observer_id) DO UPDATE SET last_observed_at=EXCLUDED.last_observed_at, updated_at=now()`,
@@ -120,20 +151,26 @@ export async function refreshL1ValidatorAccess({ env = process.env, fetchImpl = 
     if (!config.enforced) return summary;
     const bindings = (await client.query(`SELECT id,account_id,network,chain_id,validator_id,ml_dsa_public_key,access_suspended_at
       FROM validator_bindings WHERE network=$1 AND revoked_at IS NULL FOR UPDATE`, [L1_NETWORK])).rows;
+    const suspendedAccounts = new Set();
     for (const { binding, action } of accessDecisions(result.validators, bindings, chain)) {
       if (action === "suspend") {
         await client.query(`UPDATE validator_bindings SET access_suspended_at=now() WHERE id=$1`, [binding.id]);
         summary.suspended.push(binding.validator_id);
-        // The contract invalidates research API keys on revocation. An account
-        // that still has another binding with access keeps its keys.
-        const revoked = await client.query(`UPDATE research_api_keys SET revoked_at=now()
-          WHERE account_id=$1 AND revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM validator_bindings b
-            WHERE b.account_id=$1 AND b.revoked_at IS NULL AND b.access_suspended_at IS NULL)`, [binding.account_id]);
-        summary.researchKeysRevoked += revoked.rowCount;
+        suspendedAccounts.add(binding.account_id);
       } else if (action === "restore") {
         await client.query(`UPDATE validator_bindings SET access_suspended_at=NULL WHERE id=$1`, [binding.id]);
         summary.restored.push(binding.validator_id);
       }
+    }
+    // The contract invalidates research API keys on revocation, and that is
+    // for good. So it is decided once, from where every binding ended up: an
+    // account that finishes this read with a binding that has access keeps
+    // its keys, whatever order its bindings were handled in.
+    for (const accountId of suspendedAccounts) {
+      const revoked = await client.query(`UPDATE research_api_keys SET revoked_at=now()
+        WHERE account_id=$1 AND revoked_at IS NULL AND NOT EXISTS(SELECT 1 FROM validator_bindings b
+          WHERE b.account_id=$1 AND b.revoked_at IS NULL AND b.access_suspended_at IS NULL)`, [accountId]);
+      summary.researchKeysRevoked += revoked.rowCount;
     }
     return summary;
   });
@@ -152,13 +189,33 @@ export function feedAllowsNewBindings(observerRows, keyset, now = new Date()) {
   return new Set(fresh.map(row => row.observer_id)).size >= 2;
 }
 
+/** The advisory lock a refresh and a credit share, so neither sees the other half done. */
+export function feedLockKey(keysetId) { return `l1_uptime_feed:${keysetId}`; }
+
+/** The latest decision of the feed for a keyset, or null when it was never read. */
+export async function l1FeedState(keysetId, queryImpl = query) {
+  return (await queryImpl(`SELECT status,reason,decided_at FROM l1_uptime_feed_state WHERE keyset_id=$1`, [keysetId])).rows[0] || null;
+}
+
+/**
+ * Whether the latest read of the feed allows a new action now: it verified,
+ * and it is at most an hour old. The last good data does not count once a
+ * later read failed.
+ */
+export function feedDecisionCurrent(state, now = new Date()) {
+  if (!state || state.status !== "applied") return false;
+  const age = new Date(now).getTime() - new Date(state.decided_at).getTime();
+  return age <= 3600000 && age >= -60000;
+}
+
 /** Throws 503 when enforcement is on and the feed is indeterminate. Does nothing otherwise. */
 export async function requireFeedForNewBinding({ env = process.env, now = new Date(), queryImpl = query } = {}) {
   const config = l1UptimeFeedConfig(env);
   if (!config.enforced) return;
   const rows = (await queryImpl(`SELECT observer_id,last_observed_at FROM l1_uptime_feed_observers WHERE keyset_id=$1`,
     [config.keyset.keyset_id])).rows;
-  if (!feedAllowsNewBindings(rows, config.keyset, now)) {
+  const state = await l1FeedState(config.keyset.keyset_id, queryImpl);
+  if (!feedDecisionCurrent(state, now) || !feedAllowsNewBindings(rows, config.keyset, now)) {
     throw Object.assign(new Error("l1_uptime_feed_indeterminate"), { status: 503 });
   }
 }
@@ -174,7 +231,9 @@ export async function l1AccessRow(binding, queryImpl = query) {
  * Whether the monthly credit may be granted from the feed: the stored row is
  * from a feed read within the last hour and says the validator is eligible.
  */
-export function creditFromFeedRow(row, now = new Date()) {
+export function creditFromFeedRow(row, now = new Date(), state = undefined) {
+  // `state` is the latest decision of the feed. When given, it must allow new actions.
+  if (state !== undefined && !feedDecisionCurrent(state, now)) return { eligible: false, reason: "feed_indeterminate" };
   if (!row) return { eligible: false, reason: "no_feed_row" };
   if (new Date(now).getTime() - new Date(row.feed_observed_at).getTime() > 3600000) return { eligible: false, reason: "feed_stale" };
   return { eligible: row.reward_eligible === true, reason: row.reward_eligible ? "eligible" : row.access_state_reason };

@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { FeedRejected, canonicalJson, reconcile, verifyUptimeFeed } from "../server/l1-uptime-feed.js";
+import { FeedRejected, canonicalJson, deriveRow, reconcile, verifyUptimeFeed } from "../server/l1-uptime-feed.js";
 
 const load = name => JSON.parse(readFileSync(new URL(`./fixtures/l1-uptime-feed/${name}`, import.meta.url), "utf8"));
 const feed = () => load("postfiat-validator-uptime-v1.fixture.json");
@@ -125,4 +125,41 @@ test("stale, replayed, another chain, moved constants", () => {
 
 test("canonical JSON is the bytes the other implementations sign", () => {
   assert.equal(canonicalJson({ b: [1, { d: null, c: true }], a: "x" }), '{"a":"x","b":[1,{"c":true,"d":null}]}');
+});
+
+test("observers that share a state and differ on the credit or the grace date do not agree", () => {
+  const attestations = feed().observer_attestations;
+  const id = attestations[0].validator_claims[0].validator_id;
+  assert.equal(attestations[0].validator_claims[0].reward_eligible, true);
+  // One observer saw too few days for the credit. The other two carry the row.
+  attestations[0].validator_claims[0] = { ...attestations[0].validator_claims[0], reward_eligible: false };
+  let { rows, noQuorum } = reconcile(attestations);
+  assert.deepEqual(noQuorum, []);
+  assert.equal(rows[0].reward_eligible, true);
+  assert.equal(rows[0].agreeing_observer_ids.includes(attestations[0].observer_id), false);
+  // With that observer and one other alone, nobody acts on either claim.
+  ({ noQuorum } = reconcile(attestations.slice(0, 2)));
+  assert.deepEqual(noQuorum, [id]);
+  // The same for the date grace runs from.
+  const lapsed = feed().observer_attestations;
+  const index = lapsed[0].validator_claims.findIndex(claim => claim.access_state === "lapsed");
+  lapsed[0].validator_claims[index] = { ...lapsed[0].validator_claims[index], grace_started_at: "2026-11-23T00:00:00Z" };
+  ({ noQuorum } = reconcile(lapsed.slice(0, 2)));
+  assert.deepEqual(noQuorum, [lapsed[0].validator_claims[index].validator_id]);
+});
+
+test("too few days are not judged outside the ramp-in", () => {
+  const claim = feed().observer_attestations[0].validator_claims[0];
+  assert.equal(claim.ramp_in_active, false);
+  const end = Date.parse("2026-11-27T00:00:00Z") / 86400000;
+  // Five bad days and nothing else: liveness is not failed on them. Access stays, the credit waits.
+  const thin = { ...claim, days: claim.days.map((day, i) => i >= 5 ? { ...day, complete: false, participation_bps: null }
+    : { ...day, signed_blocks: Math.floor(day.committed_blocks / 2), participation_bps: day.committed_blocks ? 5000 : null }) };
+  const few = deriveRow(thin, end);
+  assert.deepEqual([few.observed_days < 25, few.liveness_met, few.access_state_reason, few.reward_eligible, few.finance_hub_access],
+    [true, true, "insufficient_observed_days", false, true]);
+  // Twenty-five such days are judged.
+  const many = deriveRow({ ...claim, days: claim.days.map(day => day.complete && day.committed_blocks
+    ? { ...day, signed_blocks: Math.floor(day.committed_blocks / 2), participation_bps: 5000 } : day) }, end);
+  assert.deepEqual([many.observed_days >= 25, many.liveness_met], [true, false]);
 });

@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { accessDecisions, creditFromFeedRow, feedAllowsNewBindings, l1UptimeFeedConfig, refreshL1ValidatorAccess,
-  requireFeedForNewBinding } from "../server/l1-validator-access.js";
+import { accessDecisions, creditFromFeedRow, feedAllowsNewBindings, feedDecisionCurrent, l1UptimeFeedConfig,
+  refreshL1ValidatorAccess, requireFeedForNewBinding } from "../server/l1-validator-access.js";
 import { verifyUptimeFeed } from "../server/l1-uptime-feed.js";
 
 const load = name => JSON.parse(readFileSync(new URL(`./fixtures/l1-uptime-feed/${name}`, import.meta.url), "utf8"));
@@ -46,6 +46,21 @@ test("the credit follows a fresh row and nothing else", () => {
   assert.deepEqual(creditFromFeedRow(null, now), { eligible: false, reason: "no_feed_row" });
   // A row from a feed read more than an hour ago grants nothing, whatever it says.
   assert.deepEqual(creditFromFeedRow(row("validator-0"), new Date(now.getTime() + 3700000)), { eligible: false, reason: "feed_stale" });
+  // The latest read decides. A good row from before a failed read grants nothing.
+  const decided = status => ({ status, decided_at: "2026-11-27T01:40:30Z" });
+  assert.deepEqual(creditFromFeedRow(row("validator-0"), now, decided("applied")), { eligible: true, reason: "eligible" });
+  for (const state of [decided("indeterminate"), decided("feed_rejected"), decided("feed_unavailable"), null]) {
+    assert.deepEqual(creditFromFeedRow(row("validator-0"), now, state), { eligible: false, reason: "feed_indeterminate" });
+  }
+});
+
+test("the latest read decides whether a new action is allowed", () => {
+  const at = seconds => new Date(now.getTime() - seconds * 1000).toISOString();
+  assert.equal(feedDecisionCurrent({ status: "applied", decided_at: at(60) }, now), true);
+  assert.equal(feedDecisionCurrent({ status: "applied", decided_at: at(3700) }, now), false);
+  assert.equal(feedDecisionCurrent({ status: "applied", decided_at: at(-600) }, now), false);
+  assert.equal(feedDecisionCurrent({ status: "indeterminate", decided_at: at(60) }, now), false);
+  assert.equal(feedDecisionCurrent(null, now), false);
 });
 
 test("off by default; the URL must be https; the keyset must be a real keyset", () => {
@@ -55,16 +70,23 @@ test("off by default; the URL must be https; the keyset must be a real keyset", 
   assert.equal(l1UptimeFeedConfig(env).enforced, false);
   assert.equal(l1UptimeFeedConfig({ ...env, TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" }).enforced, true);
   assert.throws(() => l1UptimeFeedConfig({ ...env, TASKNODE_L1_UPTIME_FEED_URL: "http://feed.example/x.json" }));
+  // Enforcement asked for without a feed is an error, never "off".
+  assert.throws(() => l1UptimeFeedConfig({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" }), /needs TASKNODE_L1_UPTIME_FEED_URL/);
+  assert.throws(() => l1UptimeFeedConfig({ TASKNODE_L1_UPTIME_FEED_URL: env.TASKNODE_L1_UPTIME_FEED_URL, TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" }));
   assert.throws(() => l1UptimeFeedConfig({ ...env, TASKNODE_L1_UPTIME_FEED_KEYSET_JSON: JSON.stringify({ ...keyset, threshold: 1 }) }));
 });
 
 // A database that records what it is asked, enough to follow the refresh.
-function fakeDb(bindings) {
+function fakeDb(bindings, { watermarks = [] } = {}) {
   const log = [];
+  let watermarkReads = 0;
   const client = { query: async (sql, params) => {
     log.push([sql.replace(/\s+/g, " ").trim().slice(0, 60), params]);
+    // The first read of the watermarks is the one before the transaction; `watermarks` is what a second read finds.
+    if (sql.includes("FROM l1_uptime_feed_observers")) return { rows: watermarkReads++ ? watermarks : [], rowCount: 0 };
     if (sql.includes("FROM validator_bindings WHERE network")) return { rows: bindings, rowCount: bindings.length };
     if (sql.includes("UPDATE research_api_keys")) return { rows: [], rowCount: 2 };
+    if (sql.includes("INSERT INTO l1_uptime_feed_state")) return { rows: [], rowCount: 1 };
     return { rows: [], rowCount: 0 };
   } };
   return { log, enabled: () => true, query: client.query, transaction: async work => work(client) };
@@ -91,9 +113,39 @@ test("refresh: enforcement suspends the revoked, revokes its research keys, rest
   assert.deepEqual([result.suspended, result.restored, result.researchKeysRevoked], [["validator-4"], ["validator-0"], 2]);
 });
 
+test("refresh: two bindings of one account are settled before its research keys are", async () => {
+  // Whatever order the bindings come in, the keys are looked at once, after both.
+  for (const order of [0, 1]) {
+    const pair = [binding("validator-4", { account_id: "acct_shared" }),
+      binding("validator-0", { account_id: "acct_shared", access_suspended_at: "2026-11-01T00:00:00Z" })];
+    const db = fakeDb(order ? pair.reverse() : pair);
+    await refreshL1ValidatorAccess({ env: env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" }), now, db,
+      fetchImpl: feedResponse(load("postfiat-validator-uptime-v1.fixture.json")) });
+    const statements = db.log.map(([sql]) => sql);
+    const lastBindingChange = statements.findLastIndex(sql => sql.startsWith("UPDATE validator_bindings"));
+    const keyStatements = statements.flatMap((sql, index) => sql.startsWith("UPDATE research_api_keys") ? [index] : []);
+    assert.equal(keyStatements.length, 1);
+    assert.ok(keyStatements[0] > lastBindingChange);
+  }
+});
+
+test("refresh: a read that another refresh has overtaken is not applied", async () => {
+  const observer = keyset.observers[0].observer_id;
+  const db = fakeDb([binding("validator-4")], { watermarks: [{ observer_id: observer, last_observed_at: "2027-01-01T00:00:00Z" }] });
+  const result = await refreshL1ValidatorAccess({ env: env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" }), now, db,
+    fetchImpl: feedResponse(load("postfiat-validator-uptime-v1.fixture.json")) });
+  assert.equal(result.status, "superseded");
+  assert.equal(db.log.some(([sql]) => sql.startsWith("INSERT") || sql.startsWith("UPDATE")), false);
+});
+
 test("refresh: a bad, stale or unreachable feed changes nothing", async () => {
   const enforced = env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" });
-  const writes = db => db.log.filter(([sql]) => !sql.startsWith("SELECT")).length;
+  // Nothing but the decision itself is written: that the read failed is recorded, and new actions stop.
+  const writes = db => {
+    const changed = db.log.filter(([sql]) => !sql.startsWith("SELECT"));
+    assert.equal(changed.filter(([sql]) => sql.startsWith("INSERT INTO l1_uptime_feed_state")).length, 1);
+    return changed.length - 1;
+  };
   const tampered = load("postfiat-validator-uptime-v1.fixture.json");
   tampered.validators[0].access_state = "revoked";
   let db = fakeDb([binding("validator-0")]);
@@ -121,11 +173,17 @@ test("a new binding waits while the feed is indeterminate", async () => {
   assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(60) }, { observer_id: a, ...at(90) }], keyset, now), false);
   assert.equal(feedAllowsNewBindings([{ observer_id: a, ...at(-600) }, { observer_id: c, ...at(-600) }], keyset, now), false);
 
-  const rows = fresh => async () => ({ rows: fresh ? [{ observer_id: a, ...at(60) }, { observer_id: c, ...at(120) }] : [{ observer_id: a, ...at(60) }] });
+  const rows = (fresh, status = "applied") => async sql => sql.includes("l1_uptime_feed_state")
+    ? { rows: status ? [{ status, decided_at: new Date(now.getTime() - 30000).toISOString() }] : [] }
+    : { rows: fresh ? [{ observer_id: a, ...at(60) }, { observer_id: c, ...at(120) }] : [{ observer_id: a, ...at(60) }] };
   const enforced = env({ TASKNODE_L1_UPTIME_FEED_ENFORCED: "true" });
+  const refused = error => error.status === 503 && error.message === "l1_uptime_feed_indeterminate";
   await requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true) });
-  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(false) }),
-    error => error.status === 503 && error.message === "l1_uptime_feed_indeterminate");
+  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(false) }), refused);
+  // Two observers were fresh at the last good read, but the read after it failed: no new binding.
+  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true, "indeterminate") }), refused);
+  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true, "feed_unavailable") }), refused);
+  await assert.rejects(requireFeedForNewBinding({ env: enforced, now, queryImpl: rows(true, null) }), refused);
   // Without enforcement nothing is asked and nothing is refused.
   await requireFeedForNewBinding({ env: env(), now, queryImpl: async () => { throw new Error("must not be asked"); } });
   await requireFeedForNewBinding({ env: {}, now, queryImpl: async () => { throw new Error("must not be asked"); } });

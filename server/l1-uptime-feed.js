@@ -110,7 +110,7 @@ function claimBody(feed, attestation) {
 const within30Days = (startDay, windowEndDay) => startDay !== null && windowEndDay < startDay + HORIZON_DAYS;
 
 /** Every field of a row that follows from its facts. */
-function deriveRow(row, windowEndDay) {
+export function deriveRow(row, windowEndDay) {
   const floorDay = row.recovery_floor_date === null ? null : parseDate(row.recovery_floor_date);
   const inRecovery = within30Days(floorDay, windowEndDay);
   const scored = row.days.filter(day => day.complete && day.committed_blocks > 0 &&
@@ -120,7 +120,9 @@ function deriveRow(row, windowEndDay) {
   let streak = 0;
   for (let index = scored.length - 1; index >= 0 && scored[index].participation_bps >= THRESHOLD_BPS; index -= 1) streak += 1;
   const rampIn = within30Days(row.first_active_date === null ? null : parseDate(row.first_active_date), windowEndDay);
-  const liveness = row.registry_active && (observed === 0 || mean >= THRESHOLD_BPS);
+  // Outside the ramp-in and a recovery, fewer than the minimum of scored days are too few to judge.
+  const tooFewToJudge = !rampIn && !inRecovery && observed < MIN_OBSERVED_DAYS;
+  const liveness = row.registry_active && (observed === 0 || tooFewToJudge || mean >= THRESHOLD_BPS);
   let reason, hub, reward, removal = false;
   if (row.access_state === "pending") [reason, hub, reward] = ["awaiting_ratification", false, false];
   else if (row.access_state === "active") {
@@ -267,7 +269,9 @@ export function reconcile(attestations) {
   for (const validatorId of [...byValidator.keys()].sort()) {
     const groups = new Map();
     for (const [observerId, claim] of byValidator.get(validatorId)) {
-      const key = JSON.stringify([claim.ml_dsa_public_key, claim.registry_active, claim.liveness_met, claim.access_state]);
+      // Everything a consumer acts on is agreed, not only the state.
+      const key = JSON.stringify([claim.ml_dsa_public_key, claim.registry_active, claim.liveness_met, claim.access_state,
+        claim.reward_eligible, claim.grace_started_at]);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push([observerId, claim]);
     }

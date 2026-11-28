@@ -1,10 +1,13 @@
 import { reconcileResearchJobs } from "./research-gateway.js";
 import { runValidatorRewards } from "./validator-rewards.js";
-import { refreshL1ValidatorAccess } from "./l1-validator-access.js";
+import { l1UptimeFeedConfig, refreshL1ValidatorAccess } from "./l1-validator-access.js";
 
 let started = false;
 export function startValidatorResearchWorker() {
   if (started) return;
+  // Enforcement switched on without a feed, or with a keyset that does not
+  // parse, stops the start: it is never read as "enforcement off".
+  l1UptimeFeedConfig();
   started = true;
   let busy = false;
   let rewardedMonth = "";
